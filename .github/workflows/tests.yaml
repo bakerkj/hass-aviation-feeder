@@ -73,12 +73,22 @@ jobs:
           context: ./aviation_feeder
           load: true
           tags: aviation_feeder:e2e
+          # No SBOM/provenance attestation on a throwaway e2e image — it only
+          # adds attestation-manifest export work to every build.
+          provenance: false
+          sbom: false
           build-args: |
             BUILD_VERSION=e2e
           cache-from: |
             type=gha,scope=aviation_feeder-e2e-${{ matrix.arch }}
+          # mode=min exports only the final image's layers (not every
+          # intermediate), which makes the gha cache export cheaper and leaves
+          # less to re-import on the next build. Trade-off vs mode=max is some
+          # lost layer reuse; measured worth it for this single-stage-final
+          # image (the feeder "stages" are external pulled images, cached
+          # separately regardless).
           cache-to: |
-            type=gha,mode=max,scope=aviation_feeder-e2e-${{ matrix.arch }}
+            type=gha,mode=min,scope=aviation_feeder-e2e-${{ matrix.arch }}
       # run.sh stands up its own mosquitto + mock-HA-API sidecars and runs the
       # container-level assertions. SKIP_BUILD=1 reuses the image built above
       # instead of doing its own plain `docker build`.
