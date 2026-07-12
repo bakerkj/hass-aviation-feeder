@@ -157,8 +157,8 @@ COPY --from=piaware /usr/lib/piaware-status /usr/lib/piaware-status
 # (ModuleNotFoundError, or a Coordinator "missing stats_interval" TypeError).
 COPY --from=piaware /usr/local/bin/fa-mlat-client /opt/fa-mlat/fa-mlat-client.py
 # NB: the `python3.13` / `-313-` below are pinned to the piaware base's Python
-# minor version. When the piaware base bumps to a new Python minor these COPYs
-# fail the build (missing source path) -- bump 3.13/313 here to match. (The .so
+# minor version. When the piaware base bumps to a new Python minor these COPY
+# steps fail the build (missing source path) -- bump 3.13/313 here to match. (The .so
 # is already globbed; the dist-packages dir path is the part that needs it.)
 COPY --from=piaware /usr/local/lib/python3.13/dist-packages/flightaware /opt/fa-mlat/flightaware
 COPY --from=piaware /usr/local/lib/python3.13/dist-packages/mlat /opt/fa-mlat/mlat
