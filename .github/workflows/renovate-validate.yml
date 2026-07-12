@@ -29,7 +29,7 @@ jobs:
 
       - name: Schema validation
         run:
-          npx --package renovate@43.260.0 -- renovate-config-validator
+          npx --package renovate@43.260.1 -- renovate-config-validator
           renovate.json
 
       - name: Dry-run lookup test
@@ -37,7 +37,7 @@ jobs:
           LOG_LEVEL: debug
           GITHUB_COM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npx --package renovate@43.260.0 -- renovate --dry-run --platform=local > renovate-dry-run.log 2>&1 || true
+          npx --package renovate@43.260.1 -- renovate --dry-run --platform=local > renovate-dry-run.log 2>&1 || true
 
           # Check for datasource lookup failures
           errors=$(grep -i "no-result\|failed to look up" renovate-dry-run.log | grep -v "python-version" || true)
