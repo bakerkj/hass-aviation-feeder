@@ -725,6 +725,11 @@ for idx in "${!CASES[@]}"; do
   # Throttle: block until a worker slot frees up before launching the next.
   while [ "$(jobs -rp | wc -l)" -ge "${JOBS}" ]; do wait -n 2>/dev/null || true; done
   (
+    # Insurance: bash already resets the EXIT trap in a `( … ) &` subshell
+    # (verified), but drop it explicitly so a worker exiting can never run the
+    # top-level cleanup() — which would nuke sibling containers + the shared
+    # RESULTS_DIR mid-run.
+    trap - EXIT
     "${CASES[$idx]}"
     echo "$?" >"${RESULTS_DIR}/${idx}.status"
   ) \
