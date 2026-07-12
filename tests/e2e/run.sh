@@ -38,11 +38,28 @@ bad() {
 MQTT_BROKER="aviation_feeder_e2e_mqtt"
 MQTT_NET="aviation_feeder_e2e_net"
 API_MOCK="aviation_feeder_e2e_api"
-cleanup() {
-  docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
-  docker rm -f "${MQTT_BROKER}" >/dev/null 2>&1 || true
-  docker rm -f "${API_MOCK}" >/dev/null 2>&1 || true
+# Per-case resource names. Every case runs in its own backgrounded worker with a
+# unique container/sidecar/network set, so cases run concurrently without
+# colliding. setup_case_names is called at the top of each case function; because
+# each case fn declares `local CONTAINER MQTT_* API_MOCK`, these assignments are
+# dynamically scoped to that case and the assertion helpers pick them up.
+setup_case_names() { # $1 = short case id
+  CONTAINER="aviation_feeder_e2e_$1"
+  MQTT_BROKER="aviation_feeder_e2e_mqtt_$1"
+  API_MOCK="aviation_feeder_e2e_api_$1"
+  MQTT_NET="aviation_feeder_e2e_net_$1"
+}
+teardown_case() {
+  docker rm -f "${CONTAINER}" "${MQTT_BROKER}" "${API_MOCK}" >/dev/null 2>&1 || true
   docker network rm "${MQTT_NET}" >/dev/null 2>&1 || true
+}
+RESULTS_DIR=""
+cleanup() {
+  # Sweep every per-case container/network by name prefix (covers anything a
+  # crashed case left behind), then drop the results scratch dir.
+  docker ps -aq --filter "name=aviation_feeder_e2e" | xargs -r docker rm -f >/dev/null 2>&1 || true
+  docker network ls -q --filter "name=aviation_feeder_e2e_net" | xargs -r docker network rm >/dev/null 2>&1 || true
+  [ -n "${RESULTS_DIR}" ] && rm -rf "${RESULTS_DIR}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -93,7 +110,7 @@ _readsb_no_selfloop() {
 }
 
 start_container() {
-  cleanup
+  docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
   docker run -d --name "${CONTAINER}" \
     -v "$1:/data/options.json:ro" "${IMAGE}" >/dev/null
   # Wait for the config bridge to finish (or the container to exit early).
@@ -186,211 +203,256 @@ if [ "${SKIP_BUILD:-}" != "1" ]; then
   docker build --build-arg BUILD_VERSION=e2e -t "${IMAGE}" "${ADDON_DIR}"
 fi
 
-section "CASE default — all feeders off must NOT crash s6 init"
-start_container "${HERE}/fixtures/default.json"
-assert_running
-assert_log 'container environment prepared'
-# 02-rbfeeder must skip (not run its upstream script) when RadarBox is off,
-# else it can sleep-infinity on thermal-less hosts and stall s6 init.
-assert_log 'radarbox disabled/unconfigured; skipping setup'
-# HA sensor publisher must idle cleanly when ha_sensors is unset/off.
-assert_log '\[ha-mqtt\] disabled .*idling'
-# tar1090 must default to the baked version (no per-boot GitHub download).
-assert_env_contains UPDATE_TAR1090 false
-# globe_history retention defaults to 7 days (bounds the persisted /data growth).
-assert_env_contains MAX_GLOBE_HISTORY 7
-# Persistent data must live on /data (survives rebuilds) and the high-frequency
-# collectd RRDs must be RAM-backed with hourly write-back to /data.
-assert_symlink /var/globe_history /data/globe_history
-assert_symlink /var/lib/collectd /data/collectd
-assert_symlink /var/cache/piaware /data/piaware
-assert_symlink /run/collectd /tmp/collectd
-assert_env_contains GRAPHS1090_REDUCE_IO true
-assert_env_contains GRAPHS1090_REDUCE_IO_FLUSH_IVAL 1h
-assert_executable /etc/s6-overlay/s6-rc.d/readsb/run
-assert_executable /etc/s6-overlay/s6-rc.d/collectd/run
+case_default() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names default
+  section "CASE default — all feeders off must NOT crash s6 init"
+  start_container "${HERE}/fixtures/default.json"
+  assert_running
+  assert_log 'container environment prepared'
+  # 02-rbfeeder must skip (not run its upstream script) when RadarBox is off,
+  # else it can sleep-infinity on thermal-less hosts and stall s6 init.
+  assert_log 'radarbox disabled/unconfigured; skipping setup'
+  # HA sensor publisher must idle cleanly when ha_sensors is unset/off.
+  assert_log '\[ha-mqtt\] disabled .*idling'
+  # tar1090 must default to the baked version (no per-boot GitHub download).
+  assert_env_contains UPDATE_TAR1090 false
+  # globe_history retention defaults to 7 days (bounds the persisted /data growth).
+  assert_env_contains MAX_GLOBE_HISTORY 7
+  # Persistent data must live on /data (survives rebuilds) and the high-frequency
+  # collectd RRDs must be RAM-backed with hourly write-back to /data.
+  assert_symlink /var/globe_history /data/globe_history
+  assert_symlink /var/lib/collectd /data/collectd
+  assert_symlink /var/cache/piaware /data/piaware
+  assert_symlink /run/collectd /tmp/collectd
+  assert_env_contains GRAPHS1090_REDUCE_IO true
+  assert_env_contains GRAPHS1090_REDUCE_IO_FLUSH_IVAL 1h
+  assert_executable /etc/s6-overlay/s6-rc.d/readsb/run
+  assert_executable /etc/s6-overlay/s6-rc.d/collectd/run
 
-section "CASE rtlsdr + UAT + aggregators (shared + override UUID)"
-start_container "${HERE}/fixtures/rtlsdr-uat.json"
-assert_running
-assert_env_contains READSB_DEVICE_TYPE rtlsdr
-assert_env_contains UUID '01234567-89ab-cdef'
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,localhost,30978,uat_in'
-# Assert every aggregator connector so a host/port typo in 00-haos-options
-# ships loudly, not silently. Distinctive host+port per aggregator; shared vs
-# override UUID checked on adsblol/airplaneslive; mlat lines and the no-mlat
-# aggregator (avdelphi) checked too.
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,in.adsb.lol,30004,beast_reduce_plus_out,uuid=01234567-89ab-cdef'
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed.adsb.fi,30004,beast_reduce_plus_out'
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed.airplanes.live,30004,beast_reduce_plus_out,uuid=aaaaaaaa-bbbb'
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed.planespotters.net,30004,beast_reduce_plus_out'
-assert_env_contains ULTRAFEEDER_CONFIG 'mlat,mlat.planespotters.net,31090'
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed.theairtraffic.com,30004,beast_reduce_plus_out'
-assert_env_contains ULTRAFEEDER_CONFIG 'mlat,feed.theairtraffic.com,31090'
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,data.avdelphi.com,24999,beast_reduce_plus_out'
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,dati.flyitalyadsb.com,4905,beast_reduce_plus_out'
-assert_env_contains ULTRAFEEDER_CONFIG 'mlat,dati.flyitalyadsb.com,30100'
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed.adsbitalia.it,31108,beast_reduce_plus_out'
-assert_env_contains ULTRAFEEDER_CONFIG 'mlat,mlat.adsbitalia.it,41113'
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed1.adsbexchange.com,30004,beast_reduce_plus_out'
-assert_env_contains ULTRAFEEDER_CONFIG 'mlat,feed.adsbexchange.com,31090'
-# adsb.one / HpRadar: non-uniform ports (64004/64006, 30004/31090). Both ride the
-# shared station UUID here. adsbone_mlat=false in this fixture exercises the
-# per-aggregator MLAT toggle: ADS-B is still fed, but the MLAT line is dropped.
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed.adsb.one,64004,beast_reduce_plus_out'
-assert_env_not_contains ULTRAFEEDER_CONFIG 'mlat,feed.adsb.one,64006'
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,skyfeed.hpradar.com,30004,beast_reduce_plus_out'
-assert_env_contains ULTRAFEEDER_CONFIG 'mlat,skyfeed.hpradar.com,31090'
-assert_log_within 90 'service dump978 successfully started'
-# With UUID set, mlat-client must not disable itself (guards the UUID/MLAT_NAME
-# env-var-name fix).
-assert_no_log 'MLAT will be disabled'
+  teardown_case
+}
 
-section "CASE remote / net-only"
-start_container "${HERE}/fixtures/remote.json"
-assert_running
-assert_env_unset READSB_DEVICE_TYPE
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,192.168.1.50,30005,beast_in'
-assert_log 'dump978.*idling'
+case_rtlsdr() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names rtlsdr
+  section "CASE rtlsdr + UAT + aggregators (shared + override UUID)"
+  start_container "${HERE}/fixtures/rtlsdr-uat.json"
+  assert_running
+  assert_env_contains READSB_DEVICE_TYPE rtlsdr
+  assert_env_contains UUID '01234567-89ab-cdef'
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,localhost,30978,uat_in'
+  # Assert every aggregator connector so a host/port typo in 00-haos-options
+  # ships loudly, not silently. Distinctive host+port per aggregator; shared vs
+  # override UUID checked on adsblol/airplaneslive; mlat lines and the no-mlat
+  # aggregator (avdelphi) checked too.
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,in.adsb.lol,30004,beast_reduce_plus_out,uuid=01234567-89ab-cdef'
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed.adsb.fi,30004,beast_reduce_plus_out'
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed.airplanes.live,30004,beast_reduce_plus_out,uuid=aaaaaaaa-bbbb'
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed.planespotters.net,30004,beast_reduce_plus_out'
+  assert_env_contains ULTRAFEEDER_CONFIG 'mlat,mlat.planespotters.net,31090'
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed.theairtraffic.com,30004,beast_reduce_plus_out'
+  assert_env_contains ULTRAFEEDER_CONFIG 'mlat,feed.theairtraffic.com,31090'
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,data.avdelphi.com,24999,beast_reduce_plus_out'
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,dati.flyitalyadsb.com,4905,beast_reduce_plus_out'
+  assert_env_contains ULTRAFEEDER_CONFIG 'mlat,dati.flyitalyadsb.com,30100'
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed.adsbitalia.it,31108,beast_reduce_plus_out'
+  assert_env_contains ULTRAFEEDER_CONFIG 'mlat,mlat.adsbitalia.it,41113'
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed1.adsbexchange.com,30004,beast_reduce_plus_out'
+  assert_env_contains ULTRAFEEDER_CONFIG 'mlat,feed.adsbexchange.com,31090'
+  # adsb.one / HpRadar: non-uniform ports (64004/64006, 30004/31090). Both ride the
+  # shared station UUID here. adsbone_mlat=false in this fixture exercises the
+  # per-aggregator MLAT toggle: ADS-B is still fed, but the MLAT line is dropped.
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed.adsb.one,64004,beast_reduce_plus_out'
+  assert_env_not_contains ULTRAFEEDER_CONFIG 'mlat,feed.adsb.one,64006'
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,skyfeed.hpradar.com,30004,beast_reduce_plus_out'
+  assert_env_contains ULTRAFEEDER_CONFIG 'mlat,skyfeed.hpradar.com,31090'
+  assert_log_within 90 'service dump978 successfully started'
+  # With UUID set, mlat-client must not disable itself (guards the UUID/MLAT_NAME
+  # env-var-name fix).
+  assert_no_log 'MLAT will be disabled'
 
-section "CASE uat — 978-only (readsb net-only, dump978 the sole local SDR)"
-start_container "${HERE}/fixtures/uat-978.json"
-assert_running
-assert_env_contains RECEIVER_MODE uat
-# UAT is forced on in uat-only mode even though the fixture never sets enable_uat.
-assert_env_contains ENABLE_UAT true
-# readsb runs net-only -- no local 1090 SDR is bound.
-assert_env_unset READSB_DEVICE_TYPE
-# the 978 stick is claimed by dump978.
-assert_env_contains DUMP978_RTLSDR_DEVICE 00000978
-# readsb's only input is the local UAT stream -- no remote beast_in.
-assert_env_contains ULTRAFEEDER_CONFIG 'adsb,localhost,30978,uat_in'
-assert_env_not_contains ULTRAFEEDER_CONFIG 'beast_in'
-# dump978 must actually run here (contrast remote mode above, where it idles).
-assert_log_within 90 'service dump978 successfully started'
+  teardown_case
+}
 
-section "CASE decoder — readsb (dump1090 equivalent) decodes injected ADS-B"
-start_container "${HERE}/fixtures/decoder.json"
-assert_running
-# Canonical DF17 identification message: ICAO 4840D6, callsign KLM1023.
-assert_readsb_decodes '4840d6' '*8D4840D6202CC371C32CE0576098;'
+case_remote() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names remote
+  section "CASE remote / net-only"
+  start_container "${HERE}/fixtures/remote.json"
+  assert_running
+  assert_env_unset READSB_DEVICE_TYPE
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,192.168.1.50,30005,beast_in'
+  assert_log 'dump978.*idling'
 
-section "CASE feeders enabled but unconfigured — must idle cleanly, not crash-loop"
-# The gates are `[enable != true] || [ -z "$KEY" ]`; the all-off and
-# all-configured fixtures never exercise the empty-key half. This asserts a
-# feeder enabled WITHOUT its credential idles cleanly (the exact path the
-# gating exists for) rather than restart-looping or failing s6 init.
-start_container "${HERE}/fixtures/unconfigured.json"
-assert_running
-# First idle assert uses a longer window: the unconfigured case now starts a
-# dozen gated feeders, so on a loaded host the first idle message can take >30s.
-# Once it appears the rest are already emitted, so they can use the short assert.
-assert_log_within 90 '\[fr24feed\] disabled .*idling'
-assert_log '\[pfclient\] disabled .*idling'
-assert_log '\[opensky-feeder\] disabled .*idling'
-assert_log '\[adsbhubclient\] disabled .*idling'
-assert_log '\[rbfeeder\] disabled .*idling'
-assert_log '\[pw-feeder\] disabled .*idling'
-assert_log '\[planewatch-mlat\] disabled.*idling'
-assert_log '\[radarvirtuel\] disabled .*idling'
-assert_log '\[radarvirtuel-mlat\] disabled.*idling'
-assert_log '\[sdrmap\] disabled .*idling'
-assert_log '\[sdrmap-stunnel\] disabled.*idling'
-assert_log '\[sdrmap-mlat\] disabled.*idling'
-assert_log '\[uk1090\] disabled .*idling'
-# The rbfeeder config oneshot must also skip when keyless (matches the longrun
-# gate; otherwise the real oneshot can sleep-infinity on thermal-less hosts).
-assert_log 'radarbox disabled/unconfigured; skipping setup'
-# The config oneshots must skip cleanly too (they hard-exit on missing creds,
-# which would fail s6 init if not gated).
-assert_log '\[01-fr24feed\] fr24 disabled/unconfigured; skipping setup'
-assert_log '\[01-opensky-network\] opensky disabled/unconfigured; skipping setup'
+  teardown_case
+}
 
-section "CASE all feeders enabled — every feeder service starts"
-start_container "${HERE}/fixtures/all-feeders.json"
-assert_running
-assert_log_within 90 'service dump978 successfully started'
-assert_log_within 90 'service piaware successfully started'
-assert_log_within 90 'service fr24feed successfully started'
-assert_log_within 90 'service pfclient successfully started'
-assert_log_within 90 'service opensky-feeder successfully started'
-assert_log_within 90 'service adsbhubclient successfully started'
-assert_log_within 90 'service rbfeeder successfully started'
-assert_log_within 90 'service pw-feeder successfully started'
-assert_log_within 90 'service planewatch-mlat successfully started'
-assert_log_within 90 'service radarvirtuel successfully started'
-assert_log_within 90 'service radarvirtuel-mlat successfully started'
-# pw-feeder is a native multi-arch Go binary (glibc-only); assert it was staged.
-docker exec "${CONTAINER}" test -x /usr/local/sbin/pw-feeder 2>/dev/null &&
-  ok "pw-feeder binary present + executable" || bad "pw-feeder binary missing"
-# RadarVirtuel is pure Python; assert the feeder + its requests dep are staged.
-docker exec "${CONTAINER}" test -f /docker-entrypoint.py 2>/dev/null &&
-  ok "radarvirtuel entrypoint staged" || bad "radarvirtuel /docker-entrypoint.py missing"
-docker exec "${CONTAINER}" python3 -c 'import requests' 2>/dev/null &&
-  ok "python3-requests available for radarvirtuel feeder" || bad "python3-requests missing (feeder would exit)"
-assert_log_within 90 'service sdrmap successfully started'
-assert_log_within 90 'service sdrmap-stunnel successfully started'
-assert_log_within 90 'service sdrmap-mlat successfully started'
-# sdrmap: shell feeder staged + stunnel apt-installed (with its OpenSSL libs).
-docker exec "${CONTAINER}" test -x /usr/lib/sdrmapfeeder/sdrmapfeeder.sh 2>/dev/null &&
-  ok "sdrmapfeeder.sh staged + executable" || bad "sdrmapfeeder.sh missing"
-docker exec "${CONTAINER}" sh -c 'command -v stunnel >/dev/null && ldd "$(command -v stunnel)" | grep -q libssl' 2>/dev/null &&
-  ok "stunnel present + linked to libssl" || bad "stunnel missing or unlinked (sdrmap MLAT would fail)"
-assert_log_within 90 'service uk1090 successfully started'
-# 1090MHz UK: the radar binary (glibc-only) must be staged + executable.
-docker exec "${CONTAINER}" test -x /usr/sbin/radar 2>/dev/null &&
-  ok "radar (1090MHz UK) binary present + executable" || bad "radar binary missing"
-# rbfeeder's internal intern_port (default 32008) must not collide with readsb's
-# SBS-input block (32006-32009); 02-rbfeeder pins it to 32208. Guard the readsb
-# crash-loop this caused (readsb can't bind 32008 -> "Address already in use").
-assert_no_log '32008.*Address already in use'
-# rbfeeder MLAT autostart hinges on a correctly-generated /etc/rbfeeder.ini --
-# regression guards for the alt-suffix bug that silently disabled MLAT (rbfeeder
-# skips MLAT unless alt is a bare number), plus the intern_port move and the
-# listen-mode mlat_cmd that let the community mlat-client actually launch.
-docker exec "${CONTAINER}" sh -c 'grep -qE "^alt=-?[0-9]+$" /etc/rbfeeder.ini' 2>/dev/null &&
-  ok "rbfeeder.ini alt is a bare number" || bad "rbfeeder.ini alt not bare (MLAT would silently not start)"
-docker exec "${CONTAINER}" sh -c 'grep -qx "intern_port=32208" /etc/rbfeeder.ini' 2>/dev/null &&
-  ok "rbfeeder.ini intern_port=32208" || bad "rbfeeder.ini intern_port not pinned off 32008"
-docker exec "${CONTAINER}" sh -c 'grep -qE "^mlat_cmd=/usr/local/bin/rbfeeder-mlat --results beast,listen,30107$" /etc/rbfeeder.ini' 2>/dev/null &&
-  ok "rbfeeder.ini mlat_cmd is listen-mode on 30107 via rbfeeder-mlat shim" || bad "rbfeeder.ini mlat_cmd not the listen-mode fix"
-# The rbfeeder-mlat shim (re-tags client output as [mlat]) must exist and be executable.
-docker exec "${CONTAINER}" test -x /usr/local/bin/rbfeeder-mlat 2>/dev/null &&
-  ok "rbfeeder-mlat shim is executable" || bad "rbfeeder-mlat shim missing or not executable"
-# The bridge strips a trailing unit from the altitude (all-feeders.json sets "250m").
-[ "$(env_val ALT)" = "250" ] && ok "bridge stripped ALT unit -> bare '250'" || bad "bridge did not strip ALT unit (got: '$(env_val ALT)')"
-# The feeders export BEASTHOST=localhost in their own wrappers to reach readsb,
-# but readsb itself must NOT self-connect to its own 30005 output — that is the
-# Beast feedback loop that pegged a CPU core. This is the real regression guard.
-assert_readsb_no_selfloop
-# And piaware must still be configured as a relay pointing at readsb, proving the
-# scoped BEASTHOST reached it (without it, piaware would fall back to rtlsdr and
-# start its own competing decoder).
-if docker exec "${CONTAINER}" grep -q 'receiver-type "relay"' /etc/piaware.conf 2>/dev/null; then
-  ok "piaware configured as relay (scoped BEASTHOST reached it)"
-else
-  bad "piaware not configured as relay (scoped BEASTHOST did not reach 01-piaware)"
-fi
-# After the feeders have started, no copied binary should be missing a shared
-# library (guards the class of bug where a binary is copied without its runtime
-# libs, e.g. dump978-fa needing libboost).
-assert_no_log 'error while loading shared libraries'
+case_uat() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names uat
+  section "CASE uat — 978-only (readsb net-only, dump978 the sole local SDR)"
+  start_container "${HERE}/fixtures/uat-978.json"
+  assert_running
+  assert_env_contains RECEIVER_MODE uat
+  # UAT is forced on in uat-only mode even though the fixture never sets enable_uat.
+  assert_env_contains ENABLE_UAT true
+  # readsb runs net-only -- no local 1090 SDR is bound.
+  assert_env_unset READSB_DEVICE_TYPE
+  # the 978 stick is claimed by dump978.
+  assert_env_contains DUMP978_RTLSDR_DEVICE 00000978
+  # readsb's only input is the local UAT stream -- no remote beast_in.
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,localhost,30978,uat_in'
+  assert_env_not_contains ULTRAFEEDER_CONFIG 'beast_in'
+  # dump978 must actually run here (contrast remote mode above, where it idles).
+  assert_log_within 90 'service dump978 successfully started'
 
-section "CASE ha_sensors=on — publishes discovery + state to a live broker (inherited HA location)"
-# Spin up a throwaway Mosquitto broker + a mock HA Core API on a private network,
-# point the add-on at them, and assert the paho publisher connects and publishes
-# HA discovery + state + availability. mqtt.json leaves lat/long on the
-# HOMEASSISTANT_* sentinels, so the nearby device is discovered/published only if
-# the inherited HA location (bridge /config fetch -> LAT/LONG env -> the
-# publisher's _coord fallback) reaches the publisher — this covers the
-# blank-location path too. Skips cleanly if the broker image can't be pulled.
-if docker pull -q eclipse-mosquitto:2 >/dev/null 2>&1; then
-  docker network create "${MQTT_NET}" >/dev/null 2>&1 || true
-  docker rm -f "${MQTT_BROKER}" "${API_MOCK}" >/dev/null 2>&1 || true
-  docker run -d --name "${MQTT_BROKER}" --network "${MQTT_NET}" eclipse-mosquitto:2 \
-    sh -c 'printf "listener 1883\nallow_anonymous true\n" >/mosquitto/config/mosquitto.conf && exec mosquitto -c /mosquitto/config/mosquitto.conf' >/dev/null
-  # Mock HA Core API: GET /core/api/config feeds the bridge's location fetch.
-  docker run -d --name "${API_MOCK}" --network "${MQTT_NET}" --entrypoint python3 "${IMAGE}" -c '
+  teardown_case
+}
+
+case_decoder() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names decoder
+  section "CASE decoder — readsb (dump1090 equivalent) decodes injected ADS-B"
+  start_container "${HERE}/fixtures/decoder.json"
+  assert_running
+  # Canonical DF17 identification message: ICAO 4840D6, callsign KLM1023.
+  assert_readsb_decodes '4840d6' '*8D4840D6202CC371C32CE0576098;'
+
+  teardown_case
+}
+
+case_unconfig() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names unconfig
+  section "CASE feeders enabled but unconfigured — must idle cleanly, not crash-loop"
+  # The gates are `[enable != true] || [ -z "$KEY" ]`; the all-off and
+  # all-configured fixtures never exercise the empty-key half. This asserts a
+  # feeder enabled WITHOUT its credential idles cleanly (the exact path the
+  # gating exists for) rather than restart-looping or failing s6 init.
+  start_container "${HERE}/fixtures/unconfigured.json"
+  assert_running
+  # First idle assert uses a longer window: the unconfigured case now starts a
+  # dozen gated feeders, so on a loaded host the first idle message can take >30s.
+  # Once it appears the rest are already emitted, so they can use the short assert.
+  assert_log_within 90 '\[fr24feed\] disabled .*idling'
+  assert_log '\[pfclient\] disabled .*idling'
+  assert_log '\[opensky-feeder\] disabled .*idling'
+  assert_log '\[adsbhubclient\] disabled .*idling'
+  assert_log '\[rbfeeder\] disabled .*idling'
+  assert_log '\[pw-feeder\] disabled .*idling'
+  assert_log '\[planewatch-mlat\] disabled.*idling'
+  assert_log '\[radarvirtuel\] disabled .*idling'
+  assert_log '\[radarvirtuel-mlat\] disabled.*idling'
+  assert_log '\[sdrmap\] disabled .*idling'
+  assert_log '\[sdrmap-stunnel\] disabled.*idling'
+  assert_log '\[sdrmap-mlat\] disabled.*idling'
+  assert_log '\[uk1090\] disabled .*idling'
+  # The rbfeeder config oneshot must also skip when keyless (matches the longrun
+  # gate; otherwise the real oneshot can sleep-infinity on thermal-less hosts).
+  assert_log 'radarbox disabled/unconfigured; skipping setup'
+  # The config oneshots must skip cleanly too (they hard-exit on missing creds,
+  # which would fail s6 init if not gated).
+  assert_log '\[01-fr24feed\] fr24 disabled/unconfigured; skipping setup'
+  assert_log '\[01-opensky-network\] opensky disabled/unconfigured; skipping setup'
+
+  teardown_case
+}
+
+case_allfeeders() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names allfeeders
+  section "CASE all feeders enabled — every feeder service starts"
+  start_container "${HERE}/fixtures/all-feeders.json"
+  assert_running
+  assert_log_within 90 'service dump978 successfully started'
+  assert_log_within 90 'service piaware successfully started'
+  assert_log_within 90 'service fr24feed successfully started'
+  assert_log_within 90 'service pfclient successfully started'
+  assert_log_within 90 'service opensky-feeder successfully started'
+  assert_log_within 90 'service adsbhubclient successfully started'
+  assert_log_within 90 'service rbfeeder successfully started'
+  assert_log_within 90 'service pw-feeder successfully started'
+  assert_log_within 90 'service planewatch-mlat successfully started'
+  assert_log_within 90 'service radarvirtuel successfully started'
+  assert_log_within 90 'service radarvirtuel-mlat successfully started'
+  # pw-feeder is a native multi-arch Go binary (glibc-only); assert it was staged.
+  docker exec "${CONTAINER}" test -x /usr/local/sbin/pw-feeder 2>/dev/null &&
+    ok "pw-feeder binary present + executable" || bad "pw-feeder binary missing"
+  # RadarVirtuel is pure Python; assert the feeder + its requests dep are staged.
+  docker exec "${CONTAINER}" test -f /docker-entrypoint.py 2>/dev/null &&
+    ok "radarvirtuel entrypoint staged" || bad "radarvirtuel /docker-entrypoint.py missing"
+  docker exec "${CONTAINER}" python3 -c 'import requests' 2>/dev/null &&
+    ok "python3-requests available for radarvirtuel feeder" || bad "python3-requests missing (feeder would exit)"
+  assert_log_within 90 'service sdrmap successfully started'
+  assert_log_within 90 'service sdrmap-stunnel successfully started'
+  assert_log_within 90 'service sdrmap-mlat successfully started'
+  # sdrmap: shell feeder staged + stunnel apt-installed (with its OpenSSL libs).
+  docker exec "${CONTAINER}" test -x /usr/lib/sdrmapfeeder/sdrmapfeeder.sh 2>/dev/null &&
+    ok "sdrmapfeeder.sh staged + executable" || bad "sdrmapfeeder.sh missing"
+  docker exec "${CONTAINER}" sh -c 'command -v stunnel >/dev/null && ldd "$(command -v stunnel)" | grep -q libssl' 2>/dev/null &&
+    ok "stunnel present + linked to libssl" || bad "stunnel missing or unlinked (sdrmap MLAT would fail)"
+  assert_log_within 90 'service uk1090 successfully started'
+  # 1090MHz UK: the radar binary (glibc-only) must be staged + executable.
+  docker exec "${CONTAINER}" test -x /usr/sbin/radar 2>/dev/null &&
+    ok "radar (1090MHz UK) binary present + executable" || bad "radar binary missing"
+  # rbfeeder's internal intern_port (default 32008) must not collide with readsb's
+  # SBS-input block (32006-32009); 02-rbfeeder pins it to 32208. Guard the readsb
+  # crash-loop this caused (readsb can't bind 32008 -> "Address already in use").
+  assert_no_log '32008.*Address already in use'
+  # rbfeeder MLAT autostart hinges on a correctly-generated /etc/rbfeeder.ini --
+  # regression guards for the alt-suffix bug that silently disabled MLAT (rbfeeder
+  # skips MLAT unless alt is a bare number), plus the intern_port move and the
+  # listen-mode mlat_cmd that let the community mlat-client actually launch.
+  docker exec "${CONTAINER}" sh -c 'grep -qE "^alt=-?[0-9]+$" /etc/rbfeeder.ini' 2>/dev/null &&
+    ok "rbfeeder.ini alt is a bare number" || bad "rbfeeder.ini alt not bare (MLAT would silently not start)"
+  docker exec "${CONTAINER}" sh -c 'grep -qx "intern_port=32208" /etc/rbfeeder.ini' 2>/dev/null &&
+    ok "rbfeeder.ini intern_port=32208" || bad "rbfeeder.ini intern_port not pinned off 32008"
+  docker exec "${CONTAINER}" sh -c 'grep -qE "^mlat_cmd=/usr/local/bin/rbfeeder-mlat --results beast,listen,30107$" /etc/rbfeeder.ini' 2>/dev/null &&
+    ok "rbfeeder.ini mlat_cmd is listen-mode on 30107 via rbfeeder-mlat shim" || bad "rbfeeder.ini mlat_cmd not the listen-mode fix"
+  # The rbfeeder-mlat shim (re-tags client output as [mlat]) must exist and be executable.
+  docker exec "${CONTAINER}" test -x /usr/local/bin/rbfeeder-mlat 2>/dev/null &&
+    ok "rbfeeder-mlat shim is executable" || bad "rbfeeder-mlat shim missing or not executable"
+  # The bridge strips a trailing unit from the altitude (all-feeders.json sets "250m").
+  [ "$(env_val ALT)" = "250" ] && ok "bridge stripped ALT unit -> bare '250'" || bad "bridge did not strip ALT unit (got: '$(env_val ALT)')"
+  # The feeders export BEASTHOST=localhost in their own wrappers to reach readsb,
+  # but readsb itself must NOT self-connect to its own 30005 output — that is the
+  # Beast feedback loop that pegged a CPU core. This is the real regression guard.
+  assert_readsb_no_selfloop
+  # And piaware must still be configured as a relay pointing at readsb, proving the
+  # scoped BEASTHOST reached it (without it, piaware would fall back to rtlsdr and
+  # start its own competing decoder).
+  if docker exec "${CONTAINER}" grep -q 'receiver-type "relay"' /etc/piaware.conf 2>/dev/null; then
+    ok "piaware configured as relay (scoped BEASTHOST reached it)"
+  else
+    bad "piaware not configured as relay (scoped BEASTHOST did not reach 01-piaware)"
+  fi
+  # After the feeders have started, no copied binary should be missing a shared
+  # library (guards the class of bug where a binary is copied without its runtime
+  # libs, e.g. dump978-fa needing libboost).
+  assert_no_log 'error while loading shared libraries'
+
+  teardown_case
+}
+
+case_hasensors() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names hasensors
+  section "CASE ha_sensors=on — publishes discovery + state to a live broker (inherited HA location)"
+  # Spin up a throwaway Mosquitto broker + a mock HA Core API on a private network,
+  # point the add-on at them, and assert the paho publisher connects and publishes
+  # HA discovery + state + availability. mqtt.json leaves lat/long on the
+  # HOMEASSISTANT_* sentinels, so the nearby device is discovered/published only if
+  # the inherited HA location (bridge /config fetch -> LAT/LONG env -> the
+  # publisher's _coord fallback) reaches the publisher — this covers the
+  # blank-location path too. Skips cleanly if the broker image can't be pulled.
+  if docker pull -q eclipse-mosquitto:2 >/dev/null 2>&1; then
+    docker network create "${MQTT_NET}" >/dev/null 2>&1 || true
+    docker rm -f "${MQTT_BROKER}" "${API_MOCK}" >/dev/null 2>&1 || true
+    docker run -d --name "${MQTT_BROKER}" --network "${MQTT_NET}" eclipse-mosquitto:2 \
+      sh -c 'printf "listener 1883\nallow_anonymous true\n" >/mosquitto/config/mosquitto.conf && exec mosquitto -c /mosquitto/config/mosquitto.conf' >/dev/null
+    # Mock HA Core API: GET /core/api/config feeds the bridge's location fetch.
+    docker run -d --name "${API_MOCK}" --network "${MQTT_NET}" --entrypoint python3 "${IMAGE}" -c '
 import http.server as h, json
 class H(h.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -403,149 +465,164 @@ class H(h.BaseHTTPRequestHandler):
         pass
 h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
 ' >/dev/null
-  docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
-  docker run -d --name "${CONTAINER}" --network "${MQTT_NET}" \
-    -e SUPERVISOR_TOKEN=test \
-    -e SUPERVISOR_CORE_API=http://aviation_feeder_e2e_api:8099/core/api \
-    -v "${HERE}/fixtures/mqtt.json:/data/options.json:ro" "${IMAGE}" >/dev/null
-  if wait_for _log_has 'MQTT connected to'; then
-    ok "mqtt publisher connected to broker"
+    docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+    # The fixture hard-codes mqtt_host as the broker's container name. Each case
+    # now runs its own uniquely-named broker (parallel isolation), so rewrite
+    # mqtt_host to this case's broker before mounting. (The bind-mounted inode
+    # survives the rm below — Linux keeps it alive for the mount.)
+    local optfile
+    optfile="$(mktemp)"
+    sed "s/\"mqtt_host\": \"aviation_feeder_e2e_mqtt\"/\"mqtt_host\": \"${MQTT_BROKER}\"/" \
+      "${HERE}/fixtures/mqtt.json" >"${optfile}"
+    docker run -d --name "${CONTAINER}" --network "${MQTT_NET}" \
+      -e SUPERVISOR_TOKEN=test \
+      -e SUPERVISOR_CORE_API=http://${API_MOCK}:8099/core/api \
+      -v "${optfile}:/data/options.json:ro" "${IMAGE}" >/dev/null
+    rm -f "${optfile}"
+    if wait_for _log_has 'MQTT connected to'; then
+      ok "mqtt publisher connected to broker"
+    else
+      bad "mqtt publisher did not connect to broker"
+    fi
+    # Capture broker traffic in short windows until the feeder-health state (which
+    # waits on readsb's slower stats.json) shows up; retained discovery/availability
+    # and the frequent nearby state are present in every window.
+    CAP=""
+    mq_deadline=$((SECONDS + 50))
+    while [ "${SECONDS}" -lt "${mq_deadline}" ]; do
+      CAP="$(docker exec "${MQTT_BROKER}" timeout 4 mosquitto_sub -t '#' -v 2>/dev/null || true)"
+      case "${CAP}" in *"aviation_feeder/aircraft_total/state"*) break ;; esac
+      sleep 1
+    done
+    case "${CAP}" in
+      *"homeassistant/sensor/aviation_feeder/aircraft_total/config"*) ok "mqtt feeder-health discovery published" ;;
+      *) bad "mqtt feeder-health discovery missing" ;;
+    esac
+    case "${CAP}" in
+      *"aviation_feeder/aircraft_total/state"*) ok "mqtt feeder-health state published" ;;
+      *) bad "mqtt feeder-health state missing" ;;
+    esac
+    # MQTT broker-link diagnostic sensor (main device): uptime + reconnect count.
+    case "${CAP}" in
+      *"aviation_feeder/mqtt_reconnects/config {"*) ok "mqtt broker-link discovery published" ;;
+      *) bad "mqtt broker-link discovery missing" ;;
+    esac
+    case "${CAP}" in
+      *"aviation_feeder/mqtt_reconnects/state"*) ok "mqtt broker-link state published" ;;
+      *) bad "mqtt broker-link state missing" ;;
+    esac
+    # SDR health device: this fixture is remote mode (no local SDR), so the SDR
+    # device must be ABSENT — its config is published retained-empty (a removal),
+    # never with a JSON body. Requiring "config {" (a real payload) exercises the
+    # receiver_mode guard instead of just matching the topic string.
+    case "${CAP}" in
+      *"aviation_feeder/sdr_gain_db/config {"*) bad "SDR sensors published in remote mode (should be absent)" ;;
+      *) ok "SDR device correctly absent in remote mode" ;;
+    esac
+    case "${CAP}" in
+      *"aviation_feeder/availability online"*) ok "mqtt availability online published" ;;
+      *) bad "mqtt availability online missing" ;;
+    esac
+    # Planes-near-me device (aircraft_in_range is 0 with no live feed, but still
+    # discovered + published).
+    case "${CAP}" in
+      *"homeassistant/sensor/aviation_feeder_nearby/aircraft_in_range/config"*) ok "mqtt nearby discovery published" ;;
+      *) bad "mqtt nearby discovery missing" ;;
+    esac
+    case "${CAP}" in
+      *"aviation_feeder/nearby/aircraft_in_range/state"*) ok "mqtt nearby state published" ;;
+      *) bad "mqtt nearby state missing" ;;
+    esac
+    # Per-feeder status: piaware is enabled (needs no key) so its process runs.
+    case "${CAP}" in
+      *"homeassistant/binary_sensor/aviation_feeder_feeders/piaware/config"*) ok "mqtt feeder-status discovery published" ;;
+      *) bad "mqtt feeder-status discovery missing" ;;
+    esac
+    # Per-feeder throughput: piaware is a kernel-TCP feeder, so it gets byte sensors.
+    # "config {" requires a real payload, not just the topic.
+    case "${CAP}" in
+      *"aviation_feeder_feeders/piaware_bytes_sent/config {"*) ok "mqtt feeder-throughput discovery published" ;;
+      *) bad "mqtt feeder-throughput discovery missing" ;;
+    esac
+    # primary per-second rate sensor (send/receive B/s).
+    case "${CAP}" in
+      *"aviation_feeder_feeders/piaware_bytes_sent_rate/config {"*) ok "mqtt feeder rate sensor published" ;;
+      *) bad "mqtt feeder rate sensor missing" ;;
+    esac
+    # piaware self-report binary_sensors (MLAT/Radio from status.json).
+    case "${CAP}" in
+      *"binary_sensor/aviation_feeder_feeders/piaware_mlat_ok/config {"*) ok "mqtt piaware MLAT binary published" ;;
+      *) bad "mqtt piaware MLAT binary missing" ;;
+    esac
+    # fr24 feeds UDP (no byte counter) -> a Messages sensor, and NO byte sensor.
+    case "${CAP}" in
+      *"aviation_feeder_feeders/fr24_messages/config {"*) ok "mqtt fr24 messages discovery published" ;;
+      *) bad "mqtt fr24 messages discovery missing" ;;
+    esac
+    case "${CAP}" in
+      *"aviation_feeder_feeders/fr24_bytes_sent/config {"*) bad "fr24 byte sensor present (should be dropped for UDP feed)" ;;
+      *) ok "fr24 byte sensor correctly absent" ;;
+    esac
+    # community aggregators no longer get an (unreliable) per-connector byte sensor.
+    case "${CAP}" in
+      *"aviation_feeder_feeders/adsblol_bytes_sent/config {"*) bad "aggregator byte sensor present (should be dropped)" ;;
+      *) ok "aggregator byte sensor correctly absent" ;;
+    esac
+    # Per-feeder MLAT sync discovery for a MLAT-capable feeder (adsb.lol, enabled
+    # in mqtt.json). piaware/fr24 are NOT MLAT-capable via mlat-client, so they get
+    # no MLAT sensors — adsb.lol is the deterministic positive here.
+    case "${CAP}" in
+      *"aviation_feeder_feeders/adsblol_mlat_peers/config {"*) ok "mqtt feeder-MLAT discovery published" ;;
+      *) bad "mqtt feeder-MLAT discovery missing" ;;
+    esac
+    # Per-feeder uptime sensor (universal — every enabled feeder).
+    case "${CAP}" in
+      *"aviation_feeder_feeders/piaware_uptime/config {"*) ok "mqtt feeder-uptime discovery published" ;;
+      *) bad "mqtt feeder-uptime discovery missing" ;;
+    esac
+    # Per-feeder app-report attributes wiring: piaware's connectivity sensor config
+    # must carry its json_attributes_topic (live self-report data isn't hermetic,
+    # so only the discovery wiring is asserted).
+    case "${CAP}" in
+      *"aviation_feeder/feeders/piaware/attributes"*) ok "mqtt feeder attributes topic wired" ;;
+      *) bad "mqtt feeder attributes topic missing" ;;
+    esac
+    # piaware is a "conn"-mode feeder: its status now reflects *actually feeding*
+    # (an ESTABLISHED connection to FlightAware), not merely "process running", so
+    # its on/off value depends on real connectivity and isn't hermetic here — just
+    # assert the state is published. The feeding-vs-running logic itself is covered
+    # deterministically by tests/unit/test_feeders.py.
+    case "${CAP}" in
+      *"aviation_feeder/feeders/piaware/state on"* | *"aviation_feeder/feeders/piaware/state off"*) ok "mqtt feeder-status state (piaware published)" ;;
+      *) bad "mqtt feeder-status state missing" ;;
+    esac
+    # A feeder enabled WITHOUT its key idles -> its status must publish "off". This
+    # guards the s6-supervise false-positive fix through the full MQTT path (fr24 is
+    # enabled with no fr24_key, so fr24feed is sleep-infinity, not the real binary).
+    case "${CAP}" in
+      *"aviation_feeder/feeders/fr24/state off"*) ok "mqtt feeder-status state (idled fr24 off)" ;;
+      *) bad "mqtt feeder-status idled-fr24 not off" ;;
+    esac
+    docker rm -f "${MQTT_BROKER}" "${API_MOCK}" >/dev/null 2>&1 || true
+    docker network rm "${MQTT_NET}" >/dev/null 2>&1 || true
   else
-    bad "mqtt publisher did not connect to broker"
+    printf '  SKIP: eclipse-mosquitto image unavailable (offline?)\n'
   fi
-  # Capture broker traffic in short windows until the feeder-health state (which
-  # waits on readsb's slower stats.json) shows up; retained discovery/availability
-  # and the frequent nearby state are present in every window.
-  CAP=""
-  mq_deadline=$((SECONDS + 50))
-  while [ "${SECONDS}" -lt "${mq_deadline}" ]; do
-    CAP="$(docker exec "${MQTT_BROKER}" timeout 4 mosquitto_sub -t '#' -v 2>/dev/null || true)"
-    case "${CAP}" in *"aviation_feeder/aircraft_total/state"*) break ;; esac
-    sleep 1
-  done
-  case "${CAP}" in
-    *"homeassistant/sensor/aviation_feeder/aircraft_total/config"*) ok "mqtt feeder-health discovery published" ;;
-    *) bad "mqtt feeder-health discovery missing" ;;
-  esac
-  case "${CAP}" in
-    *"aviation_feeder/aircraft_total/state"*) ok "mqtt feeder-health state published" ;;
-    *) bad "mqtt feeder-health state missing" ;;
-  esac
-  # MQTT broker-link diagnostic sensor (main device): uptime + reconnect count.
-  case "${CAP}" in
-    *"aviation_feeder/mqtt_reconnects/config {"*) ok "mqtt broker-link discovery published" ;;
-    *) bad "mqtt broker-link discovery missing" ;;
-  esac
-  case "${CAP}" in
-    *"aviation_feeder/mqtt_reconnects/state"*) ok "mqtt broker-link state published" ;;
-    *) bad "mqtt broker-link state missing" ;;
-  esac
-  # SDR health device: this fixture is remote mode (no local SDR), so the SDR
-  # device must be ABSENT — its config is published retained-empty (a removal),
-  # never with a JSON body. Requiring "config {" (a real payload) exercises the
-  # receiver_mode guard instead of just matching the topic string.
-  case "${CAP}" in
-    *"aviation_feeder/sdr_gain_db/config {"*) bad "SDR sensors published in remote mode (should be absent)" ;;
-    *) ok "SDR device correctly absent in remote mode" ;;
-  esac
-  case "${CAP}" in
-    *"aviation_feeder/availability online"*) ok "mqtt availability online published" ;;
-    *) bad "mqtt availability online missing" ;;
-  esac
-  # Planes-near-me device (aircraft_in_range is 0 with no live feed, but still
-  # discovered + published).
-  case "${CAP}" in
-    *"homeassistant/sensor/aviation_feeder_nearby/aircraft_in_range/config"*) ok "mqtt nearby discovery published" ;;
-    *) bad "mqtt nearby discovery missing" ;;
-  esac
-  case "${CAP}" in
-    *"aviation_feeder/nearby/aircraft_in_range/state"*) ok "mqtt nearby state published" ;;
-    *) bad "mqtt nearby state missing" ;;
-  esac
-  # Per-feeder status: piaware is enabled (needs no key) so its process runs.
-  case "${CAP}" in
-    *"homeassistant/binary_sensor/aviation_feeder_feeders/piaware/config"*) ok "mqtt feeder-status discovery published" ;;
-    *) bad "mqtt feeder-status discovery missing" ;;
-  esac
-  # Per-feeder throughput: piaware is a kernel-TCP feeder, so it gets byte sensors.
-  # "config {" requires a real payload, not just the topic.
-  case "${CAP}" in
-    *"aviation_feeder_feeders/piaware_bytes_sent/config {"*) ok "mqtt feeder-throughput discovery published" ;;
-    *) bad "mqtt feeder-throughput discovery missing" ;;
-  esac
-  # primary per-second rate sensor (send/receive B/s).
-  case "${CAP}" in
-    *"aviation_feeder_feeders/piaware_bytes_sent_rate/config {"*) ok "mqtt feeder rate sensor published" ;;
-    *) bad "mqtt feeder rate sensor missing" ;;
-  esac
-  # piaware self-report binary_sensors (MLAT/Radio from status.json).
-  case "${CAP}" in
-    *"binary_sensor/aviation_feeder_feeders/piaware_mlat_ok/config {"*) ok "mqtt piaware MLAT binary published" ;;
-    *) bad "mqtt piaware MLAT binary missing" ;;
-  esac
-  # fr24 feeds UDP (no byte counter) -> a Messages sensor, and NO byte sensor.
-  case "${CAP}" in
-    *"aviation_feeder_feeders/fr24_messages/config {"*) ok "mqtt fr24 messages discovery published" ;;
-    *) bad "mqtt fr24 messages discovery missing" ;;
-  esac
-  case "${CAP}" in
-    *"aviation_feeder_feeders/fr24_bytes_sent/config {"*) bad "fr24 byte sensor present (should be dropped for UDP feed)" ;;
-    *) ok "fr24 byte sensor correctly absent" ;;
-  esac
-  # community aggregators no longer get an (unreliable) per-connector byte sensor.
-  case "${CAP}" in
-    *"aviation_feeder_feeders/adsblol_bytes_sent/config {"*) bad "aggregator byte sensor present (should be dropped)" ;;
-    *) ok "aggregator byte sensor correctly absent" ;;
-  esac
-  # Per-feeder MLAT sync discovery for a MLAT-capable feeder (adsb.lol, enabled
-  # in mqtt.json). piaware/fr24 are NOT MLAT-capable via mlat-client, so they get
-  # no MLAT sensors — adsb.lol is the deterministic positive here.
-  case "${CAP}" in
-    *"aviation_feeder_feeders/adsblol_mlat_peers/config {"*) ok "mqtt feeder-MLAT discovery published" ;;
-    *) bad "mqtt feeder-MLAT discovery missing" ;;
-  esac
-  # Per-feeder uptime sensor (universal — every enabled feeder).
-  case "${CAP}" in
-    *"aviation_feeder_feeders/piaware_uptime/config {"*) ok "mqtt feeder-uptime discovery published" ;;
-    *) bad "mqtt feeder-uptime discovery missing" ;;
-  esac
-  # Per-feeder app-report attributes wiring: piaware's connectivity sensor config
-  # must carry its json_attributes_topic (live self-report data isn't hermetic,
-  # so only the discovery wiring is asserted).
-  case "${CAP}" in
-    *"aviation_feeder/feeders/piaware/attributes"*) ok "mqtt feeder attributes topic wired" ;;
-    *) bad "mqtt feeder attributes topic missing" ;;
-  esac
-  # piaware is a "conn"-mode feeder: its status now reflects *actually feeding*
-  # (an ESTABLISHED connection to FlightAware), not merely "process running", so
-  # its on/off value depends on real connectivity and isn't hermetic here — just
-  # assert the state is published. The feeding-vs-running logic itself is covered
-  # deterministically by tests/unit/test_feeders.py.
-  case "${CAP}" in
-    *"aviation_feeder/feeders/piaware/state on"* | *"aviation_feeder/feeders/piaware/state off"*) ok "mqtt feeder-status state (piaware published)" ;;
-    *) bad "mqtt feeder-status state missing" ;;
-  esac
-  # A feeder enabled WITHOUT its key idles -> its status must publish "off". This
-  # guards the s6-supervise false-positive fix through the full MQTT path (fr24 is
-  # enabled with no fr24_key, so fr24feed is sleep-infinity, not the real binary).
-  case "${CAP}" in
-    *"aviation_feeder/feeders/fr24/state off"*) ok "mqtt feeder-status state (idled fr24 off)" ;;
-    *) bad "mqtt feeder-status idled-fr24 not off" ;;
-  esac
-  docker rm -f "${MQTT_BROKER}" "${API_MOCK}" >/dev/null 2>&1 || true
-  docker network rm "${MQTT_NET}" >/dev/null 2>&1 || true
-else
-  printf '  SKIP: eclipse-mosquitto image unavailable (offline?)\n'
-fi
 
-section "CASE auto lat/long/alt from Home Assistant location"
-# The fixture uses the HOMEASSISTANT_* sentinels (the option defaults); the bridge
-# maps them to the location fetched from HA's core API (GET /core/api/config).
-# Mock that endpoint and point the bridge at it via SUPERVISOR_CORE_API +
-# SUPERVISOR_TOKEN.
-docker network create "${MQTT_NET}" >/dev/null 2>&1 || true
-docker rm -f "${API_MOCK}" >/dev/null 2>&1 || true
-docker run -d --name "${API_MOCK}" --network "${MQTT_NET}" --entrypoint python3 "${IMAGE}" -c '
+  teardown_case
+}
+
+case_autoloc() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names autoloc
+  section "CASE auto lat/long/alt from Home Assistant location"
+  # The fixture uses the HOMEASSISTANT_* sentinels (the option defaults); the bridge
+  # maps them to the location fetched from HA's core API (GET /core/api/config).
+  # Mock that endpoint and point the bridge at it via SUPERVISOR_CORE_API +
+  # SUPERVISOR_TOKEN.
+  docker network create "${MQTT_NET}" >/dev/null 2>&1 || true
+  docker rm -f "${API_MOCK}" >/dev/null 2>&1 || true
+  docker run -d --name "${API_MOCK}" --network "${MQTT_NET}" --entrypoint python3 "${IMAGE}" -c '
 import http.server as h, json
 class H(h.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -562,54 +639,115 @@ class H(h.BaseHTTPRequestHandler):
         pass
 h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
 ' >/dev/null
-docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
-docker run -d --name "${CONTAINER}" --network "${MQTT_NET}" \
-  -e SUPERVISOR_TOKEN=test \
-  -e SUPERVISOR_CORE_API=http://aviation_feeder_e2e_api:8099/core/api \
-  -v "${HERE}/fixtures/auto-location.json:/data/options.json:ro" "${IMAGE}" >/dev/null
-# Wait for the config bridge to finish.
-deadline=$((SECONDS + POLL_TIMEOUT))
-while [ "${SECONDS}" -lt "${deadline}" ]; do
-  logs | grep -q 'container environment prepared' && break
-  sleep 1
-done
-assert_env_contains LAT '42.3601'
-assert_env_contains LONG '-71.0589'
-# Bare metres, NO unit suffix -- a trailing "m" silently breaks rbfeeder's MLAT
-# autostart and makes openskyd log "Garbage after number ignored". Exact match so
-# a returning "43m" fails.
-[ "$(env_val ALT)" = "43" ] && ok "env ALT is bare metres '43'" || bad "env ALT not bare '43' (got: '$(env_val ALT)')"
-assert_log 'inherited station location from Home Assistant'
-docker rm -f "${API_MOCK}" >/dev/null 2>&1 || true
-docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
-docker network rm "${MQTT_NET}" >/dev/null 2>&1 || true
+  docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+  docker run -d --name "${CONTAINER}" --network "${MQTT_NET}" \
+    -e SUPERVISOR_TOKEN=test \
+    -e SUPERVISOR_CORE_API=http://${API_MOCK}:8099/core/api \
+    -v "${HERE}/fixtures/auto-location.json:/data/options.json:ro" "${IMAGE}" >/dev/null
+  # Wait for the config bridge to finish.
+  deadline=$((SECONDS + POLL_TIMEOUT))
+  while [ "${SECONDS}" -lt "${deadline}" ]; do
+    logs | grep -q 'container environment prepared' && break
+    sleep 1
+  done
+  assert_env_contains LAT '42.3601'
+  assert_env_contains LONG '-71.0589'
+  # Bare metres, NO unit suffix -- a trailing "m" silently breaks rbfeeder's MLAT
+  # autostart and makes openskyd log "Garbage after number ignored". Exact match so
+  # a returning "43m" fails.
+  [ "$(env_val ALT)" = "43" ] && ok "env ALT is bare metres '43'" || bad "env ALT not bare '43' (got: '$(env_val ALT)')"
+  assert_log 'inherited station location from Home Assistant'
+  docker rm -f "${API_MOCK}" >/dev/null 2>&1 || true
+  docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+  docker network rm "${MQTT_NET}" >/dev/null 2>&1 || true
 
-section "CASE readsb output redirected to tmpfs (SD-card wear mitigation)"
-# Supervisor sets tmpfs:true -> /tmp is tmpfs; a plain `docker run` doesn't, so
-# simulate it with --tmpfs. Assert /run/readsb is redirected into /tmp, resolves
-# to a tmpfs mount, and readsb still writes its JSON through the symlink.
-docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
-docker run -d --name "${CONTAINER}" --tmpfs /tmp:exec \
-  -v "${HERE}/fixtures/remote.json:/data/options.json:ro" "${IMAGE}" >/dev/null
-deadline=$((SECONDS + POLL_TIMEOUT))
-while [ "${SECONDS}" -lt "${deadline}" ]; do
-  logs | grep -q 'container environment prepared' && break
-  sleep 1
-done
-assert_log 'tmpfs.*readsb.*/tmp'
-if [ "$(docker exec "${CONTAINER}" readlink /run/readsb 2>/dev/null)" = "/tmp/readsb" ]; then
-  ok "/run/readsb symlinked into /tmp"
-else
-  bad "/run/readsb not symlinked into /tmp (got: '$(docker exec "${CONTAINER}" readlink /run/readsb 2>/dev/null)')"
-fi
-if docker exec "${CONTAINER}" sh -c 'df -T /run/readsb 2>/dev/null | tail -1 | grep -q tmpfs'; then
-  ok "readsb output is tmpfs-backed"
-else
-  bad "readsb output not tmpfs-backed"
-fi
-wait_for _file_exists /run/readsb/aircraft.json &&
-  ok "readsb writes aircraft.json through the tmpfs symlink" ||
-  bad "readsb aircraft.json missing on tmpfs"
+  teardown_case
+}
 
-printf '\n==== %d passed, %d failed ====\n' "${pass_count}" "${fail_count}"
-[ "${fail_count}" -eq 0 ]
+case_tmpfs() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names tmpfs
+  section "CASE readsb output redirected to tmpfs (SD-card wear mitigation)"
+  # Supervisor sets tmpfs:true -> /tmp is tmpfs; a plain `docker run` doesn't, so
+  # simulate it with --tmpfs. Assert /run/readsb is redirected into /tmp, resolves
+  # to a tmpfs mount, and readsb still writes its JSON through the symlink.
+  docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+  docker run -d --name "${CONTAINER}" --tmpfs /tmp:exec \
+    -v "${HERE}/fixtures/remote.json:/data/options.json:ro" "${IMAGE}" >/dev/null
+  deadline=$((SECONDS + POLL_TIMEOUT))
+  while [ "${SECONDS}" -lt "${deadline}" ]; do
+    logs | grep -q 'container environment prepared' && break
+    sleep 1
+  done
+  assert_log 'tmpfs.*readsb.*/tmp'
+  if [ "$(docker exec "${CONTAINER}" readlink /run/readsb 2>/dev/null)" = "/tmp/readsb" ]; then
+    ok "/run/readsb symlinked into /tmp"
+  else
+    bad "/run/readsb not symlinked into /tmp (got: '$(docker exec "${CONTAINER}" readlink /run/readsb 2>/dev/null)')"
+  fi
+  if docker exec "${CONTAINER}" sh -c 'df -T /run/readsb 2>/dev/null | tail -1 | grep -q tmpfs'; then
+    ok "readsb output is tmpfs-backed"
+  else
+    bad "readsb output not tmpfs-backed"
+  fi
+  wait_for _file_exists /run/readsb/aircraft.json &&
+    ok "readsb writes aircraft.json through the tmpfs symlink" ||
+    bad "readsb aircraft.json missing on tmpfs"
+
+  teardown_case
+}
+
+# --- Runner: launch every case in a bounded worker pool ---------------------
+# Each case runs in its own backgrounded subshell (unique container/sidecar
+# names via setup_case_names) writing to a per-case log. Concurrency is capped
+# at ${E2E_JOBS:-nproc} so a 4-vCPU CI runner isn't oversubscribed by ~10
+# add-on containers at once. The cases are independent (own container, own
+# sidecars, own network), so wall-clock collapses toward the slowest single
+# case instead of the sum. Results are tallied from the per-case logs after all
+# workers finish, and the logs are replayed in case order so output stays
+# readable and deterministic.
+CASES=(
+  case_default
+  case_rtlsdr
+  case_remote
+  case_uat
+  case_decoder
+  case_unconfig
+  case_allfeeders
+  case_hasensors
+  case_autoloc
+  case_tmpfs
+)
+RESULTS_DIR="$(mktemp -d)"
+JOBS="${E2E_JOBS:-$(nproc 2>/dev/null || echo 4)}"
+section "Running ${#CASES[@]} e2e cases (up to ${JOBS} in parallel)"
+for idx in "${!CASES[@]}"; do
+  # Throttle: block until a worker slot frees up before launching the next.
+  while [ "$(jobs -rp | wc -l)" -ge "${JOBS}" ]; do wait -n 2>/dev/null || true; done
+  (
+    "${CASES[$idx]}"
+    echo "$?" >"${RESULTS_DIR}/${idx}.status"
+  ) \
+    >"${RESULTS_DIR}/${idx}.log" 2>&1 &
+done
+wait
+
+total_pass=0
+total_fail=0
+total_crash=0
+for idx in "${!CASES[@]}"; do
+  cat "${RESULTS_DIR}/${idx}.log"
+  p=$(grep -c '^  ok:' "${RESULTS_DIR}/${idx}.log" 2>/dev/null || true)
+  f=$(grep -c '^  FAIL:' "${RESULTS_DIR}/${idx}.log" 2>/dev/null || true)
+  st=$(cat "${RESULTS_DIR}/${idx}.status" 2>/dev/null || echo 1)
+  total_pass=$((total_pass + ${p:-0}))
+  total_fail=$((total_fail + ${f:-0}))
+  if [ "${st}" -ne 0 ]; then
+    total_crash=$((total_crash + 1))
+    printf '  CRASH: %s exited %s (no clean completion)\n' "${CASES[$idx]}" "${st}"
+  fi
+done
+
+printf '\n==== %d passed, %d failed, %d crashed ====\n' \
+  "${total_pass}" "${total_fail}" "${total_crash}"
+[ "${total_fail}" -eq 0 ] && [ "${total_crash}" -eq 0 ]
