@@ -173,13 +173,9 @@ assert_no_log() {
   if logs | grep -qE "$1"; then bad "log unexpectedly matches /$1/"; else ok "log clean of /$1/"; fi
 }
 
-section "Python unit tests (aviation_feeder_mqtt)"
-if python3 -m unittest discover -s "${HERE}/../unit" >/tmp/aviation_unit.log 2>&1; then
-  ok "unit tests pass ($(tail -1 /tmp/aviation_unit.log))"
-else
-  cat /tmp/aviation_unit.log
-  bad "unit tests failed"
-fi
+# NB: the Python unit tests (aviation_feeder_mqtt) run in their own CI job via
+# uv/pytest (.github/workflows/tests.yaml -> "Unit tests"), not here — this
+# script is the container-level e2e harness only.
 
 if [ "${SKIP_BUILD:-}" != "1" ]; then
   section "Building ${IMAGE}"
