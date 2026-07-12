@@ -3,3 +3,8 @@ node_modules/
 # Python bytecode
 __pycache__/
 *.py[cod]
+
+# uv / pytest local artifacts (uv.lock IS committed; the venv + caches are not)
+.venv/
+.pytest_cache/
+.mypy_cache/

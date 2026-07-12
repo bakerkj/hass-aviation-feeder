@@ -1,0 +1,89 @@
+name: tests
+
+# Modeled on the ha-weewx / hass-apps house style: a uv/pytest "Unit tests"
+# job for the aviation_feeder_mqtt Python package, plus a container e2e job
+# that builds the add-on image with a shared GHA layer cache
+# (docker/build-push-action) and drives the existing tests/e2e/run.sh harness
+# against it. Both run on every PR (no path filter) so they are stable,
+# always-present required checks for the branch-protection ruleset.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+          # Distinct cache-suffix so this job doesn't race other uv jobs for
+          # the same setup-uv cache key (the reservation race logs "Failed to
+          # save: Unable to reserve cache with key setup-uv-…").
+          cache-suffix: tests
+      - name: Sync dev dependencies
+        run: uv sync --group dev --frozen
+      - name: Run pytest
+        run: uv run pytest --junit-xml=test-results/junit.xml
+      - name: Upload unit-test results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: unit-test-results
+          path: test-results/junit.xml
+          if-no-files-found: ignore
+
+  e2e:
+    name: e2e (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      # Run both arches to completion even if one fails, so a regression on
+      # one architecture doesn't mask results on the other. aarch64 runs on a
+      # native arm64 runner so the ARM-only rbfeeder binary is exercised for
+      # real instead of under qemu.
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      # Build the add-on image with a per-arch GHA buildkit cache so the
+      # apt/pip/feeder-binary layers are reused across runs. load: true exports
+      # the result to the local docker image store so the subsequent
+      # `docker run` in run.sh sees the aviation_feeder:e2e tag. No
+      # --build-arg BUILD_FROM: the Dockerfile's digest-pinned ARG BUILD_FROM
+      # (a multi-arch manifest) is preserved, so each native runner pulls its
+      # own arch's base.
+      - name: Build add-on image (gha-cached)
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: ./aviation_feeder
+          load: true
+          tags: aviation_feeder:e2e
+          build-args: |
+            BUILD_VERSION=e2e
+          cache-from: |
+            type=gha,scope=aviation_feeder-e2e-${{ matrix.arch }}
+          cache-to: |
+            type=gha,mode=max,scope=aviation_feeder-e2e-${{ matrix.arch }}
+      # run.sh stands up its own mosquitto + mock-HA-API sidecars and runs the
+      # container-level assertions. SKIP_BUILD=1 reuses the image built above
+      # instead of doing its own plain `docker build`.
+      - name: Run e2e suite
+        run: bash tests/e2e/run.sh
+        env:
+          SKIP_BUILD: "1"
+          AVIATION_FEEDER_IMAGE: aviation_feeder:e2e

@@ -66,6 +66,16 @@
       "groupName": "pre-commit hooks"
     },
     {
+      "description": "The uv/pyproject unit-test deps (pyproject.toml + uv.lock) land in one PR. config:recommended enables the pep621 manager, which tracks the declared deps and maintains uv.lock.",
+      "matchManagers": ["pep621"],
+      "groupName": "python dependencies"
+    },
+    {
+      "description": "Pin the unit-test venv to the Python 3.13 series — it must match python3 in the add-on image's Debian trixie base. A 3.14 bump would make uv build a standalone 3.14 that diverges from the shipped interpreter. Lift when the base moves to a Debian release with 3.14.",
+      "matchPackageNames": ["python"],
+      "allowedVersions": "<3.14"
+    },
+    {
       "matchManagers": ["dockerfile"],
       "matchPackageNames": ["/^ghcr\\.io/sdr-enthusiasts//"],
       "groupName": "sdr-enthusiasts base images"

@@ -1,0 +1,33 @@
+[project]
+name = "hass-aviation-feeder"
+version = "0.0.0"
+description = "Aviation Feeder Home Assistant add-on (unit-test dependency lock)"
+readme = "README.md"
+requires-python = "==3.13.*"
+dependencies = [
+    # paho-mqtt is the only third-party module the aviation_feeder_mqtt unit
+    # tests import (transitively via app.py). Pinned to the same 2.1.0 the
+    # image ships via apt (python3-paho-mqtt=2.1.0-1 in the Dockerfile) so the
+    # host test venv exercises the same major/minor the add-on runs on.
+    # requests (the other runtime dep) is imported lazily and never reached by
+    # the tests, so it is intentionally not a test dependency here — it stays
+    # tracked only via the Dockerfile deb pin.
+    "paho-mqtt==2.1.0",
+]
+
+[tool.uv]
+# Not an installable package — aviation_feeder_mqtt is imported from source via
+# tool.pytest pythonpath, not built/installed. Mirrors ha-weewx.
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
+[tool.pytest.ini_options]
+# The add-on's Python lives under aviation_feeder/; put it on sys.path so the
+# stdlib-unittest suites under tests/unit can `import aviation_feeder_mqtt`.
+testpaths = ["tests/unit"]
+pythonpath = ["aviation_feeder"]
+addopts = "-ra"
