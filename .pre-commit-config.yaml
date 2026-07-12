@@ -1,0 +1,114 @@
+repos:
+  - repo: builtin
+    hooks:
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: fix-byte-order-marker
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-illegal-windows-names
+      - id: detect-private-key
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.2
+    hooks:
+      - id: codespell
+        args: ["--ignore-words-list", "hass"]
+
+  - repo: https://github.com/rbubley/mirrors-prettier
+    rev: v3.8.4
+    hooks:
+      - id: prettier
+        types_or: [yaml, json, markdown]
+        args: ["--prose-wrap", "always"]
+        language_version: system
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        files: \.sh$
+        args: ["-S", "warning", "-e", "SC1091"]
+
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.13.0-1
+    hooks:
+      - id: shfmt
+        files: \.sh$
+        args: ["-w", "-i", "2", "-ci"]
+
+  - repo: https://github.com/AleksaC/hadolint-py
+    rev: v2.14.0
+    hooks:
+      - id: hadolint
+        args:
+          - --ignore
+          - DL3006
+          - --ignore
+          - DL3007
+          - --ignore
+          - DL3018
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+    rev: v9.25.0
+    hooks:
+      - id: commitlint
+        stages: [commit-msg]
+        additional_dependencies: ["@commitlint/config-conventional@21"]
+
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.37.3
+    hooks:
+      - id: check-jsonschema
+        name: Validate pre-commit config schema
+        files: ^\.pre-commit-config\.yaml$
+        args:
+          - --schemafile
+          - https://json.schemastore.org/pre-commit-config.json
+      - id: check-jsonschema
+        name: Validate commitlint config schema
+        files: ^\.commitlintrc\.json$
+        args:
+          - --schemafile
+          - https://json.schemastore.org/commitlintrc.json
+      - id: check-github-workflows
+      - id: check-renovate
+      - id: check-jsonschema
+        name: Validate Home Assistant add-on config schema
+        files: ^[^/]+/config\.json$
+        args:
+          - --regex-variant
+          - python
+          - --schemafile
+          - https://raw.githubusercontent.com/frenck/action-addon-linter/v2.21.0/src/config.schema.json
+      - id: check-jsonschema
+        name: Validate Home Assistant add-on build schema
+        files: ^[^/]+/build\.ya?ml$
+        args:
+          - --regex-variant
+          - python
+          - --schemafile
+          - https://raw.githubusercontent.com/frenck/action-addon-linter/v2.21.0/src/build.schema.json
+
+  - repo: local
+    hooks:
+      - id: addon-lint
+        name: HA addon lint
+        entry: scripts/addon-lint.sh
+        language: script
+        files: ^[^/]+/config\.json$
+        pass_filenames: true

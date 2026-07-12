@@ -1,0 +1,84 @@
+name: addon-lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    name: Discover addons
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Build addon list
+        id: matrix
+        env:
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          # See addon-build.yml for the same rationale. Branch name shape
+          # comes from src/util/branch-name.ts:79 in googleapis/release-please.
+          rp_prefix="release-please--branches--main--components--"
+          target_addon=""
+          case "$HEAD_REF" in
+            "$rp_prefix"*)
+              target_addon="${HEAD_REF#"$rp_prefix"}"
+              echo "release-please component branch detected -> scoping to: $target_addon"
+              ;;
+            *)
+              echo "non-release-please branch -> linting full matrix"
+              ;;
+          esac
+
+          matrix='{"include":['
+          first=true
+          for cfg in */config.json; do
+            addon=$(dirname "$cfg")
+            if [ -n "$target_addon" ] && [ "$addon" != "$target_addon" ]; then
+              continue
+            fi
+            if [ "$first" = true ]; then
+              first=false
+            else
+              matrix+=','
+            fi
+            matrix+="{\"addon\":\"$addon\"}"
+          done
+          matrix+=']}'
+          echo "matrix: $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  addon-linter:
+    name: Lint ${{ matrix.addon }}
+    needs: discover
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Run Home Assistant add-on linter
+        uses: frenck/action-addon-linter@f995494fd84fae6310d23617e66d0e37de4f14eb # v2.21.0
+        with:
+          path: ./${{ matrix.addon }}
+
+  addon-linter-all:
+    needs: addon-linter
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check matrix results
+        run: |
+          if [[ "${{ needs.addon-linter.result }}" != "success" ]]; then
+            echo "addon-linter matrix failed"
+            exit 1
+          fi

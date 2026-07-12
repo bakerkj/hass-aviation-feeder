@@ -1,0 +1,7 @@
+#!/command/with-contenv sh
+# Gate OpenSky: needs enable_opensky + a username + a station position. Idle
+# otherwise -- openskyd hard-exits without LAT/LONG/ALT, so without this location
+# check an enabled+named feeder with no location would error-loop instead of idle.
+. /usr/local/bin/feeder-gate
+gate "[opensky-feeder]" ENABLE_OPENSKY OPENSKY_USERNAME LAT LONG ALT
+exec /etc/s6-overlay/scripts/opensky-feeder

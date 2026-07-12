@@ -1,0 +1,374 @@
+configuration:
+  lat:
+    name: Latitude
+    description: >-
+      Antenna latitude in decimal degrees (-90 to 90). Keep the default
+      HOMEASSISTANT_LATITUDE (or leave blank) to inherit Home Assistant's
+      configured location.
+  long:
+    name: Longitude
+    description: >-
+      Antenna longitude in decimal degrees (-180 to 180). Keep the default
+      HOMEASSISTANT_LONGITUDE (or leave blank) to inherit Home Assistant's
+      configured location.
+  alt:
+    name: Altitude
+    description: >-
+      Antenna altitude above sea level, e.g. 250m or 820ft. Keep the default
+      HOMEASSISTANT_ELEVATION (or leave blank) to inherit Home Assistant's
+      configured elevation. Needed for accurate MLAT.
+  tz:
+    name: Time zone
+    description: >-
+      IANA time zone for logs and graphs, e.g. America/Detroit. Note:
+      FlightRadar24 always runs in GMT regardless of this setting.
+  site_name:
+    name: Site name
+    description: Display name for your station, shown on the tar1090 map.
+  mlat_user:
+    name: MLAT username
+    description: >-
+      Station identity sent to the MLAT servers (the mlat-client "user"). Leave
+      blank to use the Site name. Set it to keep a stable MLAT identity if your
+      site name differs from what you registered with the aggregators.
+  uuid:
+    name: Station UUID
+    description: >-
+      A single UUID identifying your station to the community aggregators below
+      (generate one with `uuidgen`). Also used as the default MLAT identity.
+      Each aggregator can override it with its own UUID field.
+  receiver_mode:
+    name: Receiver mode
+    description: >-
+      "rtlsdr" decodes 1090 MHz from a local RTL-SDR (plus 978 UAT on a second
+      stick if Enable 978 MHz UAT is on). "uat" decodes 978 MHz UAT ONLY from a
+      local RTL-SDR — for a receiver with just a 978 stick and no 1090. "remote"
+      runs net-only (no SDR) and ingests Beast from another Aviation Feeder
+      instance — for a display/aggregator node separate from the antenna node.
+  remote_beast_host:
+    name: Remote Beast host
+    description: >-
+      (remote mode) Hostname or IP of the extractor instance providing Beast
+      data.
+  remote_beast_port:
+    name: Remote Beast port
+    description: (remote mode) Beast output port on the extractor (usually 30005).
+  readsb_rtlsdr_device:
+    name: 1090 MHz RTL-SDR device
+    description: >-
+      Serial number of the 1090 MHz dongle. Leave blank if you only have one
+      dongle; set the serial when two dongles are attached.
+  readsb_gain:
+    name: 1090 MHz gain
+    description: >-
+      Tuner gain in dB (e.g. 49.6) or "autogain" to tune automatically.
+  readsb_ppm:
+    name: 1090 MHz frequency correction
+    description: Frequency correction in ppm; 0 is fine for most dongles.
+  enable_uat:
+    name: Enable 978 MHz UAT
+    description: >-
+      Decode 978 MHz UAT (US only) from a second RTL-SDR dongle via dump978.
+  dump978_rtlsdr_device:
+    name: 978 MHz RTL-SDR device
+    description: Serial number of the 978 MHz UAT dongle.
+  dump978_gain:
+    name: 978 MHz gain
+    description: Tuner gain in dB or "autogain".
+  dump978_ppm:
+    name: 978 MHz frequency correction
+    description: Frequency correction in ppm for the UAT dongle.
+  feed_adsbexchange:
+    name: Feed ADS-B Exchange
+    description: >-
+      Feed ADS-B Exchange (adsbexchange.com). Note: ADS-B Exchange shares
+      receiver statistics back to adsbexchange.com by default when enabled. See https://www.adsbexchange.com/
+  adsbexchange_uuid:
+    name: ADS-B Exchange UUID override
+    description: Only used when Feed ADS-B Exchange is on. Overrides the station UUID for ADS-B Exchange only; blank uses the shared Station UUID.
+  adsbexchange_mlat:
+    name: ADS-B Exchange MLAT
+    description: Only applies when Feed ADS-B Exchange is on. On by default (ADS-B + MLAT); off feeds ADS-B only.
+  feed_adsbfi:
+    name: Feed adsb.fi
+    description: Feed the adsb.fi community aggregator. See https://adsb.fi/
+  adsbfi_uuid:
+    name: adsb.fi UUID override
+    description: Only used when Feed adsb.fi is on. Overrides the station UUID for adsb.fi only; blank uses the shared Station UUID.
+  adsbfi_mlat:
+    name: adsb.fi MLAT
+    description: Only applies when Feed adsb.fi is on. On by default (ADS-B + MLAT); off feeds ADS-B only.
+  enable_adsbhub:
+    name: Feed ADSBHub
+    description: Enable the ADSBHub feeder. Sign up at https://www.adsbhub.org/
+  adsbhub_clientkey:
+    name: ADSBHub client key
+    description: Your ADSBHub client/station key.
+  feed_adsbitalia:
+    name: Feed ADSBItalia
+    description: Feed the adsbitalia.it community aggregator. See https://www.adsbitalia.it/
+  adsbitalia_uuid:
+    name: ADSBItalia UUID override
+    description: Only used when Feed ADSBItalia is on. Overrides the station UUID for ADSBItalia only; blank uses the shared Station UUID.
+  adsbitalia_mlat:
+    name: ADSBItalia MLAT
+    description: Only applies when Feed ADSBItalia is on. On by default (ADS-B + MLAT); off feeds ADS-B only.
+  feed_adsblol:
+    name: Feed adsb.lol
+    description: Feed the adsb.lol community aggregator. See https://adsb.lol/
+  adsblol_uuid:
+    name: adsb.lol UUID override
+    description: Only used when Feed adsb.lol is on. Overrides the station UUID for adsb.lol only; blank uses the shared Station UUID.
+  adsblol_mlat:
+    name: adsb.lol MLAT
+    description: Only applies when Feed adsb.lol is on. On by default (ADS-B + MLAT); off feeds ADS-B only.
+  feed_adsbone:
+    name: Feed adsb.one
+    description: Feed the adsb.one community aggregator. See https://adsb.one/
+  adsbone_uuid:
+    name: adsb.one UUID override
+    description: Only used when Feed adsb.one is on. Overrides the station UUID for adsb.one only; blank uses the shared Station UUID.
+  adsbone_mlat:
+    name: adsb.one MLAT
+    description: >-
+      Only applies when Feed adsb.one is on. On by default (ADS-B + MLAT); off
+      feeds ADS-B only — useful because adsb.one shares its MLAT backend with
+      airplanes.live, so feeding both from one receiver looks like a duplicate
+      and causes reconnect churn.
+  enable_radarbox:
+    name: Feed AirNav RadarBox
+    description: Enable the AirNav RadarBox (rbfeeder) feeder. Sign up at https://www.radarbox.com/
+  radarbox_sharing_key:
+    name: RadarBox sharing key
+    description: >-
+      Your RadarBox sharing key. Leave blank on first run to auto-generate one
+      and claim it on the RadarBox site.
+  radarbox_mlat:
+    name: RadarBox MLAT
+    description: >-
+      Only applies when Feed AirNav RadarBox is on. On by default (ADS-B +
+      MLAT); off feeds ADS-B only.
+  feed_airplaneslive:
+    name: Feed airplanes.live
+    description: Feed the airplanes.live community aggregator. See https://airplanes.live/
+  airplaneslive_uuid:
+    name: airplanes.live UUID override
+    description: Only used when Feed airplanes.live is on. Overrides the station UUID for airplanes.live only; blank uses the shared Station UUID.
+  airplaneslive_mlat:
+    name: airplanes.live MLAT
+    description: Only applies when Feed airplanes.live is on. On by default (ADS-B + MLAT); off feeds ADS-B only.
+  feed_avdelphi:
+    name: Feed AVDelphi
+    description: Feed the AVDelphi aggregator (ADS-B only; no MLAT). See https://www.avdelphi.com/
+  avdelphi_uuid:
+    name: AVDelphi UUID override
+    description: Only used when Feed AVDelphi is on. Overrides the station UUID for AVDelphi only; blank uses the shared Station UUID.
+  enable_piaware:
+    name: Feed FlightAware
+    description: Enable the FlightAware (piaware) feeder. Sign up at https://flightaware.com/adsb/piaware/claim
+  piaware_feeder_id:
+    name: FlightAware feeder ID
+    description: >-
+      Your FlightAware feeder ID. Leave blank on first run to auto-generate one,
+      then claim it at flightaware.com/adsb/piaware/claim.
+  enable_fr24:
+    name: Feed FlightRadar24
+    description: Enable the FlightRadar24 (fr24feed) feeder. Sign up at https://www.flightradar24.com/share-your-data
+  fr24_key:
+    name: FlightRadar24 sharing key
+    description: Your FR24 sharing key from the fr24feed signup.
+  fr24_uat_key:
+    name: FlightRadar24 UAT key
+    description: >-
+      Separate FR24 sharing key for UAT/978 (from fr24feed-signup-uat). Only
+      needed if feeding 978 to FR24.
+  feed_flyitaly:
+    name: Feed Fly Italy ADSB
+    description: Feed the flyitalyadsb.com community aggregator. See https://flyitalyadsb.com/
+  flyitaly_uuid:
+    name: Fly Italy ADSB UUID override
+    description: Only used when Feed Fly Italy ADSB is on. Overrides the station UUID for Fly Italy ADSB only; blank uses the shared Station UUID.
+  flyitaly_mlat:
+    name: Fly Italy ADSB MLAT
+    description: Only applies when Feed Fly Italy ADSB is on. On by default (ADS-B + MLAT); off feeds ADS-B only.
+  feed_hpradar:
+    name: Feed HpRadar
+    description: Feed the HpRadar (hpradar.com) community aggregator. See https://hpradar.com/
+  hpradar_uuid:
+    name: HpRadar UUID override
+    description: Only used when Feed HpRadar is on. Overrides the station UUID for HpRadar only; blank uses the shared Station UUID.
+  hpradar_mlat:
+    name: HpRadar MLAT
+    description: Only applies when Feed HpRadar is on. On by default (ADS-B + MLAT); off feeds ADS-B only.
+  enable_opensky:
+    name: Feed OpenSky Network
+    description: Enable the OpenSky Network feeder. Sign up at https://opensky-network.org/
+  opensky_username:
+    name: OpenSky username
+    description: Your OpenSky Network account username.
+  opensky_serial:
+    name: OpenSky serial
+    description: >-
+      OpenSky receiver serial. Leave blank on first run to generate one (note it
+      from the log), then set it here on the next launch.
+  enable_planefinder:
+    name: Feed PlaneFinder
+    description: Enable the PlaneFinder (pfclient) feeder. Sign up at https://planefinder.net/
+  planefinder_sharecode:
+    name: PlaneFinder sharecode
+    description: Your PlaneFinder sharecode.
+  feed_planespotters:
+    name: Feed Planespotters
+    description: Feed the planespotters.net community aggregator. See https://www.planespotters.net/
+  planespotters_uuid:
+    name: Planespotters UUID override
+    description: Only used when Feed Planespotters is on. Overrides the station UUID for Planespotters only; blank uses the shared Station UUID.
+  planespotters_mlat:
+    name: Planespotters MLAT
+    description: Only applies when Feed Planespotters is on. On by default (ADS-B + MLAT); off feeds ADS-B only.
+  enable_planewatch:
+    name: Feed plane.watch
+    description: Enable the plane.watch (pw-feeder) feeder. Sign up at https://atc.plane.watch/
+  planewatch_api_key:
+    name: plane.watch API key
+    description: Your plane.watch API key (UUID) from the plane.watch signup.
+  enable_radarvirtuel:
+    name: Feed RadarVirtuel
+    description: Enable the RadarVirtuel feeder. Sign up at https://www.radarvirtuel.com/
+  radarvirtuel_contrib_name:
+    name: RadarVirtuel feeder name
+    description: Your RadarVirtuel contributor/feeder name.
+  radarvirtuel_contrib_email:
+    name: RadarVirtuel email
+    description: The contact email registered with RadarVirtuel.
+  enable_sdrmap:
+    name: Feed sdrmap
+    description: Enable the sdrmap feeder. Sign up at https://sdrmap.org/
+  sdrmap_username:
+    name: sdrmap username
+    description: Your sdrmap account username.
+  sdrmap_password:
+    name: sdrmap password
+    description: Your sdrmap account password.
+  feed_theairtraffic:
+    name: Feed The Air Traffic
+    description: Feed the theairtraffic.com community aggregator. See https://theairtraffic.com/
+  theairtraffic_uuid:
+    name: The Air Traffic UUID override
+    description: Only used when Feed TheAirTraffic is on. Overrides the station UUID for TheAirTraffic only; blank uses the shared Station UUID.
+  theairtraffic_mlat:
+    name: TheAirTraffic MLAT
+    description: Only applies when Feed TheAirTraffic is on. On by default (ADS-B + MLAT); off feeds ADS-B only.
+  enable_uk1090:
+    name: Feed 1090MHz UK
+    description: Enable the 1090MHz UK (radar1090) feeder. Sign up at https://www.1090mhz.uk/
+  uk1090_key:
+    name: 1090MHz UK sharing key
+    description: >-
+      Your 1090MHz UK sharing key (RADAR1090_KEY), issued when you register your
+      station at https://www.1090mhz.uk/ . ADS-B only (this feeder has no MLAT).
+  ha_sensors:
+    name: Home Assistant sensors
+    description: >-
+      Publish Aviation Feeder sensors to Home Assistant over MQTT discovery
+      (registry-managed entities, grouped into devices). Requires the Mosquitto
+      broker add-on. Turn off to publish nothing.
+  ha_feeder_health:
+    name: Publish feeder-health sensors
+    description: >-
+      Publish receiver/feeder statistics (aircraft counts by type, message rate,
+      max range, session tracks) as an "Aviation Feeder" device.
+  ha_planes_near_me:
+    name: Publish nearby-aircraft sensors
+    description: >-
+      Publish "planes near me" sensors (aircraft in range, and the nearest
+      aircraft's callsign/distance/altitude/bearing) as an "Aviation Feeder —
+      Nearby" device. Requires your station latitude/longitude to be set.
+  ha_feeder_status:
+    name: Publish per-feeder status sensors
+    description: >-
+      Publish a connectivity sensor for each enabled feeder/aggregator (e.g. is
+      FlightRadar24 running, is adsb.fi connected) as an "Aviation Feeder —
+      Feeders" device.
+  ha_near_me_radius:
+    name: Nearby radius (nmi)
+    description: >-
+      Radius in nautical miles for the nearby-aircraft sensors — aircraft within
+      this distance of your station are counted.
+  mqtt_host:
+    name: MQTT broker host
+    description: >-
+      MQTT broker hostname. Leave blank to auto-detect from the Mosquitto add-on
+      (host, port, username and password are taken from the Supervisor MQTT
+      service). Set it only to point at an external broker.
+  mqtt_port:
+    name: MQTT broker port
+    description: MQTT broker TCP port (usually 1883).
+  mqtt_username:
+    name: MQTT username
+    description: Username for the MQTT broker. Blank for an anonymous broker.
+  mqtt_password:
+    name: MQTT password
+    description: Password for the MQTT broker. Blank for an anonymous broker.
+  mqtt_discovery_prefix:
+    name: MQTT discovery prefix
+    description: >-
+      Home Assistant MQTT discovery prefix. Leave as "homeassistant" unless you
+      changed it in the MQTT integration.
+  mqtt_base_topic:
+    name: MQTT base topic
+    description: Base topic under which state/availability messages are published.
+  mqtt_interval_seconds:
+    name: MQTT publish interval
+    description: How often (seconds) to read readsb stats and publish sensor states.
+  mqtt_log_level:
+    name: MQTT publisher log level
+    description: Log verbosity for the Home Assistant sensor publisher.
+  update_tar1090:
+    name: Update tar1090 on boot
+    description: >-
+      When on, download the latest tar1090 map and aircraft database from GitHub
+      at every start. Off (default) uses the version baked into the add-on image
+      (updated via the add-on's own updates) — reproducible and with no per-boot
+      download.
+  heywhatsthat_panorama_id:
+    name: HeyWhatsThat panorama ID
+    description: >-
+      Optional. Draws a theoretical maximum-range ring on the tar1090 map based
+      on your terrain horizon. Create a panorama for your location at
+      https://www.heywhatsthat.com (New Panorama), then paste the id from the
+      resulting ?view=CODE link here. Leave blank to disable the overlay.
+  heywhatsthat_alts:
+    name: HeyWhatsThat ring altitudes
+    description: >-
+      Optional. Comma-separated altitudes for the range rings, e.g.
+      "1000ft,5000ft,10000ft,20000ft,30000ft,40000ft". Only used when a panorama
+      ID is set; blank uses tar1090's default altitudes.
+  prefer_ipv4:
+    name: Prefer IPv4 (skip IPv6 DNS)
+    description: >-
+      When on (default), the glibc resolver skips AAAA (IPv6) DNS lookups, so the
+      feeder engines that use it — readsb and the mlat-clients — resolve and
+      connect over IPv4 only. This prevents MLAT/feeder connections from stalling
+      with "Network unreachable" if the container has an IPv6 address but no
+      working IPv6 route. Scope: this is a DNS-layer setting, not a kernel-level
+      IPv6 off switch (the add-on lacks the privilege for that). The Go-based
+      feeders (plane.watch, FlightRadar24) do their own DNS and ignore it, but
+      fall back to IPv4 on their own. Turn off if your container has working IPv6
+      connectivity.
+  max_globe_history_days:
+    name: Map history retention (days)
+    description: >-
+      How many days of flight-track and heatmap history to keep for the map
+      replay and heatmap. This data is stored on the persistent /data volume;
+      older days are pruned so it can't grow without bound and fill the disk.
+  ultrafeeder_config:
+    name: Extra ULTRAFEEDER_CONFIG
+    description: >-
+      Advanced: additional readsb net connectors appended verbatim, e.g.
+      "adsb,feed.example.com,30004,beast_reduce_plus_out". Semicolon-separated.
+  extra_env:
+    name: Extra environment variables
+    description: >-
+      Advanced: extra KEY=value lines (one per line) injected into the container
+      environment, for any ultrafeeder/feeder setting not exposed above.

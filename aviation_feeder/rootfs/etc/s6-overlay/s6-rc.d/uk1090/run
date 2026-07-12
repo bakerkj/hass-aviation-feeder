@@ -1,0 +1,13 @@
+#!/command/with-contenv bash
+# 1090MHz UK (radar1090): the proprietary `radar` binary reads our in-container
+# readsb Beast output (localhost:30005, radar's own defaults) and forwards it to
+# 1090MHz UK's aggregator (radar's compiled-in default host), identified by the
+# sharing key. ADS-B only -- no MLAT. Gate on the toggle + key so a
+# disabled/unconfigured feeder idles instead of retry-looping. radar prints no
+# tag of its own, so route it through s6wrap for the coloured house [ts][uk1090].
+. /usr/local/bin/feeder-gate
+gate "[uk1090]" ENABLE_UK1090 RADAR1090_KEY
+# Key passed as a positional arg (not a shell -c string) so it isn't baked in.
+# -f: foreground + one stats line/sec (so s6 supervises it and s6wrap tags it).
+exec /usr/local/bin/s6wrap --quiet --timestamps --prepend=uk1090 --args \
+  /usr/sbin/radar -k "${RADAR1090_KEY}" -l localhost -f

@@ -1,0 +1,381 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+#
+# Bridge Home Assistant add-on options (/data/options.json) into the s6
+# container environment so the ultrafeeder + feeder services read them via
+# `with-contenv`. Runs once during container init, before the longrun
+# services start.
+set -euo pipefail
+
+OPTIONS_FILE="/data/options.json"
+ENV_DIR="/run/s6/container_environment"
+
+log() { echo "[aviation-feeder] $*"; }
+
+if [[ ! -f "${OPTIONS_FILE}" ]]; then
+  log "no ${OPTIONS_FILE} present; leaving container environment untouched"
+  exit 0
+fi
+
+mkdir -p "${ENV_DIR}"
+
+# Read a string option and strip characters that could break the env files or
+# smuggle extra directives into a downstream config parser (same sanitisation
+# discipline as the direwolf_igate add-on). Echoes "" when unset/null.
+opt() {
+  local key="$1" val
+  val="$(jq -r --arg k "$key" '.[$k] // empty' "${OPTIONS_FILE}")"
+  val="${val//\"/}"
+  val="${val//\\/}"
+  val="${val//$'\n'/}"
+  val="${val//$'\r'/}"
+  printf '%s' "${val}"
+}
+
+# Read a boolean option as "true"/"false". opt() can't be used for a toggle that
+# defaults ON: its `.[$k] // empty` collapses BOTH an explicit false and an
+# absent key to "" (jq's `//` treats the boolean false as empty). This reads the
+# raw value and maps only a genuinely-absent key (jq null) to the given default,
+# so an explicit false is distinguishable from unset.
+opt_bool() {
+  local key="$1" def="$2" val
+  val="$(jq -r --arg k "$key" '.[$k]' "${OPTIONS_FILE}")"
+  [ "${val}" = "null" ] && val="${def}"
+  printf '%s' "${val}"
+}
+
+# Write an env var into the s6 container environment (skips empty values).
+setenv() {
+  local name="$1" value="$2"
+  [[ -n "${value}" ]] || return 0
+  printf '%s' "${value}" >"${ENV_DIR}/${name}"
+  log "set ${name}"
+}
+
+# --- Station identity ---
+# lat/long/alt each accept one of three things: an explicit value, a blank, or
+# the HOMEASSISTANT_* sentinel that is the option's default. Blank and the
+# sentinel are two spellings of the SAME intent -- "inherit the location Home
+# Assistant already has configured" -- so each field is resolved by one
+# conditional that collapses both to empty, and any field still empty afterwards
+# is filled from Home Assistant's own location. An explicit value always wins; a
+# field is inherited only if the user left it blank or on the sentinel.
+#
+# Home Assistant's location is read once from the Supervisor core API (requires
+# homeassistant_api, which provides SUPERVISOR_TOKEN; SUPERVISOR_CORE_API
+# overrides the base URL for the e2e mock), and only when at least one field
+# needs it. If it is unavailable, the affected fields stay empty and readsb/MLAT
+# simply run without a fixed position until the user sets them.
+#
+# ultrafeeder accepts LAT/LONG/ALT (interchangeable with READSB_LAT/LON/ALT --
+# "use either, not both") and the standalone feeders (opensky, radarbox) read
+# LAT/LONG/ALT too, so this one convention feeds every consumer.
+LAT="$(opt lat)"
+LONG="$(opt long)"
+ALT="$(opt alt)"
+if [[ -z "${LAT}" || "${LAT}" == "HOMEASSISTANT_LATITUDE" ]]; then LAT=""; fi
+if [[ -z "${LONG}" || "${LONG}" == "HOMEASSISTANT_LONGITUDE" ]]; then LONG=""; fi
+if [[ -z "${ALT}" || "${ALT}" == "HOMEASSISTANT_ELEVATION" ]]; then ALT=""; fi
+
+if [[ -z "${LAT}" || -z "${LONG}" || -z "${ALT}" ]]; then
+  HA_CFG=""
+  if [[ -n "${SUPERVISOR_TOKEN:-}" ]]; then
+    HA_CFG="$(curl -sf -m 10 -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+      "${SUPERVISOR_CORE_API:-http://supervisor/core/api}/config" 2>/dev/null || true)"
+  fi
+  if [[ -n "${HA_CFG}" ]]; then
+    if [[ -z "${LAT}" ]]; then LAT="$(jq -r '.latitude // empty' <<<"${HA_CFG}")"; fi
+    if [[ -z "${LONG}" ]]; then LONG="$(jq -r '.longitude // empty' <<<"${HA_CFG}")"; fi
+    if [[ -z "${ALT}" ]]; then
+      HELEV="$(jq -r '.elevation // empty' <<<"${HA_CFG}")"
+      # Bare metres, NO unit suffix. A trailing "m" silently breaks rbfeeder
+      # (it rejects alt=10m as an invalid position and skips MLAT entirely) and
+      # makes openskyd log "Garbage after number ignored". mlat-client reads a
+      # plain --alt as metres, so no consumer needs the unit.
+      if [[ -n "${HELEV}" ]]; then ALT="${HELEV}"; fi
+    fi
+    log "inherited station location from Home Assistant (lat=${LAT} long=${LONG} alt=${ALT})"
+  else
+    log "location unset and Home Assistant location unavailable; set lat/long/alt manually"
+  fi
+fi
+
+setenv LAT "${LAT}"
+setenv LONG "${LONG}"
+# ALT is the station elevation in METRES: Home Assistant reports elevation in
+# metres and the "alt" option is metres, so feet never occur here. rbfeeder +
+# openskyd need a bare number (a unit suffix silently breaks rbfeeder's MLAT and
+# makes openskyd log "Garbage after number"), so just strip a redundant trailing
+# "m" (e.g. someone typing "10m" instead of "10").
+if [[ -n "${ALT}" ]]; then ALT="$(printf '%s' "${ALT}" | sed -E 's/[[:space:]]*[mM][[:space:]]*$//')"; fi
+setenv ALT "${ALT}"
+setenv TZ "$(opt tz)"
+SITE="$(opt site_name)"
+setenv TAR1090_SITENAME "${SITE}"
+setenv MLAT_NAME "${SITE}"
+# The community mlat-clients use MLAT_USER as their --user (station identity); if
+# it is unset they pick a fresh random number every start, so MLAT peers see a
+# new station each restart. Configurable via mlat_user; defaults to the site name.
+MLAT_USER_VAL="$(opt mlat_user)"
+[[ -z "${MLAT_USER_VAL}" ]] && MLAT_USER_VAL="${SITE}"
+setenv MLAT_USER "${MLAT_USER_VAL}"
+# Bound globe_history retention (days). It is now persisted to /data, and unset
+# means "never expire" -- an unbounded pile of per-day track/heatmap folders that
+# would eventually fill the SD/eMMC. Configurable via max_globe_history_days.
+GLOBE_DAYS="$(opt max_globe_history_days)"
+[[ -z "${GLOBE_DAYS}" ]] && GLOBE_DAYS="7"
+setenv MAX_GLOBE_HISTORY "${GLOBE_DAYS}"
+
+# tar1090 map + aircraft-DB version. ultrafeeder defaults UPDATE_TAR1090=true,
+# which re-downloads the latest tar1090/tar1090-db from GitHub on every boot. We
+# default it OFF and ship the version baked into the (Renovate-pinned) base image
+# instead -- reproducible, no per-boot GitHub dependency; a base bump updates it.
+# Set update_tar1090=true to fetch the latest at startup.
+if [[ "$(opt update_tar1090)" == "true" ]]; then
+  setenv UPDATE_TAR1090 "true"
+else
+  setenv UPDATE_TAR1090 "false"
+fi
+
+# HeyWhatsThat theoretical-range overlay on the tar1090 map (parity with
+# Multi-Portal's PANORAMA_ID/PANORAMA_ALTS). Create a panorama for your site at
+# https://www.heywhatsthat.com and paste the ?view=CODE id here. Only emit the
+# vars when an id is set; ALTS falls back to tar1090's own default when blank.
+HWT_ID="$(opt heywhatsthat_panorama_id)"
+if [[ -n "${HWT_ID}" ]]; then
+  setenv HEYWHATSTHAT_PANORAMA_ID "${HWT_ID}"
+  HWT_ALTS="$(opt heywhatsthat_alts)"
+  [[ -n "${HWT_ALTS}" ]] && setenv HEYWHATSTHAT_ALTS "${HWT_ALTS}"
+fi
+
+# graphs1090 (collectd) write reduction. By default collectd rewrites its RRD
+# database in /var/lib/collectd every ~15s -- steady flash writes, and that dir
+# is persisted to /data (see 00-persist), i.e. the SD/eMMC. REDUCE_IO keeps the
+# live RRDs in RAM (/run/collectd, pointed at tmpfs by 00-tmpfs-readsb) and only
+# flushes a small gzip archive to /data on the interval below and on shutdown.
+# Hourly flush: <=1h of graph history lost on a hard power-cut, ~24 tiny writes/
+# day instead of ~5760. Override either via extra_env if desired.
+setenv GRAPHS1090_REDUCE_IO "true"
+setenv GRAPHS1090_REDUCE_IO_FLUSH_IVAL "1h"
+
+# --- Receiver mode: where aircraft come from ---
+# Three modes:
+#   rtlsdr : local 1090 RTL-SDR (readsb), plus an OPTIONAL second 978 UAT stick
+#            (dump978) when enable_uat is on.
+#   uat    : local 978 UAT ONLY (dump978) -- for a receiver with just a 978 stick
+#            and no 1090. readsb runs net-only and ingests the UAT stream.
+#   remote : readsb net-only, ingesting Beast from a remote extractor (added to
+#            ULTRAFEEDER_CONFIG below); no local SDR, no local dump978.
+# Both "uat" and "remote" leave READSB_DEVICE_TYPE unset (readsb net-only per the
+# ultrafeeder docs); they differ only in the input source wired below.
+RECEIVER_MODE="$(opt receiver_mode)"
+[[ -z "${RECEIVER_MODE}" ]] && RECEIVER_MODE="rtlsdr"
+setenv RECEIVER_MODE "${RECEIVER_MODE}"
+
+# Decode 978 locally when in uat-only mode (UAT is the whole point there, so it
+# is forced on regardless of the enable_uat toggle -- that toggle is the
+# rtlsdr-mode opt-in for a SECOND stick) or in rtlsdr mode with it enabled. This
+# one value drives the dump978 gate, the piaware UAT pointer, and readsb's input.
+if [[ "${RECEIVER_MODE}" == "uat" || ( "${RECEIVER_MODE}" == "rtlsdr" && "$(opt enable_uat)" == "true" ) ]]; then
+  ENABLE_UAT_VAL="true"
+else
+  ENABLE_UAT_VAL="false"
+fi
+setenv ENABLE_UAT "${ENABLE_UAT_VAL}"
+
+# 1090 MHz RTL-SDR (readsb) -- only when we decode 1090 locally.
+if [[ "${RECEIVER_MODE}" == "rtlsdr" ]]; then
+  setenv READSB_DEVICE_TYPE "rtlsdr"
+  setenv READSB_RTLSDR_DEVICE "$(opt readsb_rtlsdr_device)"
+  setenv READSB_GAIN "$(opt readsb_gain)"
+  setenv READSB_RTLSDR_PPM "$(opt readsb_ppm)"
+fi
+# 978 MHz RTL-SDR (dump978) -- whenever we decode 978 locally (rtlsdr+UAT or
+# uat-only). readsb picks the UAT stream up over the net (uat_in) either way.
+if [[ "${ENABLE_UAT_VAL}" == "true" ]]; then
+  setenv DUMP978_RTLSDR_DEVICE "$(opt dump978_rtlsdr_device)"
+  setenv DUMP978_SDR_GAIN "$(opt dump978_gain)"
+  setenv DUMP978_SDR_PPM "$(opt dump978_ppm)"
+fi
+
+# --- Proprietary feeders point at our in-container readsb/dump978 ---
+# All feeders share the same Beast source (readsb on localhost:30005) and,
+# for UAT, our dump978 on localhost:30978.
+#
+# NOTE: ultrafeeder's own readsb ALSO reads BEASTHOST and would add
+# --net-connector=localhost,30005,beast_in -- connecting to its OWN Beast output
+# (a feedback loop that pegs a CPU core). We keep BEASTHOST global because the
+# proprietary feeders (piaware, fr24, planefinder, opensky, rbfeeder) read it
+# from the container environment at config time, and strip it from readsb alone
+# via our s6-rc.d/readsb/run override (unset + bash-bypass of with-contenv).
+setenv BEASTHOST "localhost"
+setenv BEASTPORT "30005"
+
+# FlightAware / piaware
+setenv ENABLE_PIAWARE "$(opt enable_piaware)"
+setenv FEEDER_ID "$(opt piaware_feeder_id)"
+# Only point piaware at our local dump978 when we actually run it (rtlsdr+UAT or
+# uat-only mode). In remote mode dump978 idles (nothing listens on 30978) and UAT
+# already arrives merged over the remote Beast, so setting UAT_RECEIVER_* here
+# would send piaware to a dead port.
+if [[ "${ENABLE_UAT_VAL}" == "true" ]]; then
+  setenv UAT_RECEIVER_HOST "localhost"
+  setenv UAT_RECEIVER_PORT "30978"
+fi
+
+# FlightRadar24 (one binary feeds both 1090 and 978)
+setenv ENABLE_FR24 "$(opt enable_fr24)"
+setenv FR24KEY "$(opt fr24_key)"
+setenv FR24KEY_UAT "$(opt fr24_uat_key)"
+setenv UATHOST "localhost"
+setenv UATPORT "30978"
+
+# PlaneFinder
+setenv ENABLE_PLANEFINDER "$(opt enable_planefinder)"
+setenv SHARECODE "$(opt planefinder_sharecode)"
+
+# OpenSky Network (openskyd-dump1090 in net-input mode)
+setenv ENABLE_OPENSKY "$(opt enable_opensky)"
+setenv OPENSKY_USERNAME "$(opt opensky_username)"
+setenv OPENSKY_SERIAL "$(opt opensky_serial)"
+
+# ADSBHub (consumes SBS/BaseStation on localhost:30003 via socat)
+setenv ENABLE_ADSBHUB "$(opt enable_adsbhub)"
+setenv CLIENTKEY "$(opt adsbhub_clientkey)"
+setenv SBSHOST "localhost"
+setenv SBSPORT "30003"
+
+# AirNav RadarBox (rbfeeder, armhf via qemu). MLAT on by default when enabled;
+# radarbox_mlat=false feeds ADS-B but skips MLAT (02-rbfeeder reads ENABLE_MLAT).
+setenv ENABLE_RADARBOX "$(opt enable_radarbox)"
+setenv SHARING_KEY "$(opt radarbox_sharing_key)"
+if [[ "$(opt_bool radarbox_mlat true)" == "false" ]]; then
+  setenv ENABLE_MLAT "false"
+else
+  setenv ENABLE_MLAT "true"
+fi
+
+# plane.watch (pw-feeder + planewatch-mlat). pw-feeder reads BEASTHOST/BEASTPORT
+# (global localhost:30005) for ADS-B; the run scripts read these to gate and to
+# pass --apikey / mlat-client --user.
+setenv ENABLE_PLANEWATCH "$(opt enable_planewatch)"
+setenv PLANEWATCH_API_KEY "$(opt planewatch_api_key)"
+
+# RadarVirtuel (adsbnetwork). The Python feeder (docker-entrypoint.py) reads
+# RV_CONTRIB_NAME/EMAIL to auto-register; our run scripts derive RV_LAT/LON/ALT
+# from the global location. RV_AIRCRAFT_URL is NOT set -- the feeder reads
+# /run/readsb/aircraft.json directly (the entrypoint ignores a localhost URL).
+setenv ENABLE_RADARVIRTUEL "$(opt enable_radarvirtuel)"
+setenv RV_CONTRIB_NAME "$(opt radarvirtuel_contrib_name)"
+setenv RV_CONTRIB_EMAIL "$(opt radarvirtuel_contrib_email)"
+
+# sdrmap (shell ADS-B feeder + stunnel-tunnelled MLAT). sdrmapfeeder.sh reads
+# SMUSERNAME/SMPASSWORD; our run scripts add the stunnel + mlat-client wiring.
+setenv ENABLE_SDRMAP "$(opt enable_sdrmap)"
+setenv SMUSERNAME "$(opt sdrmap_username)"
+setenv SMPASSWORD "$(opt sdrmap_password)"
+
+# 1090MHz UK (radar1090): the `radar` binary reads readsb Beast and forwards to
+# 1090MHz UK, keyed by RADAR1090_KEY. ADS-B only. Our uk1090 s6 service gates on
+# ENABLE_UK1090 + RADAR1090_KEY.
+setenv ENABLE_UK1090 "$(opt enable_uk1090)"
+setenv RADAR1090_KEY "$(opt uk1090_key)"
+
+# --- Home Assistant sensor publisher (ha-mqtt service) ---
+# ha_sensors toggles the MQTT sensor publisher; the ha-mqtt run wrapper reads
+# HA_SENSORS and runs the publisher when it is "true", else idles. The MQTT
+# connection options (mqtt_host, etc.) are read directly from /data/options.json
+# by the Python publisher, not bridged here.
+if [[ "$(opt ha_sensors)" == "true" ]]; then HA_SENSORS="true"; else HA_SENSORS="false"; fi
+setenv HA_SENSORS "${HA_SENSORS}"
+
+# --- Compile ULTRAFEEDER_CONFIG (978 wiring + merged-Beast aggregators) ---
+# readsb consumes this: each ';'-separated entry is a net connector. UAT from
+# our in-container dump978 is ingested with the uat_in protocol; each enabled
+# aggregator gets a beast_reduce_plus_out adsb feed plus (where offered) an
+# mlat feed, tagged with the station UUID.
+# Single station UUID: the default identity for readsb/MLAT and every
+# merged-Beast aggregator. Each aggregator can override it below. The base
+# reads the bare UUID var (not READSB_UUID) for readsb --uuid-file and the
+# mlat-client fallback identity.
+UUID="$(opt uuid)"
+setenv UUID "${UUID}"
+declare -a UF=()
+
+# Feed source into readsb: a remote extractor's Beast in remote mode, else our
+# local dump978 UAT stream whenever 978 is decoded locally -- the sole input in
+# uat-only mode, an added band alongside the 1090 SDR in rtlsdr mode.
+if [[ "${RECEIVER_MODE}" == "remote" ]]; then
+  RBH="$(opt remote_beast_host)"
+  RBP="$(opt remote_beast_port)"
+  [[ -n "${RBH}" ]] && UF+=("adsb,${RBH},${RBP:-30005},beast_in")
+elif [[ "${ENABLE_UAT_VAL}" == "true" ]]; then
+  UF+=("adsb,localhost,30978,uat_in")
+fi
+
+# add_aggregator <toggle> <adsb_host> <adsb_port> <mlat_host> <mlat_port> <uuid_override_key>
+# mlat_host empty => aggregator offers no MLAT. The per-aggregator uuid
+# override falls back to the shared UUID when its field is blank.
+add_aggregator() {
+  local key="$1" ahost="$2" aport="$3" mhost="$4" mport="$5" ovkey="$6"
+  [[ "$(opt "$key")" == "true" ]] || return 0
+  local u="${UUID}" ov uuid_suffix=""
+  ov="$(opt "$ovkey")"
+  [[ -n "${ov}" ]] && u="${ov}"
+  [[ -n "${u}" ]] && uuid_suffix=",uuid=${u}"
+  UF+=("adsb,${ahost},${aport},beast_reduce_plus_out${uuid_suffix}")
+  # Per-aggregator MLAT toggle: <short>_mlat (short = the uuid-override key minus
+  # its "_uuid" suffix, e.g. adsbone_uuid -> adsbone_mlat), default ON. Set false
+  # to feed this aggregator's ADS-B but skip its MLAT -- useful when two networks
+  # share one MLAT backend (feeding both looks like a duplicate receiver).
+  local mlat_opt="${ovkey%_uuid}_mlat"
+  if [[ -n "${mhost}" && "$(opt_bool "$mlat_opt" true)" != "false" ]]; then
+    UF+=("mlat,${mhost},${mport}${uuid_suffix}")
+  fi
+  # Explicit success: without this the trailing test returns 1 for aggregators
+  # that offer no MLAT (or have it toggled off), which trips `set -e`.
+  return 0
+}
+
+add_aggregator feed_adsblol       in.adsb.lol            30004 in.adsb.lol            31090 adsblol_uuid
+add_aggregator feed_adsbfi        feed.adsb.fi           30004 feed.adsb.fi           31090 adsbfi_uuid
+add_aggregator feed_airplaneslive feed.airplanes.live    30004 feed.airplanes.live    31090 airplaneslive_uuid
+# Planespotters runs MLAT on a SEPARATE host (mlat.planespotters.net) from its
+# ADS-B ingest (feed.planespotters.net); the feed box refuses :31090. Verified
+# by DNS (distinct IPs) + reachability.
+add_aggregator feed_planespotters feed.planespotters.net 30004 mlat.planespotters.net 31090 planespotters_uuid
+add_aggregator feed_theairtraffic feed.theairtraffic.com 30004 feed.theairtraffic.com 31090 theairtraffic_uuid
+add_aggregator feed_avdelphi      data.avdelphi.com      24999 ""                     ""    avdelphi_uuid
+add_aggregator feed_flyitaly      dati.flyitalyadsb.com  4905  dati.flyitalyadsb.com  30100 flyitaly_uuid
+add_aggregator feed_adsbitalia    feed.adsbitalia.it     31108 mlat.adsbitalia.it     41113 adsbitalia_uuid
+add_aggregator feed_adsbexchange  feed1.adsbexchange.com 30004 feed.adsbexchange.com  31090 adsbexchange_uuid
+# Ports differ per aggregator -- do NOT assume 30004/31090. adsb.one uses
+# 64004/64006 (HpRadar is 30004/31090). Verified from each aggregator's own feed
+# instructions.
+add_aggregator feed_adsbone       feed.adsb.one          64004 feed.adsb.one          64006 adsbone_uuid
+add_aggregator feed_hpradar       skyfeed.hpradar.com    30004 skyfeed.hpradar.com    31090 hpradar_uuid
+
+# Raw passthrough for anything not covered above (advanced users).
+RAW_UF="$(opt ultrafeeder_config)"
+[[ -n "${RAW_UF}" ]] && UF+=("${RAW_UF}")
+
+if [[ ${#UF[@]} -gt 0 ]]; then
+  setenv ULTRAFEEDER_CONFIG "$(
+    IFS=';'
+    echo "${UF[*]}"
+  )"
+fi
+
+# --- Escape hatch: extra KEY=value lines, one per line ---
+EXTRA="$(jq -r '.extra_env // empty' "${OPTIONS_FILE}")"
+if [[ -n "${EXTRA}" ]]; then
+  while IFS= read -r line; do
+    [[ -z "${line}" || "${line}" == \#* ]] && continue
+    name="${line%%=*}"
+    value="${line#*=}"
+    name="${name//[[:space:]]/}"
+    [[ -n "${name}" ]] && setenv "${name}" "${value}"
+  done <<<"${EXTRA}"
+fi
+
+log "container environment prepared"

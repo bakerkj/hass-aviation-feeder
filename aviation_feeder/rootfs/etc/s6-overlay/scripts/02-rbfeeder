@@ -1,0 +1,46 @@
+#!/command/with-contenv sh
+# Gated wrapper for the RadarBox config oneshot: skip cleanly when RadarBox is
+# disabled OR unconfigured. The real upstream script `sleep infinity`s on hosts
+# without a thermal sensor, which would otherwise stall s6 init. The gate here
+# matches the rbfeeder longrun (enable + sharing key) so an enabled-but-keyless
+# RadarBox skips setup instead of running the real oneshot while the feeder idles.
+if [ "${ENABLE_RADARBOX:-false}" != "true" ] || [ -z "${SHARING_KEY}" ]; then
+  echo "[02-rbfeeder] radarbox disabled/unconfigured; skipping setup"
+  exit 0
+fi
+# The real oneshot writes rbfeeder.ini early, then `sleep infinity`s forever on a
+# host with no thermal sensor (x86/VM). Bound it so an enabled-but-sensorless host
+# can't wedge this oneshot -- by then the .ini is already written, so the seds
+# below still apply and rbfeeder still starts. On the real ARM target the sensor
+# exists and it returns well under the timeout.
+timeout 30 /etc/s6-overlay/scripts/02-rbfeeder-real || true
+
+# rbfeeder's intern_port (default 32008) collides with readsb's SBS-input block
+# (readsb opens 32006-32009 from --net-sbs-in-port=32006), so readsb can't bind
+# 32008 and crash-loops. Move ONLY intern_port. Leave beast_input_port at its
+# default (32004): when rbfeeder autostarts the mlat-client it auto-appends
+# "--results beast,connect,127.0.0.1:32004" (its default beast_input), so moving
+# beast_input breaks that wiring and MLAT never comes up. 32004 doesn't collide
+# with readsb's 32006-32009, so it can stay put.
+if [ -f /etc/rbfeeder.ini ]; then
+  sed -i '/^\[network\]/a intern_port=32208' /etc/rbfeeder.ini
+
+  # THE fix: rbfeeder silently refuses to autostart MLAT unless the altitude is a
+  # bare number. Our bridge writes the elevation as "<n>m" (e.g. alt=10m; same
+  # unit suffix openskyd complains about), which rbfeeder treats as an invalid
+  # position, so it never launches the mlat-client. Strip the unit suffix.
+  sed -i 's/^alt=\(-\{0,1\}[0-9]\{1,\}\).*$/alt=\1/' /etc/rbfeeder.ini
+
+  if [ "${ENABLE_MLAT:-true}" = "true" ]; then
+    # Point mlat_cmd at our rbfeeder-mlat shim (which execs the client -- it has a
+    # python shebang) with a free listen port. The community client we already ship
+    # autostarts fine once the altitude is valid -- the failure was the alt suffix,
+    # not the client. 30107 is free here (piaware's fa-mlat uses 30105/30106). The
+    # shim re-tags the client's output as [mlat] so RadarBox MLAT is distinguishable
+    # from rbfeeder's own feed lines in the add-on log.
+    sed -i 's#^mlat_cmd=.*#mlat_cmd=/usr/local/bin/rbfeeder-mlat --results beast,listen,30107#' /etc/rbfeeder.ini
+  else
+    # radarbox_mlat toggled off: ensure rbfeeder won't launch a mlat-client.
+    sed -i 's/^mlat=.*/mlat=false/' /etc/rbfeeder.ini
+  fi
+fi

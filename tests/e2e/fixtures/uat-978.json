@@ -1,0 +1,10 @@
+{
+  "lat": 42.28,
+  "long": -83.74,
+  "alt": "250m",
+  "tz": "America/Detroit",
+  "receiver_mode": "uat",
+  "dump978_rtlsdr_device": "00000978",
+  "uuid": "01234567-89ab-cdef-0123-456789abcdef",
+  "feed_adsblol": true
+}

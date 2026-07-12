@@ -1,0 +1,17 @@
+#!/bin/bash
+# Startup gate: block until readsb's Beast output (:30005) actually accepts
+# a TCP connection, so the net-input feeders that depend on this oneshot don't
+# race readsb at boot and spew "connection refused". Uses bash /dev/tcp (connect
+# then close, without draining the stream). Fail OPEN after ~30s so a readsb
+# problem can never wedge the feeders queued behind this gate.
+tries=0
+while [ "$tries" -lt 60 ]; do
+  if (exec 3<>/dev/tcp/127.0.0.1/30005) 2>/dev/null; then
+    echo "[wait-for-readsb] readsb :30005 is up; releasing feeders"
+    exit 0
+  fi
+  tries=$((tries + 1))
+  sleep 0.5
+done
+echo "[wait-for-readsb] readsb :30005 not accepting after 30s -- releasing feeders anyway"
+exit 0

@@ -1,0 +1,21 @@
+#!/bin/bash
+# rbfeeder autostarts its mlat-client from mlat_cmd, and the child inherits
+# rbfeeder's stdout -- so without this, RadarBox's MLAT lines and rbfeeder's own
+# feed stats both log under the same [rbfeeder] tag. This shim re-prefixes the
+# mlat-client's output with "[mlat] " so the two are distinguishable in the HA
+# add-on log ([rbfeeder] vs [rbfeeder] [mlat]). `exec` keeps this process ==
+# mlat-client, so rbfeeder still tracks and signals it directly; only the output
+# is rewritten (line-buffered so it appears promptly). The [mlat] prefix is
+# coloured the same yellow (SGR 33) that s6wrap-color gives [rbfeeder], so the
+# whole "[rbfeeder] [mlat]" prefix reads as one colour instead of two-tone.
+esc=$(printf '\033')
+# Emit MLAT stats to /run/mlat-client/radarbox.json like the other clients. Note
+# RadarBox's server (mlat1.rb24.com) never pushes the `stats` message that vanilla
+# mlat-client needs to write this file -- but our build-time patch (see
+# patch-mlat-client.py) makes mlat-client write positions/minute + aircraft-used
+# on its own client-side timer, which DOES fire for RadarBox. So this file gets
+# the client-side MLAT stats (no peer_count/sync -- RadarBox doesn't provide those).
+mkdir -p /run/mlat-client
+exec /usr/local/bin/mlat-client "$@" \
+  --stats-json /run/mlat-client/radarbox.json --stats-interval 30 \
+  > >(stdbuf -oL sed "s/^/${esc}[33m[mlat]${esc}[0m /") 2>&1

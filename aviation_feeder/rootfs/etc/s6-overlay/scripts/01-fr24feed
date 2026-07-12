@@ -1,0 +1,9 @@
+#!/command/with-contenv sh
+# Gated wrapper for the FR24 config oneshot: skip cleanly when fr24 is off or
+# unconfigured (the real script hard-exits on missing FR24KEY, which would fail
+# s6 init on every install where fr24 is disabled).
+if [ "${ENABLE_FR24:-false}" != "true" ] || [ -z "${FR24KEY}" ]; then
+  echo "[01-fr24feed] fr24 disabled/unconfigured; skipping setup"
+  exit 0
+fi
+exec /etc/s6-overlay/scripts/01-fr24feed-real

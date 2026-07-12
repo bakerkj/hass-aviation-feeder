@@ -1,0 +1,11 @@
+{
+  "lat": 42.28,
+  "long": -83.74,
+  "alt": "250m",
+  "tz": "America/Detroit",
+  "receiver_mode": "remote",
+  "remote_beast_host": "192.168.1.50",
+  "remote_beast_port": 30005,
+  "uuid": "01234567-89ab-cdef-0123-456789abcdef",
+  "feed_adsblol": true
+}

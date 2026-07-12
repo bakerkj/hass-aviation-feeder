@@ -1,0 +1,9 @@
+{
+  "lat": "HOMEASSISTANT_LATITUDE",
+  "long": "HOMEASSISTANT_LONGITUDE",
+  "alt": "HOMEASSISTANT_ELEVATION",
+  "tz": "America/New_York",
+  "receiver_mode": "remote",
+  "remote_beast_host": "192.0.2.1",
+  "remote_beast_port": 30005
+}

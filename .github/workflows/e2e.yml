@@ -1,0 +1,69 @@
+name: e2e
+
+# Build the add-on image and run the end-to-end suite (tests/e2e/run.sh) on
+# BOTH shipped arches, each on its NATIVE GitHub-hosted runner so the build +
+# e2e exercise the real target architecture with no qemu emulation:
+#   amd64   -> ubuntu-24.04       (native x86_64)
+#   aarch64 -> ubuntu-24.04-arm   (native arm64 runner; this leg genuinely
+#              exercises the ARM-only rbfeeder binary instead of emulating it)
+# Arch -> runner mapping matches the addon-build workflow / the ha-weewx and
+# hass-apps house style. run.sh does the `docker build --build-arg
+# BUILD_VERSION=e2e` itself and stands up its own mosquitto + mock-HA-API
+# sidecars, so CI just invokes it.
+
+on:
+  pull_request:
+    paths:
+      - "aviation_feeder/**"
+      - "tests/e2e/**"
+      - ".github/workflows/e2e.yml"
+  push:
+    branches: [main]
+    paths:
+      - "aviation_feeder/**"
+      - "tests/e2e/**"
+      - ".github/workflows/e2e.yml"
+  # Manual trigger, e.g. to re-exercise the native arm64 leg on demand.
+  workflow_dispatch:
+
+# NOTE: no `concurrency:` block — neither ha-weewx nor hass-apps use one in
+# their workflows, so this stays consistent with the house style. Add a
+# cancel-in-progress group here if that convention changes upstream.
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Build and run e2e tests (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      # Run both arches to completion even if one fails, so a regression on one
+      # architecture doesn't mask results on the other.
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # No docker/setup-buildx-action here (unlike the ha-weewx / hass-apps
+      # build workflows): run.sh does a plain `docker build -t "$IMAGE"` and
+      # then `docker run "$IMAGE"`, so the built image must land in the local
+      # docker image store. setup-buildx-action's docker-container driver would
+      # build without loading it there and break the subsequent `docker run`.
+      # The GitHub-hosted ubuntu runners already ship Docker + BuildKit, which
+      # is all run.sh needs.
+      #
+      # The build deliberately stays on plain docker via run.sh — no
+      # home-assistant/builder action and no `--build-arg BUILD_FROM=...` — so
+      # the Dockerfile's digest-pinned `ARG BUILD_FROM` is preserved rather than
+      # overridden. (There is intentionally no build.yaml in this repo.)
+      - name: Build and run e2e tests
+        run: bash tests/e2e/run.sh
+        env:
+          AVIATION_FEEDER_IMAGE: aviation_feeder:e2e

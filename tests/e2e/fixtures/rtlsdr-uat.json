@@ -1,0 +1,21 @@
+{
+  "lat": 42.28,
+  "long": -83.74,
+  "alt": "250m",
+  "tz": "America/Detroit",
+  "enable_uat": true,
+  "uuid": "01234567-89ab-cdef-0123-456789abcdef",
+  "feed_adsblol": true,
+  "feed_adsbfi": true,
+  "feed_airplaneslive": true,
+  "airplaneslive_uuid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "feed_planespotters": true,
+  "feed_theairtraffic": true,
+  "feed_avdelphi": true,
+  "feed_flyitaly": true,
+  "feed_adsbitalia": true,
+  "feed_adsbexchange": true,
+  "feed_adsbone": true,
+  "adsbone_mlat": false,
+  "feed_hpradar": true
+}

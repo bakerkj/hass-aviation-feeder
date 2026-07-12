@@ -1,0 +1,13 @@
+#!/command/with-contenv bash
+# Gate AirNav RadarBox: needs enable_radarbox + a sharing key. Idle otherwise.
+. /usr/local/bin/feeder-gate
+gate "[rbfeeder]" ENABLE_RADARBOX SHARING_KEY
+# The rbfeeder binary prefixes every line with its OWN coloured "[YYYY-MM-DD
+# HH:MM:SS]" -- a redundant second timestamp once the base longrun's s6wrap adds
+# the house "[ts][rbfeeder]". Delegate to that base longrun (keeps its ulimit /
+# VERBOSE / stats-filter handling), but post-filter its output to drop the inner
+# stamp. The pattern is tag-colour-agnostic and matches only the *dated* inner
+# stamp, so the mlat shim's "[mlat]" tag is left intact. proc-sub keeps the base
+# script the exec'd (signalled) process; sed is a side filter.
+exec /etc/s6-overlay/scripts/rbfeeder \
+  > >(stdbuf -oL sed -E 's/(\] )\x1b\[35m\[\x1b\[33m[0-9 :-]+\x1b\[35m\]\x1b\[0m +/\1/') 2>&1

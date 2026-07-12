@@ -1,0 +1,79 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigestsToSemver"],
+  "schedule": ["before 6pm on friday"],
+  "timezone": "America/New_York",
+  "assignees": ["bakerkj"],
+  "pre-commit": {
+    "enabled": true
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "GitHub runner versions in shell scripts and YAML within workflows",
+      "managerFilePatterns": ["/.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": [
+        "runner=\"(?<depName>ubuntu|macos|windows)-(?<currentValue>[\\w.-]+)\"",
+        "runs-on:\\s*(?<depName>ubuntu|macos|windows)-(?<currentValue>[\\w.-]+)"
+      ],
+      "datasourceTemplate": "github-runners"
+    },
+    {
+      "customType": "regex",
+      "description": "Renovate npm package version pinned in CI workflows",
+      "managerFilePatterns": ["/.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": ["npx --package renovate@(?<currentValue>[\\d.]+)"],
+      "depNameTemplate": "renovate",
+      "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "home-assistant/builder build-image action (calver-tagged sub-path). Versioning is explicitly 'loose' so the calver tags (2026.06.0) compare correctly — the helpers:pinGitHubActionDigestsToSemver preset would otherwise apply semver to this depName globally, which silently ignores calver and surfaces the old pre-calver semver tags (4.x, 7.x) as 'latest'.",
+      "managerFilePatterns": ["/.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": [
+        "home-assistant/builder/actions/build-image@(?<currentValue>[\\w.-]+)"
+      ],
+      "depNameTemplate": "home-assistant/builder",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "frenck/action-addon-linter schema URLs in pre-commit config",
+      "managerFilePatterns": ["/\\.pre-commit-config\\.ya?ml$/"],
+      "matchStrings": ["frenck/action-addon-linter/(?<currentValue>v[\\d.]+)/"],
+      "depNameTemplate": "frenck/action-addon-linter",
+      "datasourceTemplate": "github-tags"
+    },
+    {
+      "customType": "regex",
+      "description": "Pinned Debian apt package versions in add-on Dockerfiles (deb datasource)",
+      "managerFilePatterns": ["/[^/]+/Dockerfile$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>\\S+)\\s+\\S+=(?<currentValue>[^\\s\\\\]+)"
+      ],
+      "registryUrlTemplate": "https://deb.debian.org/debian?suite=trixie&components=main&binaryArch=amd64",
+      "versioningTemplate": "deb"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    },
+    {
+      "matchManagers": ["pre-commit"],
+      "groupName": "pre-commit hooks"
+    },
+    {
+      "matchManagers": ["dockerfile"],
+      "matchPackageNames": ["/^ghcr\\.io/sdr-enthusiasts//"],
+      "groupName": "sdr-enthusiasts base images"
+    },
+    {
+      "description": "Override the helpers:pinGitHubActionDigestsToSemver preset's semver versioning for home-assistant/builder, which moved from semver tags (1.x-7.x) to calver tags (2026.06.0+).",
+      "matchPackageNames": ["home-assistant/builder"],
+      "versioning": "loose"
+    }
+  ]
+}

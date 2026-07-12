@@ -1,0 +1,127 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  claude-review:
+    name: Auto code-review
+    # Skip auto-generated PRs:
+    #   * Renovate / Dependabot — already gated by CI + manual review.
+    #   * release-please — PR author is the user (PAT-driven), but the
+    #     head branch is always `release-please--…`, which is the
+    #     reliable signal. Per-component release-please produces a branch
+    #     shape like `release-please--branches--main--components--<addon>`.
+    if: |
+      github.event.pull_request.user.login != 'renovate[bot]' &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      !startsWith(github.head_ref, 'release-please--')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # write needed so the action can post review comments and update the
+      # progress-tracking comment that track_progress creates.
+      pull-requests: write
+      issues: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@2fee15510437d71399d9139ed60433470484a8fb # v1.0.153
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Flips mode from `agent` to `tag`, which auto-loads the
+          # github_comment MCP server and creates a tracking comment with
+          # progress checkboxes so a failure still leaves a visible trail.
+          track_progress: true
+
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            This repository is a single Home Assistant add-on that
+            layers the sdr-enthusiasts proprietary-feeder components
+            onto the docker-adsb-ultrafeeder base image. The add-on
+            lives in `aviation_feeder/` with its own Dockerfile,
+            config.json, and s6-overlay run scripts:
+
+            - readsb decodes 1090 MHz ADS-B and dump978 decodes 978 MHz
+              UAT from RTL-SDR dongles; tar1090 / graphs1090 provide the
+              local web UI.
+            - Proprietary aggregator feeders (piaware, fr24feed,
+              pfclient, rbfeeder, opensky, adsbhub) are layered in from
+              their upstream images and pointed at the merged Beast
+              stream.
+            - A small paho-mqtt publisher (aviation_feeder_mqtt)
+              publishes feeder-health and nearby-aircraft sensors to
+              MQTT Discovery.
+
+            It uses s6-overlay and publishes MQTT Discovery sensors.
+
+            Review this PR, looking for:
+
+            - Bugs — logic errors, race conditions, off-by-ones,
+              broken edge cases. If you find one, leave an inline
+              comment at the specific line.
+            - CI / build correctness.
+            - Addon hygiene, including MQTT.
+            - Security.
+            - Software-engineering best practices — design choices
+              worth a second look, duplicated logic that could share
+              a single source of truth, or patterns that block
+              plausible near-term change.
+            - Reuse opportunities — places where a well-known library
+              (stdlib or external) would do better than hand-rolled
+              code.
+
+            Hard rules:
+
+            - Do NOT comment on style, naming, formatting, or "consider
+              adding a docstring" — the repo runs ruff + prettier + shfmt
+              in pre-commit and intentionally avoids redundant comments.
+            - Best-practice and reuse comments must point at something
+              concrete (a named library, a specific duplicate, a
+              measurable improvement) — generic refactoring advice isn't
+              useful.
+            - Do NOT leave general praise or summary fluff.
+            - If you have nothing substantive to flag, post a single
+              short top-level comment saying "No issues found." That's
+              the success signal — silence isn't.
+            - When you do flag something, the comment body MUST include
+              the file path, the concrete failure mode, and the fix.
+            - This codebase targets Python 3.14 and uses new-syntax
+              features intentionally — most notably PEP 758 parenless
+              multi-exception except (``except TypeError, ValueError:``).
+              Do NOT flag these as syntax errors or "needs parentheses".
+
+          # mcp__github_inline_comment__create_inline_comment is the
+          # action's built-in inline-comment tool (loads only when named
+          # here). Bash gh allowlist is the fallback path the official
+          # pr-review-comprehensive.yml example uses for top-level
+          # comments and diff-fetching.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+      # The action's SDK call writes a JSONL transcript (per-turn tool_use,
+      # tool_result, permission events) to runner.temp/claude-execution-output.json.
+      # The action redacts those events from the public CI log "for security";
+      # uploading the raw record as an artifact keeps it visible only to
+      # collaborators — needed for diagnosing permission denials and turn-count
+      # blowups. `if: always()` so we capture failures too.
+      - name: Upload Claude execution log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name:
+            claude-execution-output-pr${{ github.event.pull_request.number }}
+          path: ${{ runner.temp }}/claude-execution-output.json
+          if-no-files-found: ignore
+          retention-days: 14

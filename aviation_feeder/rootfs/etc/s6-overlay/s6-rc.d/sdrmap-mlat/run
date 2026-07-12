@@ -1,0 +1,22 @@
+#!/command/with-contenv bash
+# sdrmap MLAT: mlat-client reads Beast from our readsb, syncs to sdrmap THROUGH
+# the local stunnel tunnel (--server 127.0.0.1:3333, wrapped to
+# mlat.feed.sdrmap.org), and republishes results on 30110 (30105-30109 are taken
+# by rbfeeder/piaware/planewatch/radarvirtuel). Depends on sdrmap-stunnel so the
+# tunnel is up first. sdrmap authenticates the mlat-client with user:password.
+. /usr/local/bin/feeder-gate
+gate "[sdrmap-mlat]" ENABLE_SDRMAP SMUSERNAME SMPASSWORD LAT LONG ALT
+# Give stunnel a moment to bind 127.0.0.1:3333.
+sleep 10
+# --stats-json exposes MLAT sync (peer_count, good_sync %) for the HA publisher.
+mkdir -p /run/mlat-client
+exec /usr/local/bin/s6wrap --quiet --timestamps --prepend=sdrmap-mlat --args \
+  /usr/local/bin/mlat-client \
+  --input-type dump1090 \
+  --input-connect localhost:30005 \
+  --server 127.0.0.1:3333 \
+  --user "${SMUSERNAME}:${SMPASSWORD}" \
+  --lat "${LAT}" --lon "${LONG}" --alt "${ALT}" \
+  --results beast,listen,30110 \
+  --stats-json /run/mlat-client/sdrmap.json \
+  --stats-interval 30

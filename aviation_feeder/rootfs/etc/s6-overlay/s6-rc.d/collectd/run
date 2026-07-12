@@ -1,0 +1,13 @@
+#!/command/with-contenv sh
+# Override of the base image's collectd longrun.
+# (Upstream is simply: `#!/bin/sh` + `exec /etc/s6-overlay/scripts/collectd`.)
+#
+# collectd's finish script does `rm -rf /run/collectd` on every exit, and the
+# upstream script then `mkdir -p /run/collectd` -- recreating it as a real dir on
+# the overlay. With GRAPHS1090_REDUCE_IO the live RRD database lives in
+# /run/collectd and is rewritten every ~15s, so after the first restart those
+# writes would land on the SD/eMMC instead of tmpfs. Re-establish the tmpfs
+# symlink (00-tmpfs-readsb sets it up initially) before handing off.
+sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/collectd collectd
+
+exec /etc/s6-overlay/scripts/collectd

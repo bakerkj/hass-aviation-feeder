@@ -1,0 +1,9 @@
+#!/command/with-contenv bash
+# Home Assistant sensor publisher. When ha_sensors is enabled, run the paho-mqtt
+# publisher (this Python package), which publishes feeder-health / planes-near-me
+# / per-feeder-status entities via MQTT discovery. When disabled, idle so s6
+# keeps the service slot without doing anything.
+. /usr/local/bin/feeder-gate
+gate "[ha-mqtt]" HA_SENSORS
+export PYTHONPATH=/opt
+exec python3 -m aviation_feeder_mqtt --options /data/options.json

@@ -1,0 +1,6 @@
+#!/command/with-contenv sh
+# Gate the FlightRadar24 UAT (978) feeder: needs enable_fr24 plus a separate
+# UAT sharing key (fr24_uat_key). Idle otherwise so it never error-loops.
+. /usr/local/bin/feeder-gate
+gate "[fr24uat-feed]" ENABLE_FR24 FR24KEY_UAT
+exec /etc/s6-overlay/scripts/fr24uat-feed

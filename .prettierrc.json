@@ -1,0 +1,8 @@
+{
+  "overrides": [
+    {
+      "files": "*/config.json",
+      "options": { "printWidth": 1 }
+    }
+  ]
+}

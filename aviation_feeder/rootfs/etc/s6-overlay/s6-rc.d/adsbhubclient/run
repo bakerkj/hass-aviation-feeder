@@ -1,0 +1,8 @@
+#!/command/with-contenv sh
+# Gate ADSBHub: needs enable_adsbhub + a client key. Idle otherwise.
+. /usr/local/bin/feeder-gate
+gate "[adsbhubclient]" ENABLE_ADSBHUB CLIENTKEY
+# adsbhub.sh (via the upstream script) echoes bare lines with no tag — unlike
+# every other engine it isn't wrapped by the base. Route it through s6wrap so its
+# output gets the same [adsbhubclient] prefix + per-engine colour + timestamp.
+exec s6wrap --quiet --timestamps --prepend=adsbhubclient --args /etc/s6-overlay/scripts/adsbhubclient

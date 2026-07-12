@@ -1,0 +1,20 @@
+#!/command/with-contenv bash
+# RadarVirtuel (adsbnetwork) feeder: a pure-Python client (docker-entrypoint.py)
+# that reads readsb aircraft and POSTs to radarvirtuel, auto-registering the
+# station from RV_CONTRIB_NAME/EMAIL and persisting the station id/uid to /data.
+# We run the upstream entrypoint directly (not its s6 scripts / bundled readsb).
+# Gate on the toggle + contributor identity; idle cleanly otherwise.
+#
+# Aircraft source: the feeder's built-in AIRCRAFT_SOURCES reads
+# /run/readsb/aircraft.json (which our readsb writes) directly -- we do NOT set
+# RV_AIRCRAFT_URL, because the upstream entrypoint deliberately ignores any
+# localhost/127.0.0.1 URL, so an override there would be dead code.
+#
+# Location comes from the global LAT/LONG/ALT (RV reads RV_LON; our bridge var
+# is LONG).
+. /usr/local/bin/feeder-gate
+gate "[radarvirtuel]" ENABLE_RADARVIRTUEL RV_CONTRIB_NAME RV_CONTRIB_EMAIL
+export RV_LAT="${RV_LAT:-$LAT}" RV_LON="${RV_LON:-$LONG}" RV_ALT="${RV_ALT:-$ALT}"
+sleep 5
+exec /usr/local/bin/s6wrap --quiet --timestamps --prepend=radarvirtuel --args \
+  python3 -u /docker-entrypoint.py

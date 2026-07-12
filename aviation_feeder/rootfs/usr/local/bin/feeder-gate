@@ -1,0 +1,29 @@
+# shellcheck shell=sh
+# Shared feeder gate. SOURCE this (not exec) from a service `run` script, then
+# call:  gate "[tag]" ENABLE_VAR [REQUIRED_VAR ...]
+#
+# It idles the service (prints one "[tag] disabled ... idling" line and execs
+# `sleep infinity`, replacing this process) when the enable flag isn't "true" or
+# any required env var is empty; otherwise it returns and the run script
+# continues to exec the real feeder. Arguments are env-var NAMES, resolved by
+# indirection via `eval` so this works sourced from both `sh` (dash) and `bash`
+# run scripts. The names are hardcoded literals in the run scripts (never user
+# input), so the eval is safe. This collapses the identical gate boilerplate that
+# every proprietary-feeder run script used to repeat.
+gate() {
+  gate_tag="$1"
+  gate_enable_var="$2"
+  shift 2
+  eval "gate_enabled=\${${gate_enable_var}:-false}"
+  if [ "${gate_enabled}" != "true" ]; then
+    echo "${gate_tag} disabled (${gate_enable_var} not enabled); idling"
+    exec sleep infinity
+  fi
+  for gate_v in "$@"; do
+    eval "gate_val=\${${gate_v}:-}"
+    if [ -z "${gate_val}" ]; then
+      echo "${gate_tag} disabled (missing ${gate_v}); idling"
+      exec sleep infinity
+    fi
+  done
+}

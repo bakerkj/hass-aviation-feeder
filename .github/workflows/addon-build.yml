@@ -1,0 +1,197 @@
+name: addon-build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    # Preserve the release path: release-please pushes tags shaped
+    # ``<addon>-v<X>.<Y>.<Z>`` and the discover step keys off them to
+    # enter ``release`` mode. Without an explicit tag filter, restricting
+    # ``branches`` to main would silently drop tag-triggered builds.
+    tags: ["*-v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    name: Discover addons
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      mode: ${{ steps.matrix.outputs.mode }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Build matrix
+        id: matrix
+        env:
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          WORKFLOW_PATH: .github/workflows/addon-build.yml
+        run: |
+          # Four modes drive a single matrix:
+          #
+          #   release : tag push shaped <addon>-v<X>.<Y>.<Z>
+          #             → one addon × its arches, push=true, version=parsed
+          #
+          #   smoke-component : push/PR on a release-please component branch
+          #                     (release-please--branches--main--components--<addon>)
+          #                     → one addon × its arches, push=false, version=test
+          #                     Branch shape is fixed at src/util/branch-name.ts:79
+          #                     in googleapis/release-please; the diff on those
+          #                     branches is by construction one-addon-only.
+          #
+          #   smoke-changed : regular PR / push — diff against the base commit and
+          #                   build only addons whose directories were touched.
+          #                   If the workflow file itself changed, fall through to
+          #                   smoke-all (workflow changes can affect any build).
+          #                   → changed addons × their arches, push=false
+          #
+          #   smoke-all : the workflow file changed (any branch) — build everything
+          #               as a safety net.
+          #               → all addons × their arches, push=false, version=test
+          #
+          #   skip : tag push not matching the release tag shape — build job is no-op.
+          mode=""
+          target_addon=""
+          version=""
+
+          if [ "$EVENT" = "push" ] && [ "$REF_TYPE" = "tag" ]; then
+            case "$REF_NAME" in
+              *-v*.*.*)
+                target_addon="${REF_NAME%-v*}"
+                version="${REF_NAME##*-v}"
+                if [ -z "$target_addon" ] || [ -z "$version" ] || [ "$target_addon" = "$REF_NAME" ]; then
+                  echo "tag '$REF_NAME' did not parse as <addon>-v<version>"
+                  exit 1
+                fi
+                if [ ! -f "$target_addon/config.json" ]; then
+                  echo "no config.json found for tag-derived addon '$target_addon'"
+                  exit 1
+                fi
+                mode="release"
+                ;;
+              *)
+                echo "tag '$REF_NAME' does not match <addon>-v*.*.* -> skip"
+                echo "matrix={\"include\":[]}" >> "$GITHUB_OUTPUT"
+                echo "mode=skip" >> "$GITHUB_OUTPUT"
+                exit 0
+                ;;
+            esac
+          else
+            rp_prefix="release-please--branches--main--components--"
+            case "$HEAD_REF" in
+              "$rp_prefix"*)
+                target_addon="${HEAD_REF#"$rp_prefix"}"
+                mode="smoke-component"
+                echo "release-please component branch -> scoping to: $target_addon"
+                ;;
+              *)
+                # Resolve the base commit to diff against, then decide
+                # smoke-changed vs smoke-all based on what touched.
+                if [ "$EVENT" = "pull_request" ]; then
+                  base="$PR_BASE_SHA"
+                elif [ -n "$PUSH_BEFORE_SHA" ] \
+                    && [ "$PUSH_BEFORE_SHA" != "0000000000000000000000000000000000000000" ] \
+                    && git cat-file -e "$PUSH_BEFORE_SHA" 2>/dev/null; then
+                  base="$PUSH_BEFORE_SHA"
+                else
+                  base=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+                fi
+                echo "base for diff: $base"
+                changed=$(git diff --name-only "$base" HEAD)
+                echo "changed files:"
+                echo "$changed" | awk '{print "  " $0}'
+
+                if echo "$changed" | grep -qx "$WORKFLOW_PATH"; then
+                  echo "workflow file changed -> smoke-all"
+                  mode="smoke-all"
+                else
+                  mode="smoke-changed"
+                fi
+                ;;
+            esac
+          fi
+
+          matrix='{"include":['
+          first=true
+          for cfg in */config.json; do
+            addon=$(dirname "$cfg")
+            # release / smoke-component: pin to target_addon.
+            if [ -n "$target_addon" ] && [ "$addon" != "$target_addon" ]; then
+              continue
+            fi
+            # smoke-changed: include only addons whose dir was touched.
+            if [ "$mode" = "smoke-changed" ] \
+                && ! echo "$changed" | grep -q "^${addon}/"; then
+              continue
+            fi
+            arches=$(python3 -c "import json; print(' '.join(json.load(open('$cfg'))['arch']))")
+            for arch in $arches; do
+              if [ "$arch" = "amd64" ]; then
+                runner="ubuntu-24.04"
+              elif [ "$arch" = "aarch64" ]; then
+                runner="ubuntu-24.04-arm"
+              else
+                continue
+              fi
+              if [ "$first" = true ]; then
+                first=false
+              else
+                matrix+=','
+              fi
+              matrix+="{\"addon\":\"$addon\",\"arch\":\"$arch\",\"runner\":\"$runner\",\"version\":\"${version:-test}\"}"
+            done
+          done
+          matrix+=']}'
+          echo "mode: $mode"
+          echo "matrix: $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.addon }} (${{ matrix.arch }})
+    needs: discover
+    if:
+      needs.discover.outputs.mode != 'skip' && needs.discover.outputs.matrix !=
+      '{"include":[]}'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    # Only the build job pushes to ghcr.io (on release mode); discover
+    # just emits a matrix and stays at workflow-level contents: read.
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Build add-on image
+        uses: home-assistant/builder/actions/build-image@4de35182ce1e329181bffcbcc84d33db5e2c7e10 # 2026.06.0
+        with:
+          arch: ${{ matrix.arch }}
+          image:
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.arch }}-${{
+            matrix.addon }}
+          image-tags: |
+            ${{ needs.discover.outputs.mode == 'release' && matrix.version || 'test' }}
+            ${{ needs.discover.outputs.mode == 'release' && 'latest' || '' }}
+          version: ${{ matrix.version }}
+          push:
+            ${{ needs.discover.outputs.mode == 'release' && 'true' || 'false' }}
+          load: "false"
+          context: ${{ matrix.addon }}
+          # Shared cache scope so a smoke build on the release-please PR
+          # warms layers for the release publish on tag push.
+          cache-gha-scope: ${{ matrix.addon }}
+          cosign: "false"
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}

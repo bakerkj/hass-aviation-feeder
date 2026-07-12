@@ -1,0 +1,9 @@
+#!/command/with-contenv sh
+# Gated wrapper for the PlaneFinder config oneshot: skip cleanly when the
+# feeder is off or unconfigured (the real script hard-exits on missing
+# SHARECODE, which would fail s6 init).
+if [ "${ENABLE_PLANEFINDER:-false}" != "true" ] || [ -z "${SHARECODE}" ]; then
+  echo "[01-pfclient] planefinder disabled/unconfigured; skipping setup"
+  exit 0
+fi
+exec /etc/s6-overlay/scripts/01-pfclient-real

@@ -1,0 +1,26 @@
+#!/command/with-contenv bash
+# Optionally skip IPv6 (AAAA) DNS resolution (add-on option `prefer_ipv4`,
+# default true). If this container has a global IPv6 address but no working IPv6
+# route, every IPv6 connect fails with errno 101 (Network unreachable) and the
+# mlat-clients / readsb net-connectors churn on it for any aggregator that
+# publishes AAAA records.
+#
+# The add-on sandbox has no CAP_NET_ADMIN, so IPv6 can't be turned off at the
+# kernel (sysctl net.ipv6.conf.all.disable_ipv6 / `ip -6 addr flush` are denied).
+# Instead we disable it in the resolver: glibc's `no-aaaa` option (glibc >= 2.36;
+# this image is 2.41) skips AAAA queries entirely, so no glibc process (readsb in
+# C, the mlat-clients in Python) ever receives an IPv6 address to attempt. Applied
+# via resolv.conf (read by every glibc process) and RES_OPTIONS (env fallback).
+# NB: gai.conf would only re-order IPv4/IPv6 results, not stop AAAA -- so it is
+# deliberately not used here.
+prefer_ipv4="$(jq -r '.prefer_ipv4 // true' /data/options.json 2>/dev/null)"
+if [[ "${prefer_ipv4}" != "true" ]]; then
+  echo "[01-prefer-ipv4] prefer_ipv4=${prefer_ipv4}; leaving IPv6/AAAA resolution enabled"
+  exit 0
+fi
+
+if [[ -w /etc/resolv.conf ]] && ! grep -q '^options no-aaaa' /etc/resolv.conf 2>/dev/null; then
+  echo 'options no-aaaa' >> /etc/resolv.conf || true
+fi
+printf 'no-aaaa' > /run/s6/container_environment/RES_OPTIONS 2>/dev/null || true
+echo "[01-prefer-ipv4] prefer_ipv4=true; AAAA resolution disabled (no-aaaa)"

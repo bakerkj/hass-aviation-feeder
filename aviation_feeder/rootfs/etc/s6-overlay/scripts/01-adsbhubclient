@@ -1,0 +1,9 @@
+#!/command/with-contenv sh
+# Gated wrapper for the ADSBHub config oneshot: skip cleanly when the feeder is
+# off or unconfigured (the real script hard-exits on missing SBSHOST/CLIENTKEY,
+# which would fail s6 init).
+if [ "${ENABLE_ADSBHUB:-false}" != "true" ] || [ -z "${CLIENTKEY}" ]; then
+  echo "[01-adsbhubclient] adsbhub disabled/unconfigured; skipping setup"
+  exit 0
+fi
+exec /etc/s6-overlay/scripts/01-adsbhubclient-real

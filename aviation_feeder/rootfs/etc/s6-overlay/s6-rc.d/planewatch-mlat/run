@@ -1,0 +1,25 @@
+#!/command/with-contenv bash
+# MLAT for plane.watch: a mlat-client that reads Beast from our readsb, syncs to
+# plane.watch THROUGH pw-feeder's local relay (--server 127.0.0.1:12346 =
+# pw-feeder's MLATSERVERHOST:MLATSERVERPORT), and republishes MLAT results on
+# 30108 (30104-30107 are already taken by piaware/rbfeeder). Depends on pw-feeder
+# so the relay is listening first. Idle unless enabled + API key + station
+# position (ALT is bare metres, as normalised by the config bridge). Run through
+# s6wrap so the [planewatch-mlat] tag is timestamped + coloured like every other
+# service (mlat-client has no --prepend of its own here).
+. /usr/local/bin/feeder-gate
+gate "[planewatch-mlat]" ENABLE_PLANEWATCH PLANEWATCH_API_KEY LAT LONG ALT
+# Give pw-feeder's relay a moment to bind before connecting.
+sleep 5
+# --stats-json exposes MLAT sync (peer_count, good_sync %) for the HA publisher.
+mkdir -p /run/mlat-client
+exec /usr/local/bin/s6wrap --quiet --timestamps --prepend=planewatch-mlat --args \
+  /usr/local/bin/mlat-client \
+  --input-type dump1090 \
+  --input-connect localhost:30005 \
+  --lat "${LAT}" --lon "${LONG}" --alt "${ALT}" \
+  --server 127.0.0.1:12346 \
+  --user "${PLANEWATCH_API_KEY}" \
+  --results beast,listen,30108 \
+  --stats-json /run/mlat-client/planewatch.json \
+  --stats-interval 30

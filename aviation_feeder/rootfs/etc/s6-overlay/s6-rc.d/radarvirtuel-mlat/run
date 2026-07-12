@@ -1,0 +1,24 @@
+#!/command/with-contenv bash
+# RadarVirtuel MLAT: waits for the feeder to register the station (station_id +
+# station_uid written to /data), then runs mlat-client to adsbnetwork's MLAT
+# server, reading Beast from our readsb and republishing results on 30109
+# (30105-30108 are taken by rbfeeder/piaware/planewatch). Depends on the
+# radarvirtuel service. Idle unless enabled + contributor identity + a station
+# position (ALT is bare metres, normalised by the config bridge).
+. /usr/local/bin/feeder-gate
+gate "[radarvirtuel-mlat]" ENABLE_RADARVIRTUEL RV_CONTRIB_NAME RV_CONTRIB_EMAIL LAT LONG ALT
+# Wait for the feeder to register (it writes these once radarvirtuel accepts it).
+while [ ! -f /data/station_id.txt ] || [ ! -f /data/station_uid.txt ]; do sleep 2; done
+# --stats-json exposes MLAT sync (peer_count, good_sync %) for the HA publisher.
+mkdir -p /run/mlat-client
+exec /usr/local/bin/s6wrap --quiet --timestamps --prepend=radarvirtuel-mlat --args \
+  /usr/local/bin/mlat-client \
+  --input-type beast \
+  --input-connect localhost:30005 \
+  --server "${RV_MLAT_SERVER:-mlat.adsbnetwork.com:50000}" \
+  --lat "${LAT}" --lon "${LONG}" --alt "${ALT}" \
+  --results beast,listen,30109 \
+  --user "$(cat /data/station_id.txt)" \
+  --uuid "$(cat /data/station_uid.txt)" \
+  --stats-json /run/mlat-client/radarvirtuel.json \
+  --stats-interval 30

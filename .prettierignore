@@ -1,0 +1,4 @@
+# release-please writes long URL-bearing bullets that exceed prose-wrap's
+# print width and would otherwise cause prettier to reformat its output.
+# CHANGELOG.md files are tool-managed — exclude.
+**/CHANGELOG.md

@@ -1,0 +1,53 @@
+#!/bin/bash
+# Colorize s6wrap's per-service [tag] so each engine's log lines are visually
+# distinct in the Home Assistant add-on log (which renders ANSI).
+#
+# The base image runs every service through the upstream `s6wrap` binary with
+# --prepend=<tag>; s6wrap prints that as "[tag]" but has no colour option. This
+# shim is installed in front of the real binary (as `s6wrap`; the original is
+# kept as `s6wrap.real`). It rewrites only the --prepend value, wrapping the tag
+# in a bold ANSI colour picked by hashing the tag name — stable per service, no
+# hardcoded per-service map — then execs the real binary with everything else
+# untouched, so s6wrap's process supervision and signal handling are unchanged.
+# Any invocation without --prepend passes straight through.
+set +e
+real=/usr/local/bin/s6wrap.real
+
+# Plain single-parameter standard SGR colours -- the only ones Home Assistant's
+# add-on-log renderer supports (it drops bright/256/truecolour, so those are
+# avoided). Grey (37) is deliberately NOT used: HA renders it ~identical to the
+# default text colour, so it reads as "uncolored". That leaves six saturated
+# colours, assigned by role, with anything unlisted hashing over the same set:
+#   34 blue: readsb (1090)        36 cyan: dump978 / PlaneFinder / OpenSky
+#   32 green: tar1090/graphs/collectd/ha-mqtt   33 yellow: piaware/ADSBHub/RadarBox
+#   35 magenta: MLAT              31 red: FlightRadar24
+palette=(31 32 33 34 35 36)
+
+color_tag() {
+  local tag="$1" c sum=0 i ord
+  case "${tag}" in
+  readsb) c=34 ;;                                                          # blue
+  dump978 | pfclient | opensky-feeder | uk1090) c=36 ;;                    # cyan
+  tar1090 | graphs1090 | graphs1090-readback | collectd | ha-mqtt) c=32 ;; # green
+  piaware | adsbhubclient | rbfeeder) c=33 ;;                              # yellow
+  mlat-client | mlathub) c=35 ;;                                           # magenta
+  fr24feed | fr24uat-feed) c=31 ;;                                         # red
+  *)
+    for ((i = 0; i < ${#tag}; i++)); do
+      printf -v ord '%d' "'${tag:i:1}"
+      sum=$((sum + ord))
+    done
+    c="${palette[sum % ${#palette[@]}]}"
+    ;;
+  esac
+  printf '\033[%sm%s\033[0m' "${c}" "${tag}"
+}
+
+args=()
+for a in "$@"; do
+  case "${a}" in
+  --prepend=?*) args+=("--prepend=$(color_tag "${a#--prepend=}")") ;;
+  *) args+=("${a}") ;;
+  esac
+done
+exec "${real}" "${args[@]}"

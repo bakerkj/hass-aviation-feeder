@@ -1,0 +1,32 @@
+#!/command/with-contenv sh
+# Redirect the high-frequency /run output dirs of readsb and collectd to a
+# RAM-backed tmpfs so they do not wear the SD/eMMC on flash-based hosts (e.g. a
+# Raspberry Pi):
+#   /run/readsb    readsb rewrites aircraft.json ~once a second
+#   /run/collectd  with GRAPHS1090_REDUCE_IO the live RRD DB is rewritten ~1/15s
+#                  (only flushed to /data hourly -- see 00-haos-options)
+# On the add-on's overlay filesystem those are continuous flash writes; /tmp is
+# tmpfs (config.json sets "tmpfs": true -- the only tmpfs knob HA add-ons expose,
+# with no equivalent for /run), so pointing them there removes the write
+# amplification with no functional downside. Persistent state lives under /data
+# instead (see 00-persist).
+#
+# This is the first-start setup; the same helper is re-run from the readsb and
+# collectd run scripts on every restart, because their s6 finish scripts rm the
+# /run dir each time (see link-tmpfs-dir for the details).
+#
+# Runs as a cont-init oneshot, before the readsb/collectd longruns start.
+sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/readsb readsb
+sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/collectd collectd
+# Other high-frequency /run writers that would otherwise pound the overlay
+# (all ephemeral/regenerable — no sockets, persistence lives under /data):
+#   mlat-client        every mlat-client rewrites its --stats-json every
+#                      --stats-interval s (8 community + our commercial clients)
+#   piaware            status.json rewritten ~every 5 s
+#   adsbexchange-stats the full aircraft JSON upload payload, rewritten ~1/s
+#   graphs1090         ~40 PNGs re-rendered on each graph refresh
+sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/mlat-client mlat-client
+sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/piaware piaware
+sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/adsbexchange-stats adsbexchange-stats
+sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/graphs1090 graphs1090
+echo "[tmpfs] /run/{readsb,collectd,mlat-client,piaware,adsbexchange-stats,graphs1090} -> /tmp (tmpfs; avoids SD-card wear)"

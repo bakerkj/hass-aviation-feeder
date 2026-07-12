@@ -1,0 +1,26 @@
+#!/command/with-contenv bash
+# Override of ultrafeeder's readsb longrun run script.
+# (Upstream is simply: `#!/bin/sh` + `exec /etc/s6-overlay/scripts/readsb`.)
+#
+# ultrafeeder's scripts/readsb reads BEASTHOST/BEASTPORT (and MLATHOST/MLATPORT)
+# and appends `--net-connector=$BEASTHOST,$BEASTPORT,beast_in`. We set
+# BEASTHOST=localhost:30005 globally so the proprietary feeders
+# (piaware/fr24/planefinder/opensky/rbfeeder) can reach our in-container readsb --
+# but if readsb itself consumed it, it would connect to its OWN 30005 Beast output:
+# a feedback loop that pegs a CPU core (observed ~7M msg/s). readsb gets its data
+# from the SDR (rtlsdr mode) or the remote connector in ULTRAFEEDER_CONFIG (remote
+# mode), never from BEASTHOST.
+#
+# with-contenv (our shebang) imports the container environment; we unset the vars
+# that would make readsb self-connect, then run the upstream script via
+# `bash <script>`. Invoking it as a bash ARGUMENT (not via its own
+# `#!/command/with-contenv bash` shebang) skips a second with-contenv, so the unset
+# sticks instead of being re-imported from /run/s6/container_environment.
+# Re-establish the tmpfs redirect before the upstream script runs: our finish
+# script does `rm -rf /run/readsb` on every exit, and the upstream script would
+# otherwise recreate it as a real dir on the overlay, silently sending
+# aircraft.json (~1/s) back to the SD after the first restart.
+sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/readsb readsb
+
+unset BEASTHOST BEASTPORT MLATHOST MLATPORT
+exec bash /etc/s6-overlay/scripts/readsb

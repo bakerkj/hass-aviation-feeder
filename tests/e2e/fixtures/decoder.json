@@ -1,0 +1,9 @@
+{
+  "lat": 42.28,
+  "long": -83.74,
+  "alt": "250m",
+  "tz": "America/Detroit",
+  "receiver_mode": "remote",
+  "remote_beast_host": "192.0.2.1",
+  "remote_beast_port": 30005
+}

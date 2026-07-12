@@ -1,0 +1,50 @@
+name: renovate-validate
+
+on:
+  pull_request:
+    paths:
+      - renovate.json
+      - .github/workflows/**
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Renovate config
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+
+      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.npm
+          key:
+            renovate-${{ hashFiles('.github/workflows/renovate-validate.yml') }}
+
+      - name: Schema validation
+        run:
+          npx --package renovate@43.233.3 -- renovate-config-validator
+          renovate.json
+
+      - name: Dry-run lookup test
+        env:
+          LOG_LEVEL: debug
+          GITHUB_COM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx --package renovate@43.233.3 -- renovate --dry-run --platform=local > renovate-dry-run.log 2>&1 || true
+
+          # Check for datasource lookup failures
+          errors=$(grep -i "no-result\|failed to look up" renovate-dry-run.log | grep -v "python-version" || true)
+          if [ -n "$errors" ]; then
+            echo "::error::Renovate datasource lookup failures detected:"
+            echo "$errors"
+            exit 1
+          fi
+
+          echo "All datasource lookups succeeded"

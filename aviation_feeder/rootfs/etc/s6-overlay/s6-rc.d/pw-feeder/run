@@ -1,0 +1,24 @@
+#!/command/with-contenv bash
+# plane.watch feeder (pw-feeder): a native Go binary that feeds ADS-B Beast from
+# our in-container readsb (it reads BEASTHOST/BEASTPORT, set globally to
+# localhost:30005) to plane.watch, and opens a local MLAT relay on
+# MLATSERVERHOST:MLATSERVERPORT (default 127.0.0.1:12346) that the separate
+# planewatch-mlat service tunnels a mlat-client through. Gate on the toggle + API
+# key so a disabled/unconfigured feeder idles instead of crash-looping.
+. /usr/local/bin/feeder-gate
+gate "[pw-feeder]" ENABLE_PLANEWATCH PLANEWATCH_API_KEY
+# pw-feeder (Go) needs Let's Encrypt's Gen-Y roots to validate plane.watch's TLS
+# cert; point it at a dedicated bundle (staged in the Dockerfile from the plane-watch
+# image) so ONLY this process trusts that set -- the global store stays stock.
+export SSL_CERT_FILE=/usr/local/share/pw-feeder-ca.crt
+# pw-feeder (zerolog) self-tags every line "[pw-feeder] <RFC3339> INF ..." -- a
+# format unlike every other engine, plus a redundant second timestamp once s6wrap
+# adds the house "[ts][pw-feeder]". Route it through s6wrap (coloured tag + house
+# timestamp like the others) and strip pw-feeder's own leading tag+timestamp so
+# lines read "[ts][pw-feeder] INF ...". proc-sub keeps pw-feeder the exec'd (and
+# thus s6-signalled) leaf; sed is a side filter. The API key is passed as a
+# positional param so it isn't baked into the shell -c string.
+exec /usr/local/bin/s6wrap --quiet --timestamps --prepend=pw-feeder --args \
+  bash -c 'exec /usr/local/sbin/pw-feeder --apikey "$1" \
+    > >(stdbuf -oL sed -E "s/^\[pw-feeder\] (\x1b\[90m)?[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z(\x1b\[0m)? //") 2>&1' \
+  pw-feeder "${PLANEWATCH_API_KEY}"

@@ -1,0 +1,7 @@
+#!/command/with-contenv sh
+# Gate the FlightRadar24 1090 feeder: needs enable_fr24 + a sharing key.
+# Without the key, 01-fr24feed skips writing fr24feed.ini, so the binary would
+# otherwise restart-loop.
+. /usr/local/bin/feeder-gate
+gate "[fr24feed]" ENABLE_FR24 FR24KEY
+exec /etc/s6-overlay/scripts/fr24feed

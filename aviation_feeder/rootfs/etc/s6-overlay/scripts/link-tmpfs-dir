@@ -1,0 +1,23 @@
+#!/bin/sh
+# link-tmpfs-dir <run-path> <tmp-subdir>
+#
+# Make <run-path> a symlink to a tmpfs-backed /tmp/<tmp-subdir> so the
+# high-frequency writes there (readsb aircraft.json ~1/s; collectd RRDs ~1/15s
+# under GRAPHS1090_REDUCE_IO) never touch the SD/eMMC. /tmp is tmpfs because
+# config.json sets "tmpfs": true (the only tmpfs knob HA add-ons expose; there
+# is no equivalent for /run).
+#
+# Idempotent AND restart-resilient. This is the subtle part: readsb's and
+# collectd's s6 `finish` scripts both do `rm -rf /run/<dir>` on every service
+# exit, and their `run` scripts then `mkdir -p /run/<dir>` -- which would
+# recreate a REAL directory on the overlay and silently defeat the tmpfs
+# redirect after the first restart (crash, SDR glitch, config reload). So this
+# helper is invoked from each service's run script (before it hands off), not
+# just once at container init, to re-point the symlink before the mkdir runs.
+target="/tmp/$2"
+mkdir -p "${target}"
+if [ ! -L "$1" ]; then
+  rm -rf "$1"
+  mkdir -p "$(dirname "$1")"
+  ln -s "${target}" "$1"
+fi
