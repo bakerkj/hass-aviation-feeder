@@ -50,7 +50,11 @@ status() { docker inspect -f '{{.State.Status}}' "${CONTAINER}" 2>/dev/null || e
 env_val() { docker exec "${CONTAINER}" cat "/run/s6/container_environment/$1" 2>/dev/null || true; }
 # Strip ANSI colour codes so log assertions match regardless of the per-engine
 # tag colouring (the s6wrap shim wraps each [tag] in ANSI).
-logs() { docker logs "${CONTAINER}" 2>&1 | sed -E 's/\x1b\[[0-9;]*m//g' || true; }
+# sed's stderr is discarded: callers pipe into `grep -q`, which exits on the
+# first match and closes the pipe, so sed reliably hits EPIPE on the unread
+# remainder ("couldn't write N items to stdout: Broken pipe"). That is benign
+# noise — the match already succeeded — so silence it.
+logs() { docker logs "${CONTAINER}" 2>&1 | sed -E 's/\x1b\[[0-9;]*m//g' 2>/dev/null || true; }
 aircraft_json() { docker exec "${CONTAINER}" cat /run/readsb/aircraft.json 2>/dev/null || true; }
 
 # Poll a predicate until it succeeds or POLL_TIMEOUT elapses.
