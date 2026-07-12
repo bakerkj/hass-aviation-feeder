@@ -55,8 +55,9 @@ Everything hangs off **readsb**, the one decoder and one data hub:
   readsb as a net connector (`adsb,localhost,30978,uat_in`) so readsb holds the
   merged 1090+978 picture.
 - In `uat` mode readsb also runs net-only, but the local `dump978` is its
-  **sole** input (`adsb,localhost,30978,uat_in`) — for a receiver with only a 978
-  stick and no 1090. `00-haos-options` forces `ENABLE_UAT=true` in this mode.
+  **sole** input (`adsb,localhost,30978,uat_in`) — for a receiver with only a
+  978 stick and no 1090. `00-haos-options` forces `ENABLE_UAT=true` in this
+  mode.
 - In `remote` mode readsb runs net-only (no SDR): it ingests Beast from a remote
   extractor via `adsb,<host>,<port>,beast_in`, and dump978 idles.
 
@@ -125,11 +126,11 @@ PNGs) never hit the SD/eMMC. `/run` itself is the overlay, not tmpfs — only
 ### The config bridge (`rootfs/etc/cont-init.d/00-haos-options`)
 
 Home Assistant writes the add-on options to `/data/options.json`. Neither
-ultrafeeder nor the account-based feeders read that file — they read **environment
-variables**. `00-haos-options` is the translator: a `cont-init.d` oneshot that
-runs once at boot (before any longrun) and writes each option into the s6
-container environment (`/run/s6/container_environment/<VAR>`), inherited by
-every service started afterwards via `with-contenv`.
+ultrafeeder nor the account-based feeders read that file — they read
+**environment variables**. `00-haos-options` is the translator: a `cont-init.d`
+oneshot that runs once at boot (before any longrun) and writes each option into
+the s6 container environment (`/run/s6/container_environment/<VAR>`), inherited
+by every service started afterwards via `with-contenv`.
 
 Highlights (all verified in the script):
 
@@ -139,10 +140,10 @@ Highlights (all verified in the script):
   (`${SUPERVISOR_CORE_API:-http://supervisor/core/api}/config`, needs
   `SUPERVISOR_TOKEN`). `ALT` is normalized to **bare metres** — a trailing `m`
   silently breaks rbfeeder's MLAT and makes openskyd log "Garbage after number".
-- Sets `BEASTHOST=localhost` / `BEASTPORT=30005` **globally** so the account-based
-  feeders can reach readsb. readsb itself must **not** consume these (it would
-  net-connect to its own Beast output — a CPU-pegging feedback loop), so the
-  `readsb/run` override `unset`s them before launching readsb.
+- Sets `BEASTHOST=localhost` / `BEASTPORT=30005` **globally** so the
+  account-based feeders can reach readsb. readsb itself must **not** consume
+  these (it would net-connect to its own Beast output — a CPU-pegging feedback
+  loop), so the `readsb/run` override `unset`s them before launching readsb.
 - Sets each feeder's enable flag + credential env var, plus SBS wiring for
   ADSBHub (`SBSHOST`/`SBSPORT=localhost:30003`) and UAT wiring
   (`UATHOST`/`UATPORT=localhost:30978`, `UAT_RECEIVER_*` for piaware).
@@ -222,8 +223,9 @@ ships no such marker.
 
 ### Run-script convention + the gating helper (`feeder-gate`)
 
-Every account-based-feeder `run` script follows the same shape: source the shared
-gate, gate on the toggle (and required config), then `exec` the real feeder.
+Every account-based-feeder `run` script follows the same shape: source the
+shared gate, gate on the toggle (and required config), then `exec` the real
+feeder.
 
 ```sh
 #!/command/with-contenv sh
@@ -332,8 +334,8 @@ the Dockerfile for live values).
   for the community clients, but FlightAware's client targets the incompatible
   0.2.13 `mlat` API, so it lives in a private `/opt/fa-mlat` and runs via a
   `PYTHONPATH` wrapper. The Dockerfile smoke-tests **both** APIs at build time
-  so drift fails the build. Its results port is managed by the piaware base's own
-  s6 service (which we copy unchanged), not set by us; code comments mention
+  so drift fails the build. Its results port is managed by the piaware base's
+  own s6 service (which we copy unchanged), not set by us; code comments mention
   `30105`/`30106`, but that is the base's concern, not authoritative here.
 - **How it's built.** Stage
   `FROM ghcr.io/sdr-enthusiasts/docker-piaware@sha256:8d3298…143015 AS piaware`.
@@ -524,8 +526,8 @@ the Dockerfile for live values).
 Not a feeder but built the same way. `dump978-fa` decodes 978 MHz UAT and its
 stream is fed **into** readsb (`uat_in`). Its `run` gate idles it unless
 `ENABLE_UAT=true` **and** `RECEIVER_MODE` is not `remote` — so it runs in both
-`rtlsdr` mode (a second 978 stick) and `uat`-only mode; in `remote` mode there is
-no local SDR and UAT arrives via the remote Beast. **How it's built:** stage
+`rtlsdr` mode (a second 978 stick) and `uat`-only mode; in `remote` mode there
+is no local SDR and UAT arrives via the remote Beast. **How it's built:** stage
 `FROM ghcr.io/sdr-enthusiasts/docker-dump978@sha256:d223d9…3da2ae AS dump978`;
 `COPY --from=dump978` brings `/usr/local/bin/dump978-fa` and the `dump978`
 service
@@ -559,8 +561,8 @@ per-feeder results ports are from our run scripts / `02-rbfeeder`.
 | 127.0.0.1:12346 | pw-feeder local MLAT relay (`MLATSERVERHOST/PORT`)        | `pw-feeder/run` (default)            |
 
 `config.json` maps container `80/tcp → 8504`; the raw data ports
-`30003`/`30005`/`30978` **and** the pfclient UI port `30053` are all declared but
-unpublished (`null`) by default. piaware's `fa-mlat-client` results port is
+`30003`/`30005`/`30978` **and** the pfclient UI port `30053` are all declared
+but unpublished (`null`) by default. piaware's `fa-mlat-client` results port is
 managed by the piaware base's own s6 service (copied unchanged), not set by us;
 code comments mention `30105`/`30106`, but that is the base's concern, not
 authoritative here.
@@ -615,27 +617,29 @@ of localhost status endpoints. No outbound network calls to the aggregators.
   `messages_per_sec` from `last1min`, `max_range_nm`/SDR levels; nearby reads
   the `compute_nearby()` dict). The per-feeder `FeederMetric` groups —
   `THROUGHPUT_METRICS` (Data Sent/Received), `MESSAGES_METRICS` (Messages),
-  `UPTIME_METRICS` (Uptime), `MLAT_SYNC_METRICS` (MLAT Peers/Sync — from the mlat
-  server's `stats` push, every MLAT feeder but RadarBox), and `MLAT_RESULT_METRICS`
-  (MLAT Positions/min + Aircraft Used — written client-side by our mlat-client
-  patch, so _every_ MLAT feeder incl. RadarBox; enabled by default like the sync
-  metrics) — are attached selectively per
-  feeder by `app.py`. The client-side write is added by `patch-mlat-client.py`, a
-  build-time patch of the base image's vendored mlat-client (asserts its anchors,
-  fails the build on upstream drift). Device ids: `aviation_feeder` (main; also
-  carries the SDR receiver stats in rtlsdr mode), `aviation_feeder_nearby`,
-  `aviation_feeder_feeders` (the per-feeder device-id prefix).
+  `UPTIME_METRICS` (Uptime), `MLAT_SYNC_METRICS` (MLAT Peers/Sync — from the
+  mlat server's `stats` push, every MLAT feeder but RadarBox), and
+  `MLAT_RESULT_METRICS` (MLAT Positions/min + Aircraft Used — written
+  client-side by our mlat-client patch, so _every_ MLAT feeder incl. RadarBox;
+  enabled by default like the sync metrics) — are attached selectively per
+  feeder by `app.py`. The client-side write is added by `patch-mlat-client.py`,
+  a build-time patch of the base image's vendored mlat-client (asserts its
+  anchors, fails the build on upstream drift). Device ids: `aviation_feeder`
+  (main; also carries the SDR receiver stats in rtlsdr mode),
+  `aviation_feeder_nearby`, `aviation_feeder_feeders` (the per-feeder device-id
+  prefix).
 - **`feeders.py`** — per-feeder **feeding-state** (not just "running"), the crux
   of the design. Two feeder classes; the client class now has **three modes**
   (the `mode` column of `PROPRIETARY_FEEDERS`):
   - **Community aggregators** (`COMMUNITY_FEEDERS`, host:port matching the
     `add_aggregator` table) → read `readsb_net_connector_status{host,port}` from
     `/run/readsb/stats.prom`; `0` = disconnected, non-zero = connected.
-  - **`"conn"`** (piaware, opensky, radarbox, adsbhub, plane.watch, uk1090) → feeding =
-    the feeder process owns an **ESTABLISHED TCP socket to a non-loopback
-    remote** (matched inode `/proc/<pid>/fd` ↔ `/proc/net/tcp{,6}`). Running but
-    not feeding (e.g. pw-feeder up but failing TLS, shipping zero bytes) reads
-    as **off**. This is also the socket the kernel throughput counters ride.
+  - **`"conn"`** (piaware, opensky, radarbox, adsbhub, plane.watch, uk1090) →
+    feeding = the feeder process owns an **ESTABLISHED TCP socket to a
+    non-loopback remote** (matched inode `/proc/<pid>/fd` ↔
+    `/proc/net/tcp{,6}`). Running but not feeding (e.g. pw-feeder up but failing
+    TLS, shipping zero bytes) reads as **off**. This is also the socket the
+    kernel throughput counters ride.
   - **`"report"`** (fr24, pfclient) → the feed is TCP-invisible (fr24 feeds over
     **UDP**, pfclient over its own path), so the feeder's own status endpoint is
     **authoritative** for connected-state (and throughput); falls back to
@@ -740,11 +744,12 @@ longer applies — e.g. dropped from an older build — is deleted, not left
 - **Messages** — fr24 only: a **Message Rate** (msg/s) primary sensor
   (`MESSAGES_RATE_METRICS`) plus a disabled-by-default cumulative `Messages`
   counter, since UDP has no byte counter.
-- **MLAT Peers / MLAT Sync** — the `MLAT_SYNC_CAPABLE` feeders (every MLAT feeder
-  _except_ RadarBox, whose server never pushes the sync stats): the community MLAT
-  connectors + the commercial clients plane.watch, sdrmap, radarvirtuel. RadarBox
-  reports no peers/sync, so **MLAT Positions / Aircraft Used** (client-side stats
-  present for every MLAT feeder) are its only MLAT signal.
+- **MLAT Peers / MLAT Sync** — the `MLAT_SYNC_CAPABLE` feeders (every MLAT
+  feeder _except_ RadarBox, whose server never pushes the sync stats): the
+  community MLAT connectors + the commercial clients plane.watch, sdrmap,
+  radarvirtuel. RadarBox reports no peers/sync, so **MLAT Positions / Aircraft
+  Used** (client-side stats present for every MLAT feeder) are its only MLAT
+  signal.
 - **piaware MLAT / Radio** — piaware isn't `MLAT_CAPABLE` (it uses
   `fa-mlat-client`, no peer_count), so its MLAT + radio health from
   `status.json` are surfaced as `binary_sensor`s (`REPORT_BINARY_SENSORS`, on

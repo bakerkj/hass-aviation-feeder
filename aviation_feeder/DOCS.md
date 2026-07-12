@@ -1,7 +1,7 @@
 # Aviation Feeder — Documentation
 
-This is the configuration and usage reference for the **Aviation Feeder** add-on.
-For a high-level overview of the project see the
+This is the configuration and usage reference for the **Aviation Feeder**
+add-on. For a high-level overview of the project see the
 [repository README](https://github.com/bakerkj/hass-aviation-feeder); for the
 internal architecture (image build, s6 services, ports map, MQTT publisher) see
 [DEVELOPING.md](DEVELOPING.md).
@@ -11,8 +11,8 @@ Aviation Feeder layers the account-based ADS-B/UAT feeders onto the
 base: readsb (1090), dump978 (978/UAT), tar1090, graphs1090, mlat-client, and
 the community-aggregator net connectors. Everything runs in **one container**;
 every feeder points at the in-container readsb (Beast on `localhost:30005`) and
-dump978 (UAT on `localhost:30978`). See [How it works](#how-it-works) for a short
-architecture overview.
+dump978 (UAT on `localhost:30978`). See [How it works](#how-it-works) for a
+short architecture overview.
 
 Each option below is given as **Display name** (`yaml_key`): the display name is
 what the Configuration tab shows, and the `yaml_key` is the field name if you
@@ -23,10 +23,10 @@ edit the configuration in YAML.
 1. Install the add-on and open **Configuration**.
 2. Set **Latitude** (`lat`), **Longitude** (`long`), **Altitude** (`alt`), and
    **Time zone** (`tz`) — or leave the location fields at their defaults
-   (`HOMEASSISTANT_LATITUDE`, `HOMEASSISTANT_LONGITUDE`, `HOMEASSISTANT_ELEVATION`)
-   to inherit Home Assistant's own location.
-3. Pick a **Receiver mode** (`receiver_mode`); for a local dongle set its serial —
-   see [SDR settings](#sdr-settings).
+   (`HOMEASSISTANT_LATITUDE`, `HOMEASSISTANT_LONGITUDE`,
+   `HOMEASSISTANT_ELEVATION`) to inherit Home Assistant's own location.
+3. Pick a **Receiver mode** (`receiver_mode`); for a local dongle set its serial
+   — see [SDR settings](#sdr-settings).
 4. Turn on the aggregators you want and paste their keys/IDs — see
    [Aggregators](#aggregators).
 5. Start the add-on and open the **Web UI** (sidebar) to see aircraft.
@@ -44,18 +44,18 @@ edit the configuration in YAML.
 
 Set by **Receiver mode** (`receiver_mode`):
 
-- **rtlsdr** (default): decode 1090 MHz from a local dongle. Add 978 MHz UAT on a
-  second dongle by turning on **Enable 978 MHz UAT** (`enable_uat`).
+- **rtlsdr** (default): decode 1090 MHz from a local dongle. Add 978 MHz UAT on
+  a second dongle by turning on **Enable 978 MHz UAT** (`enable_uat`).
 - **uat**: decode **978 MHz UAT only** from a local dongle — for a receiver with
   just a 978 stick and no 1090. readsb runs net-only and ingests the local UAT
   stream; `enable_uat` is implied. Set the **978 MHz RTL-SDR device**
   (`dump978_rtlsdr_device`) serial/gain/ppm.
 - **remote**: run net-only (no SDR). readsb ingests Beast from another Aviation
   Feeder instance set by **Remote Beast host** (`remote_beast_host`) / **port**
-  (`remote_beast_port`). Use this to run a display/aggregator node separately from
-  the antenna/extractor node — the extractor runs in `rtlsdr` mode and exposes
-  Beast on port 30005, and the aggregator node points at it and does all the
-  feeding + the map.
+  (`remote_beast_port`). Use this to run a display/aggregator node separately
+  from the antenna/extractor node — the extractor runs in `rtlsdr` mode and
+  exposes Beast on port 30005, and the aggregator node points at it and does all
+  the feeding + the map.
 
 ## SDR settings
 
@@ -80,11 +80,11 @@ Otherwise set a serial. Reasons to pin one **even with a single dongle**:
   and that index can shift when you reboot, replug into another USB port, or add
   any other USB SDR — after which readsb may bind the wrong device (or none). A
   serial always resolves to the same physical stick.
-- **Two dongles at once (1090 + 978 together).** When you run both bands (`rtlsdr`
-  mode with 978 enabled), one stick decodes 1090 and one decodes 978 at the same
-  time, so readsb and dump978 must each claim the right one; index order isn't
-  stable, so set both serials. (Running a single band — 1090-only or 978-only —
-  needs just the one dongle.)
+- **Two dongles at once (1090 + 978 together).** When you run both bands
+  (`rtlsdr` mode with 978 enabled), one stick decodes 1090 and one decodes 978
+  at the same time, so readsb and dump978 must each claim the right one; index
+  order isn't stable, so set both serials. (Running a single band — 1090-only or
+  978-only — needs just the one dongle.)
 - **Multiple SDR apps/containers on the host, or simply an explicit,
   reproducible config.**
 
@@ -101,10 +101,11 @@ installed:
 - `rtl_eeprom -d 0` — dumps device 0's EEPROM, including its serial.
 
 The add-on also prints the devices readsb detects to the add-on **Log** at
-startup, so you can read the serials there after plugging the dongles in. Put the
-serial you find into `readsb_rtlsdr_device` (1090) or `dump978_rtlsdr_device`
-(978); a dongle straight from the factory often shares the generic serial
-`00000001`, in which case pick which stick is which by plugging one in at a time.
+startup, so you can read the serials there after plugging the dongles in. Put
+the serial you find into `readsb_rtlsdr_device` (1090) or
+`dump978_rtlsdr_device` (978); a dongle straight from the factory often shares
+the generic serial `00000001`, in which case pick which stick is which by
+plugging one in at a time.
 
 ### Gain
 
@@ -139,8 +140,8 @@ dongle's reference oscillator.
 Turn on the networks you want to feed. Two kinds:
 
 - **Account-based** — you register with the site and paste a credential.
-- **Community** — anonymous; each is identified by your **Station UUID** (`uuid`),
-  with an optional per-aggregator override.
+- **Community** — anonymous; each is identified by your **Station UUID**
+  (`uuid`), with an optional per-aggregator override.
 
 All community aggregators, plus RadarBox, also have a per-aggregator **MLAT
 toggle** (`*_mlat`, on by default) — turn one off to feed that network's ADS-B
@@ -184,8 +185,8 @@ only.
 Turn on **Home Assistant sensors** (`ha_sensors`) to publish Aviation Feeder
 entities to HA via MQTT discovery — no `configuration.yaml` edits needed. This
 needs the **Mosquitto broker** add-on: leave `mqtt_host` blank and the publisher
-auto-detects it (host, port, username, and password come from the Supervisor MQTT
-service), falling back to anonymous `core-mosquitto`. Set `mqtt_host` /
+auto-detects it (host, port, username, and password come from the Supervisor
+MQTT service), falling back to anonymous `core-mosquitto`. Set `mqtt_host` /
 `mqtt_port` / `mqtt_username` / `mqtt_password` only to point at an external
 broker; `mqtt_discovery_prefix` (default `homeassistant`) and `mqtt_base_topic`
 (default `aviation_feeder`) control the topic namespaces.
@@ -193,35 +194,36 @@ broker; `mqtt_discovery_prefix` (default `homeassistant`) and `mqtt_base_topic`
 Three categories are published, toggled independently:
 
 - **Feeder health** (`ha_feeder_health`) → the **Aviation Feeder** device:
-  aircraft tracked, ADS-B / Mode-S / MLAT counts, aircraft with position, message
-  rate, max range, session tracks; a pair of MQTT broker-link diagnostic sensors
-  (link uptime and reconnect count); and — when you run a local RTL-SDR — the
-  dongle's receiver stats (gain, frequency error, signal / noise, samples
+  aircraft tracked, ADS-B / Mode-S / MLAT counts, aircraft with position,
+  message rate, max range, session tracks; a pair of MQTT broker-link diagnostic
+  sensors (link uptime and reconnect count); and — when you run a local RTL-SDR
+  — the dongle's receiver stats (gain, frequency error, signal / noise, samples
   dropped).
 - **Planes near me** (`ha_planes_near_me`) → the **Aviation Feeder — Nearby**
-  device: how many aircraft are within the **Nearby radius** (`ha_near_me_radius`,
-  default 50 nmi), and the nearest aircraft (callsign, with distance / altitude /
-  bearing / speed as attributes). Requires your station latitude/longitude to be
-  set (inherited HA location counts).
+  device: how many aircraft are within the **Nearby radius**
+  (`ha_near_me_radius`, default 50 nmi), and the nearest aircraft (callsign,
+  with distance / altitude / bearing / speed as attributes). Requires your
+  station latitude/longitude to be set (inherited HA location counts).
 - **Per-feeder status** (`ha_feeder_status`) → **one device per enabled feeder**
-  (each grouped under the main Aviation Feeder device). Every feeder device has a
-  **Connection** sensor showing whether it is actually feeding, plus an **Uptime**
-  sensor. Where the data is available a feeder also gets a **Send / Receive Rate**
-  (bytes/sec — or a **Message Rate** for FlightRadar24, which feeds over UDP with
-  no byte count), **MLAT peers / MLAT sync** for MLAT-capable feeders (all but
-  RadarBox), and **MLAT Positions / Aircraft Used** (the client's own resolve rate
+  (each grouped under the main Aviation Feeder device). Every feeder device has
+  a **Connection** sensor showing whether it is actually feeding, plus an
+  **Uptime** sensor. Where the data is available a feeder also gets a **Send /
+  Receive Rate** (bytes/sec — or a **Message Rate** for FlightRadar24, which
+  feeds over UDP with no byte count), **MLAT peers / MLAT sync** for
+  MLAT-capable feeders (all but RadarBox), and **MLAT Positions / Aircraft
+  Used** (the client's own resolve rate
   - aircraft it contributes — for RadarBox this is its only MLAT signal). The
     cumulative Data Sent/Received and Messages counters are also published but
     disabled by default (enable them in HA if you want totals). FlightAware
     additionally gets **MLAT** and **Radio** health binary sensors from its own
-    status; the full self-report also rides along as attributes on the Connection
-    sensor.
+    status; the full self-report also rides along as attributes on the
+    Connection sensor.
 
-  "Feeding" is measured: community aggregators (adsb.lol, adsb.fi,
-  ADS-B Exchange, …) report readsb's own connection state; feeders that hold an
-  open connection are checked for a live socket to the aggregator (so a feeder
-  that is running but silently not sending shows as off); and the couple of
-  feeders that report their own status expose it directly.
+  "Feeding" is measured: community aggregators (adsb.lol, adsb.fi, ADS-B
+  Exchange, …) report readsb's own connection state; feeders that hold an open
+  connection are checked for a live socket to the aggregator (so a feeder that
+  is running but silently not sending shows as off); and the couple of feeders
+  that report their own status expose it directly.
 
 If you decode from a local RTL-SDR (receiver mode `rtlsdr` or `uat`), the main
 **Aviation Feeder** device also gains SDR receiver stats: dongle gain, frequency
@@ -230,28 +232,29 @@ there is no local dongle, so these are omitted.
 
 Every device carries an availability (online/offline) state via MQTT Last-Will,
 and its entities are registry-managed (grouped into devices, restored across HA
-restarts). Publisher settings: **MQTT publish interval** (`mqtt_interval_seconds`,
-default 30 s) and **MQTT publisher log level** (`mqtt_log_level`).
+restarts). Publisher settings: **MQTT publish interval**
+(`mqtt_interval_seconds`, default 30 s) and **MQTT publisher log level**
+(`mqtt_log_level`).
 
 ## Map & advanced escape hatches
 
 - **Update tar1090 on boot** (`update_tar1090`): off by default — the add-on
-  ships a fixed tar1090 map + aircraft database (updated when the add-on updates),
-  avoiding a GitHub download on every start. Turn on to fetch the latest at each
-  boot instead.
+  ships a fixed tar1090 map + aircraft database (updated when the add-on
+  updates), avoiding a GitHub download on every start. Turn on to fetch the
+  latest at each boot instead.
 - **HeyWhatsThat panorama** (`heywhatsthat_panorama_id`, `heywhatsthat_alts`):
   optional theoretical-range ring on the map. Create a panorama at
   <https://www.heywhatsthat.com>, then paste the `?view=CODE` id into
-  `heywhatsthat_panorama_id`; `heywhatsthat_alts` sets the ring altitudes (blank =
-  tar1090's default).
+  `heywhatsthat_panorama_id`; `heywhatsthat_alts` sets the ring altitudes (blank
+  = tar1090's default).
 - **Prefer IPv4 (skip IPv6 DNS)** (`prefer_ipv4`): on by default — the resolver
-  skips AAAA lookups so feeders don't stall on a container IPv6 address that has no
-  working route. Turn off only if your container has real IPv6 connectivity.
+  skips AAAA lookups so feeders don't stall on a container IPv6 address that has
+  no working route. Turn off only if your container has real IPv6 connectivity.
 - **Map history retention** (`max_globe_history_days`, default 7): how many days
   of globe_history / heatmap to keep on `/data`.
 - **Extra ULTRAFEEDER_CONFIG** (`ultrafeeder_config`): extra readsb net
-  connectors, appended verbatim (semicolon-separated), for aggregators not listed
-  above.
+  connectors, appended verbatim (semicolon-separated), for aggregators not
+  listed above.
 - **Extra environment variables** (`extra_env`): `KEY=value` lines injected into
   the container, for any ultrafeeder/feeder setting not surfaced as an option.
 
@@ -275,13 +278,13 @@ dump978 (`localhost:30978`).
 
 The heart of the add-on is a config bridge, `00-haos-options`: Home Assistant
 stores your options in `/data/options.json`, but readsb and the feeders read
-**environment variables**, so the bridge translates each option into the env vars
-(and the `ULTRAFEEDER_CONFIG` connector list) that every downstream service
+**environment variables**, so the bridge translates each option into the env
+vars (and the `ULTRAFEEDER_CONFIG` connector list) that every downstream service
 expects, before those services start.
 
-For the full architecture — the multi-stage image build, the s6 service model and
-feeder gating, the complete ports map, and the MQTT/HA-sensor publisher internals
-— see [DEVELOPING.md](DEVELOPING.md).
+For the full architecture — the multi-stage image build, the s6 service model
+and feeder gating, the complete ports map, and the MQTT/HA-sensor publisher
+internals — see [DEVELOPING.md](DEVELOPING.md).
 
 ## Troubleshooting
 

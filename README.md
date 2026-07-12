@@ -12,8 +12,8 @@ Home Assistant OS add-ons for ADS-B / UAT / MLAT flight tracking, built on the
 
 ## What it is
 
-Aviation Feeder is a single Home Assistant add-on that **layers the account-based
-per-network feeders onto the
+Aviation Feeder is a single Home Assistant add-on that **layers the
+account-based per-network feeders onto the
 [`docker-adsb-ultrafeeder`](https://github.com/sdr-enthusiasts/docker-adsb-ultrafeeder)
 base image**. Ultrafeeder supplies readsb (1090 decode), dump978 (978/UAT), the
 tar1090 map, graphs1090, mlat-client, and the merged-Beast community
@@ -22,8 +22,7 @@ pfclient (PlaneFinder), the OpenSky feeder, adsbhub, and rbfeeder (AirNav
 RadarBox — an ARM-only binary that AirNav ships, run natively on ARM and under
 `qemu-arm-static` emulation on amd64, so RadarBox works on both), plus a config
 bridge that maps Home Assistant add-on options onto the environment variables
-all of those services expect. Everything runs in
-one container under s6-overlay.
+all of those services expect. Everything runs in one container under s6-overlay.
 
 For the architecture in detail (image build, init scripts, services, config
 bridge, and the optional Home Assistant sensors), see
