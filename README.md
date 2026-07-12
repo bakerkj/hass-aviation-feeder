@@ -1,9 +1,9 @@
-# Ken's Aviation Feeder Add-ons
+# Ken's Aviation Feeder Add-on
 
 Home Assistant OS add-ons for ADS-B / UAT / MLAT flight tracking, built on the
 [sdr-enthusiasts](https://github.com/sdr-enthusiasts) container stack.
 
-## Add-ons
+## Add-on
 
 - **[Aviation Feeder](aviation_feeder/)** — merged ADS-B (1090) + UAT (978) +
   MLAT feeder with a tar1090 map, feeding FlightAware, FlightRadar24,
