@@ -31,32 +31,70 @@ IMAGE_RE = re.compile(
 )
 
 
-def sh(*args):
-    return subprocess.run(args, capture_output=True, text=True).stdout
+def run(*args, fatal=False):
+    """Run a command. Returns stdout, or None on failure.
+
+    A silently-swallowed failure here is the worst outcome for this tool: a
+    broken `git diff` or `imagetools inspect` would render as "no upstream
+    changes" / "no revision label" and quietly lie in the PR comment. So a
+    failure is always surfaced -- fatally for the diff (without it we know
+    nothing), loudly for an inspect (that image is reported as un-inspectable).
+    """
+    proc = subprocess.run(args, capture_output=True, text=True)
+    if proc.returncode != 0:
+        err = (proc.stderr or "").strip().splitlines()
+        detail = err[-1] if err else "(no stderr)"
+        msg = f"`{' '.join(args[:4])} …` exited {proc.returncode}: {detail}"
+        if fatal:
+            sys.exit(f"error: {msg}")
+        print(f"warning: {msg}", file=sys.stderr)
+        return None
+    return proc.stdout
 
 
 def refs_in(diff_lines, sign):
-    """Map image -> (tag, digest) for added ('+') or removed ('-') diff lines."""
+    """Map image -> (tag, digest) for added ('+') or removed ('-') diff lines.
+
+    Keyed by image name, so the same image used by two FROM stages with
+    DIFFERENT digests would mis-pair. That can't happen in this Dockerfile (each
+    stage uses a distinct image), but guard it rather than pair silently wrong.
+    """
     out = {}
     for line in diff_lines:
         if not line.startswith(sign) or line.startswith(sign * 3):
             continue
         m = IMAGE_RE.search(line)
-        if m:
-            out[m.group("image")] = (m.group("tag"), m.group("digest"))
+        if not m:
+            continue
+        image, val = m.group("image"), (m.group("tag"), m.group("digest"))
+        if image in out and out[image] != val:
+            sys.exit(
+                f"error: {image} appears on multiple '{sign}' lines with "
+                f"different digests ({out[image][1]} vs {val[1]}); "
+                f"old/new pairing would be ambiguous."
+            )
+        out[image] = val
     return out
 
 
 def labels_for(image, digest):
-    """OCI labels for a digest. Handles both single-image and multi-arch output."""
-    raw = sh(
+    """OCI labels for a digest, or None if the image could not be inspected.
+
+    None (inspect failed) is deliberately distinct from {} (inspected fine, but
+    the image carries no labels) so a toolchain failure is never reported as
+    "this image has no revision label".
+    """
+    raw = run(
         "docker", "buildx", "imagetools", "inspect",
         f"{image}@{digest}", "--format", "{{json .Image}}",
     )
+    if raw is None:
+        return None
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
-        return {}
+        print(f"warning: {image}@{digest[:19]} inspect returned non-JSON", file=sys.stderr)
+        return None
     if isinstance(data, dict) and "config" in data:
         return (data.get("config") or {}).get("Labels") or {}
     # multi-arch: {"linux/amd64": {...}, ...} -- any platform's labels will do
@@ -91,7 +129,9 @@ def main():
     dockerfile = sys.argv[3] if len(sys.argv) > 3 else "aviation_feeder/Dockerfile"
     token = __import__("os").environ.get("GITHUB_TOKEN", "")
 
-    diff = sh("git", "diff", f"{base}...{head}", "--", dockerfile).splitlines()
+    # fatal: if the diff itself fails we know nothing, and an empty report would
+    # be read as "no upstream changes" -- exactly the lie we must not tell.
+    diff = run("git", "diff", f"{base}...{head}", "--", dockerfile, fatal=True).splitlines()
     old, new = refs_in(diff, "-"), refs_in(diff, "+")
 
     rows, details = [], []
@@ -104,6 +144,15 @@ def main():
         change = f"`{old_tag}` → `{new_tag}`" if old_tag != new_tag else f"`{new_tag}`"
 
         old_lab, new_lab = labels_for(image, old_digest), labels_for(image, new_digest)
+        if old_lab is None or new_lab is None:
+            # Inspect failed -- say so. Do NOT fall through to the "no revision
+            # label" branch, which would misreport a broken toolchain as an
+            # image that simply lacks provenance.
+            rows.append(
+                f"| `{name}` | {change} | ? | "
+                f":warning: could not inspect image — see workflow log |"
+            )
+            continue
         source = new_lab.get("org.opencontainers.image.source") or ""
         old_rev = old_lab.get("org.opencontainers.image.revision")
         new_rev = new_lab.get("org.opencontainers.image.revision")
