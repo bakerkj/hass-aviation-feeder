@@ -266,6 +266,36 @@ def we_set(key):
     return proc.returncode == 0
 
 
+OUR_ROOTFS = Path("aviation_feeder/rootfs")
+
+
+def inherited_hits(upstream_files):
+    """Changed files in the BASE image's rootfs -- i.e. code that runs in OUR container.
+
+    The base image is not a `COPY --from` source: we inherit its ENTIRE filesystem,
+    including its whole s6 service tree. So the analogue of "a file we extract
+    changed" is "a file in its rootfs/ changed" -- that file lands in our container
+    and executes, with nothing to fail.
+
+    Found the hard way: the build-939 -> build-942 bump ADDED a 443-line startup
+    script (rootfs/etc/s6-overlay/startup.d/52-adsbitalia-register) which runs in
+    our container on every start. The COPY --from intersection is empty for the
+    base image by definition, so it reported "no file we extract changed" -- true,
+    and beside the point.
+
+    Also reports whether WE ship our own file at the same container path, since
+    our rootfs is COPY'd over theirs and therefore WINS.
+    """
+    hits = []
+    for f in upstream_files:
+        if not f.startswith("rootfs/"):
+            continue
+        container_path = f[len("rootfs"):]          # rootfs/etc/... -> /etc/...
+        ours = OUR_ROOTFS / container_path.lstrip("/")
+        hits.append((container_path, f, ours.exists()))
+    return hits
+
+
 def suffix_hits(extracted, upstream_files):
     """Upstream files that ARE the source of a path we extract.
 
@@ -363,6 +393,9 @@ def main():
                 write(d / "patches" / f"{flat(f)}.diff", patch)
 
         hits = suffix_hits(extracted, list(patches))
+        # The base image is inherited whole, not COPY'd from: its rootfs IS our
+        # container's filesystem.
+        base_hits = inherited_hits(list(patches)) if not extracted else []
 
         # Whole before/after of the files we EXTRACT AND RUN. A hunk's 3 lines of
         # context are often not enough to judge a script; give the agent the file.
@@ -396,6 +429,29 @@ def main():
                 "extracted-path intersection cannot apply -- and 'no file we extract "
                 "changed' would be MISLEADING. **Every commit in this range is a change "
                 f"to code we execute.** Read the diffs in `{d}/patches/`.",
+                "",
+            ]
+        elif base_hits:
+            body += [
+                ":rotating_light: **This is the INHERITED BASE IMAGE — we take its whole "
+                "filesystem, including its entire s6 service tree. Every file below "
+                "changed in its `rootfs/`, so it lands in OUR container and RUNS.** "
+                "(`COPY --from` intersection is empty for the base image by definition; "
+                "that is not evidence of safety.)",
+                "",
+                "| runs in our container as | upstream file | do we override it? |",
+                "|---|---|---|",
+            ]
+            for container_path, f, overridden in base_hits:
+                body.append(
+                    f"| `{container_path}` | [`{f}`]({repo_url}/blob/{new_rev}/{f}) "
+                    f"| {'yes — our rootfs wins, no impact' if overridden else ':rotating_light: **NO — theirs runs**'} |"
+                )
+            body += [
+                "",
+                f"Full diffs: `{d}/patches/`. For a NEW file, read it in full and find "
+                "its enable-gate: an opt-in we never set is inert; an on-by-default "
+                "script is not.",
                 "",
             ]
         elif hits:
