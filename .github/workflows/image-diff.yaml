@@ -2,13 +2,16 @@ name: image-diff
 
 # Post the UPSTREAM source diff for any base-image bump.
 #
-# This is NOT a Renovate feature and is not wired into Renovate: a docker digest
-# bump has no version range, and Renovate never maps a digest back to the commit
-# it was built from, so its PR shows only an opaque `f986374 -> 54531eb`.
-# Instead we hook the ordinary `pull_request` event: when a PR changes an image
-# pin in the Dockerfile (Renovate's PR *or* a hand-edited one), we resolve both
-# digests' `org.opencontainers.image.revision` labels and post a real
-# `compare/<old>...<new>` link with the commit list.
+# This is NOT a Renovate feature and cannot be wired into Renovate: a docker
+# digest bump has no version range, and Renovate never maps a digest back to the
+# commit it was built from, so its PR shows only an opaque `f986374 -> 54531eb`.
+# Instead we hook the ordinary `pull_request` event and, for a Renovate PR that
+# changes an image pin, resolve both digests' `org.opencontainers.image.revision`
+# labels and post a real `compare/<old>...<new>` link with the commit list.
+#
+# Scoped to Renovate PRs only (see the job `if`). Gating on the PR AUTHOR rather
+# than the `renovate/` branch prefix is deliberate: a human can rename a branch,
+# but cannot author a PR as `renovate[bot]`.
 #
 # Renovate opens its PRs from branches in THIS repo (never a fork), so the plain
 # `pull_request` trigger has a writable GITHUB_TOKEN and can comment.
@@ -25,6 +28,8 @@ permissions:
 jobs:
   image-diff:
     name: Upstream image diff
+    # Renovate PRs only.
+    if: github.event.pull_request.user.login == 'renovate[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
