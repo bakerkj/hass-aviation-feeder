@@ -91,6 +91,17 @@ jobs:
       #   * which upstream ENV defaults changed, and whether we override them or
       #     silently inherit the new value
       # The agent then spends its budget on JUDGEMENT, not on grepping.
+      # Needed by the briefing's provenance fallback: `go version -m <binary>`
+      # reads the build info embedded in a Go binary we extract, which is how we
+      # get a commit range for images that ship NO OCI labels (plane-watch).
+      # Pinned rather than trusting whatever Go the runner image happens to have.
+      - name: Set up Go
+        if: steps.diff.outputs.has_diff == 'true'
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.25"
+          cache: false
+
       - name: Build mechanical briefing
         if: steps.diff.outputs.has_diff == 'true'
         env:
@@ -162,16 +173,26 @@ jobs:
                                 the old and new upstream commit and a compare
                                 range (resolved from the OCI revision labels).
 
-            `briefing.md`    -- the MECHANICAL analysis. This is set arithmetic
-                                over our Dockerfile and the upstream compare API,
-                                computed deterministically. It already tells you:
+            `briefing.md`    -- the MECHANICAL analysis, computed deterministically.
+                                It already contains:
                                   * exactly which files we `COPY --from` each
                                     bumped image, and WHICH OF THEM CHANGED in
                                     the upstream range (the intersection)
+                                  * THE ACTUAL DIFFS of those changed files,
+                                    inlined -- you do not need to fetch them
                                   * which upstream ENV defaults changed, and for
                                     each, whether WE set it (we override -> no
                                     impact) or do NOT (we silently inherit the
                                     new value)
+                                  * every commit subject in the range
+                                  * for a COMPILED binary we extract (e.g.
+                                    pw-feeder), the source repo it was built from
+                                    -- recovered from the binary's own Go build
+                                    info, because that image ships no OCI labels.
+                                    A compiled artifact has no source file in the
+                                    repo, so the path intersection cannot apply:
+                                    EVERY commit in that range is code we execute,
+                                    and the briefing inlines those diffs too.
 
             TRUST THE BRIEFING. Do NOT re-derive it: do not re-grep the Dockerfile
             for COPY --from, do not re-list the upstream changed files, do not

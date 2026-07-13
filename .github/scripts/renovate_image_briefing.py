@@ -59,6 +59,74 @@ COPY_RE = re.compile(
 ENV_RE = re.compile(r"^\s*ENV\s+(?P<key>[A-Z_][A-Z0-9_]*)[=\s]+(?P<val>.*)$", re.M)
 
 
+def go_buildinfo(image, digest, candidate_paths):
+    """Recover (revision, module) from a Go binary we extract from the image.
+
+    Some images ship NO OCI provenance labels at all (plane-watch is one), so
+    the digest -> commit mapping everything else relies on is simply unavailable.
+    But a Go binary embeds its own build info: `go version -m` prints
+    vcs.revision -- the exact commit it was built from -- straight out of the
+    binary WE extract and WE run. That is strictly better evidence than a label:
+    it describes the artifact itself, not the image that carried it.
+
+    Only tries paths we actually `COPY --from` this image, since those are the
+    only files whose provenance we care about.
+    """
+    for path in candidate_paths:
+        cid = run("docker", "create", f"{image}@{digest}")
+        if not cid:
+            return None, None
+        cid = cid.strip()
+        local = f"/tmp/gobin-{path.strip('/').replace('/', '_')}"
+        copied = run("docker", "cp", f"{cid}:{path}", local)
+        run("docker", "rm", "-f", cid)
+        if copied is None:
+            continue
+        info = run("go", "version", "-m", local)
+        if not info:
+            continue
+        rev = mod = None
+        for line in info.splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[0] == "build" and parts[1].startswith("vcs.revision="):
+                rev = parts[1].split("=", 1)[1]
+            elif len(parts) >= 2 and parts[0] == "mod":
+                mod = parts[1]
+            elif len(parts) >= 2 and parts[0] == "path":
+                mod = mod or parts[1]
+        if rev:
+            return rev, mod
+    return None, None
+
+
+def resolve_repo(image, module, rev, token):
+    """Which GitHub repo does this commit live in?
+
+    A Go module path is often NOT a URL (plane-watch's pw-feeder reports simply
+    `pw-feeder (devel)`), and the binary's source repo is frequently a DIFFERENT
+    repo from the one that builds the image -- pw-feeder's commits live in
+    plane-watch/pw-feeder, not plane-watch/docker-plane-watch. So propose
+    candidates and CONFIRM by asking GitHub whether the commit actually exists
+    there. Never guess: a wrong repo yields a plausible, wrong compare link.
+    """
+    org = image.split("/")[1] if image.count("/") >= 2 else None
+    repo_name = image.rsplit("/", 1)[-1]
+    base_mod = (module or "").split("/")[0].removesuffix(".git") if module else None
+
+    candidates = []
+    if module and module.startswith("github.com/"):
+        candidates.append("/".join(module[len("github.com/"):].split("/")[:2]))
+    if org and base_mod:
+        candidates.append(f"{org}/{base_mod}")
+    if org:
+        candidates.append(f"{org}/{repo_name}")
+
+    for repo in candidates:
+        if gh_json(f"https://api.github.com/repos/{repo}/commits/{rev}", token):
+            return repo
+    return None
+
+
 def gh_json(url, token):
     req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
     if token:
@@ -90,14 +158,37 @@ def stages_and_extracts(dockerfile_text):
     return stage_image, extracts
 
 
-def changed_files(repo_path, old, new, token):
-    """Files touched in the upstream range. None if the compare failed."""
+MAX_PATCH_LINES = 200
+
+
+def compare(repo_path, old, new, token):
+    """-> ({filename: patch}, [commit subjects]). (None, []) if the compare failed.
+
+    Keeps the PATCH, not just the filename: the compare API already returns the
+    diff of every changed file, so fetching the filename list and then making the
+    agent go back for the diffs would be paying for the same data twice. Handing
+    over the actual changed lines is the whole point -- it is what the agent has
+    to exercise judgement on.
+    """
     data = gh_json(
         f"https://api.github.com/repos/{repo_path}/compare/{old}...{new}", token
     )
     if data is None:
-        return None
-    return [f["filename"] for f in data.get("files", [])]
+        return None, []
+    patches = {f["filename"]: f.get("patch") or "" for f in data.get("files", [])}
+    subjects = [
+        c["commit"]["message"].splitlines()[0] for c in data.get("commits", [])
+    ]
+    return patches, subjects
+
+
+def clip(patch):
+    """Bound a patch so one huge file cannot crowd out the rest of the briefing."""
+    lines = patch.splitlines()
+    if len(lines) <= MAX_PATCH_LINES:
+        return patch
+    kept = "\n".join(lines[:MAX_PATCH_LINES])
+    return f"{kept}\n… [truncated {len(lines) - MAX_PATCH_LINES} more diff lines]"
 
 
 def env_at(repo_path, rev, token):
@@ -165,29 +256,58 @@ def main():
         old_rev = old_lab.get("org.opencontainers.image.revision")
         new_rev = new_lab.get("org.opencontainers.image.revision")
 
-        if not (source.startswith("https://github.com/") and old_rev and new_rev):
-            sections.append(
-                f"### `{name}`\n\n"
-                ":warning: no OCI provenance labels — upstream range could NOT be "
-                "resolved, so no mechanical analysis was possible for this image. "
-                "Do not guess a range.\n"
-            )
-            continue
-
-        repo_path = source[len("https://github.com/"):].rstrip("/")
-        files = changed_files(repo_path, old_rev, new_rev, token)
-        if files is None:
-            sections.append(f"### `{name}`\n\n:warning: compare API failed.\n")
-            continue
-
-        # 1. files we EXTRACT that changed upstream
         extracted = []
         for stage in image_stages.get(image, []):
             extracted.extend(extracts.get(stage, []))
+
+        repo_path = (
+            source[len("https://github.com/"):].rstrip("/")
+            if source.startswith("https://github.com/")
+            else None
+        )
+        provenance = "OCI `revision` label"
+        go_provenance = False
+
+        # No labels? Ask the BINARY. A Go binary embeds vcs.revision, so we can
+        # recover the exact commit from the artifact we actually extract and run
+        # -- and its source repo is often NOT the repo that builds the image
+        # (pw-feeder's commits live in plane-watch/pw-feeder, not
+        # plane-watch/docker-plane-watch), so the repo is confirmed against
+        # GitHub rather than guessed.
+        if not (old_rev and new_rev):
+            new_rev, module = go_buildinfo(image, new_digest, extracted)
+            old_rev, _ = go_buildinfo(image, old_digest, extracted)
+            if new_rev and old_rev:
+                repo_path = resolve_repo(image, module, new_rev, token)
+                provenance = "Go build info (`vcs.revision`) — image ships no OCI labels"
+                go_provenance = True
+
+        if not (repo_path and old_rev and new_rev):
+            sections.append(
+                f"### `{name}`\n\n"
+                ":warning: upstream range could NOT be resolved — no OCI provenance "
+                "labels, and no Go build info recoverable from the files we extract. "
+                "No mechanical analysis was possible. **Do not guess a range.**\n"
+            )
+            continue
+
+        patches, subjects = compare(repo_path, old_rev, new_rev, token)
+        if patches is None:
+            sections.append(f"### `{name}`\n\n:warning: compare API failed.\n")
+            continue
+        files = list(patches)
+
+        # 1. files we EXTRACT that changed upstream
         hits = suffix_hits(extracted, files)
 
-        # 2. upstream ENV defaults that changed, and whether we inherit them
-        env_old, env_new = env_at(repo_path, old_rev, token), env_at(repo_path, new_rev, token)
+        # 2. upstream ENV defaults that changed, and whether we inherit them.
+        # Only meaningful for the repo that BUILDS the image: when provenance came
+        # from a Go binary, repo_path is the binary's SOURCE repo, which has no
+        # Dockerfile and no ENV defaults of its own. Don't 404 chasing one.
+        if go_provenance:
+            env_old = env_new = None
+        else:
+            env_old, env_new = env_at(repo_path, old_rev, token), env_at(repo_path, new_rev, token)
         env_rows = []
         if env_old is not None and env_new is not None:
             for key in sorted(set(env_old) | set(env_new)):
@@ -197,19 +317,54 @@ def main():
                 inherited = not we_set(key)
                 env_rows.append((key, before, after, inherited))
 
-        body = [f"### `{name}`  ({len(files)} upstream file(s) changed)\n"]
+        repo_url = f"https://github.com/{repo_path}"
+        body = [
+            f"### `{name}`  ({len(files)} upstream file(s) changed)\n",
+            f"- range: [`{old_rev[:7]}…{new_rev[:7]}`]"
+            f"({repo_url}/compare/{old_rev}...{new_rev}) in `{repo_path}`",
+            f"- provenance: {provenance}\n",
+        ]
 
         body.append(f"**Files we `COPY --from` this image: {len(extracted)}**\n")
-        if hits:
+
+        # A COMPILED artifact has no counterpart file in the upstream repo, so the
+        # path intersection below can never hit for it -- and reporting "no file we
+        # extract changed" would be actively misleading. When provenance came from
+        # the binary's own Go build info, that repo IS the source of the binary we
+        # execute: every commit in the range is a change to code we run. Say so,
+        # and hand over all the diffs.
+        if go_provenance:
             body.append(
-                ":rotating_light: **We extract files that CHANGED upstream — "
-                "these land in our image and run. Read their diffs first.**\n"
+                f":rotating_light: **`{extracted[0] if extracted else '(binary)'}` is a "
+                f"COMPILED binary built from `{repo_path}` — it has no source file in "
+                "the image repo, so the path intersection below cannot apply. EVERY "
+                "commit in this range is a change to code we execute. The diffs are "
+                "inlined; judge them.**\n"
             )
-            body.append("| we extract | upstream source file |")
-            body.append("|---|---|")
+            for f, patch in list(patches.items())[:10]:
+                body.append(
+                    f"<details open><summary><code>{f}</code></summary>\n"
+                )
+                body.append("```diff")
+                body.append(clip(patch) or "(no textual diff)")
+                body.append("```\n</details>\n")
+            if len(patches) > 10:
+                body.append(f"_… and {len(patches) - 10} more changed file(s)._\n")
+        elif hits:
+            body.append(
+                ":rotating_light: **We extract files that CHANGED upstream — these "
+                "land in our image and run. Their diffs are inlined below; that is "
+                "the code you must judge.**\n"
+            )
             for path, f in hits:
-                body.append(f"| `{path}` | [`{f}`]({source}/blob/{new_rev}/{f}) |")
-            body.append("")
+                body.append(
+                    f"<details open><summary><code>{path}</code> "
+                    f"&larr; <a href=\"{repo_url}/blob/{new_rev}/{f}\">"
+                    f"<code>{f}</code></a></summary>\n"
+                )
+                body.append("```diff")
+                body.append(clip(patches.get(f, "")) or "(no textual diff — binary or renamed)")
+                body.append("```\n</details>\n")
         else:
             body.append(
                 "No file we extract was touched in this range "
@@ -217,7 +372,12 @@ def main():
                 "upstream changed-file list).\n"
             )
 
-        if env_old is None or env_new is None:
+        if go_provenance:
+            body.append(
+                "_ENV defaults not compared: the resolved repo is the BINARY's source "
+                "repo, which builds no image and defines no ENV._\n"
+            )
+        elif env_old is None or env_new is None:
             body.append(
                 ":grey_question: Could not read the upstream Dockerfile at both "
                 "revisions, so ENV defaults were NOT compared.\n"
@@ -238,6 +398,20 @@ def main():
             body.append("")
         else:
             body.append("No upstream ENV default changed in this range.\n")
+
+        # The full commit list, so the agent can scan the range for the things
+        # that CANNOT be mechanized (a renamed s6 service, a new option upstream
+        # now expects, a behavioural change inside a compiled binary) without
+        # having to go and fetch it.
+        if subjects:
+            body.append(
+                f"<details><summary>all {len(subjects)} upstream commit(s) in range"
+                "</summary>\n"
+            )
+            body.extend(f"- {s}" for s in subjects[:40])
+            if len(subjects) > 40:
+                body.append(f"- … and {len(subjects) - 40} more")
+            body.append("\n</details>\n")
 
         sections.append("\n".join(body))
 
