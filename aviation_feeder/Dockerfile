@@ -30,7 +30,7 @@ FROM ghcr.io/sdr-enthusiasts/docker-flightradar24:latest@sha256:f329680660f8c728
 FROM ghcr.io/sdr-enthusiasts/docker-planefinder:latest@sha256:974f64a1e1629dabffdd440082248ff0f17a9a501a6439523066907be9799d38 AS planefinder
 FROM ghcr.io/sdr-enthusiasts/docker-opensky-network:latest@sha256:d0a0aa79445eea3e79f23b950c061f0dc6bb7a6c9de4a81c035d32331a564644 AS opensky
 FROM ghcr.io/sdr-enthusiasts/docker-adsbhub:latest@sha256:7f896c932362121a3760f00e2b20e6e8a3f0e0fe82d2a8cd67f7bf4c61ffcb14 AS adsbhub
-FROM ghcr.io/plane-watch/docker-plane-watch:latest@sha256:f98637421cc8a61fc90bc59d92682ffc8a64a087c6db5f6657edb922d1e8874f AS planewatch
+FROM ghcr.io/plane-watch/docker-plane-watch:latest@sha256:54531eb196367e03a44bd36cde58f408c9984c275f6b28e1b7cb9adf816eb520 AS planewatch
 FROM ghcr.io/sdr-enthusiasts/docker-radarvirtuel:latest@sha256:1f6543e1725431222bd440d05641f9d0c578801087e05003e2d274b1e657bc34 AS radarvirtuel
 FROM ghcr.io/sdr-enthusiasts/docker-sdrmap:latest@sha256:57c87f930333f2d9f9a40306c3d2277711da363ffc7354b674843d10b6bb8c40 AS sdrmap
 FROM ghcr.io/sdr-enthusiasts/docker-radarbox:latest@sha256:835abbf7bd110cc251a93a4882c16557e5e03449031aea41c8da1b0b39878b20 AS radarbox
