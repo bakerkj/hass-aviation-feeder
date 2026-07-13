@@ -17,6 +17,12 @@
 # /run dir each time (see link-tmpfs-dir for the details).
 #
 # Runs as a cont-init oneshot, before the readsb/collectd longruns start.
+#
+# Abort on the first failed link-tmpfs-dir: a half-applied redirect would leave
+# some /run dirs on the overlay, silently reinstating the flash writes this whole
+# script exists to prevent. See the note in 00-persist. (No `set -u`.)
+set -e
+
 sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/readsb readsb
 sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/collectd collectd
 # Other high-frequency /run writers that would otherwise pound the overlay

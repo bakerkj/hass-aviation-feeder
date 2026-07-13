@@ -14,6 +14,11 @@
 # redirect after the first restart (crash, SDR glitch, config reload). So this
 # helper is invoked from each service's run script (before it hands off), not
 # just once at container init, to re-point the symlink before the mkdir runs.
+# Abort on the first failed command: if the mkdir below fails we must NOT go on to
+# rm -rf the real dir and symlink it to a target that does not exist. See the note
+# in 00-persist. (No `set -u`: with-contenv leaves optional vars unset by design.)
+set -e
+
 target="/tmp/$2"
 mkdir -p "${target}"
 if [ ! -L "$1" ]; then

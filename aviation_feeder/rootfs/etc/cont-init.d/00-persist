@@ -20,6 +20,15 @@
 # Without this you get "state directory didn't exist, created it" and a reset
 # heatmap/graphs on every rebuild. Runs as a cont-init oneshot, before longruns.
 
+# Abort on the first failed command. Without this a failed `mkdir -p "${dst}"`
+# (e.g. /data not writable) does not stop the function: it falls through to the
+# `ln -s` below and leaves a DANGLING symlink, readsb happily writes through the
+# broken path, and the container comes up reporting healthy while persistence
+# silently never happens. Better to fail the cont-init oneshot loudly.
+# Deliberately not `set -u`: with-contenv leaves optional vars (LAT/ALT/API keys)
+# unset by design, and -u would turn that into a hard kill.
+set -e
+
 # persist <container-path> <data-subdir>: make <container-path> a symlink into
 # /data/<subdir>, migrating any pre-seeded content into the persistent dir once.
 persist() {

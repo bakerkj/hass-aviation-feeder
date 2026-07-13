@@ -21,7 +21,13 @@
 # script does `rm -rf /run/readsb` on every exit, and the upstream script would
 # otherwise recreate it as a real dir on the overlay, silently sending
 # aircraft.json (~1/s) back to the SD after the first restart.
-sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/readsb readsb
+# `|| exit 1` is load-bearing: this call MUTATES state (it rm -rf's /run/readsb
+# and re-symlinks it). link-tmpfs-dir now runs `set -e`, so it can abort after
+# the rm but before the ln. Falling through to the exec would then let readsb
+# recreate /run/readsb as a real dir on the overlay -- silently reinstating the
+# SD-card wear this redirect exists to prevent, on every restart, with nothing
+# logged. Fail the service instead: s6 restarts it and the failure is visible.
+sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/readsb readsb || exit 1
 
 unset BEASTHOST BEASTPORT MLATHOST MLATPORT
 exec bash /etc/s6-overlay/scripts/readsb
