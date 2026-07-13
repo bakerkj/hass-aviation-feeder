@@ -122,7 +122,7 @@ start_container() {
   done
 }
 
-assert_running() { wait_for _running && ok "container running" || bad "container not running (status=$(status))"; }
+assert_running() { if wait_for _running; then ok "container running"; else bad "container not running (status=$(status))"; fi; }
 assert_env_contains() {
   if wait_for _env_has "$1" "$2"; then ok "env $1 contains '$2'"; else bad "env $1 missing '$2' (got: '$(env_val "$1")')"; fi
 }
@@ -131,7 +131,7 @@ assert_env_contains() {
 assert_env_not_contains() {
   if _env_has "$1" "$2"; then bad "env $1 unexpectedly contains '$2'"; else ok "env $1 excludes '$2'"; fi
 }
-assert_log() { wait_for _log_has "$1" && ok "log matches /$1/" || bad "log missing /$1/"; }
+assert_log() { if wait_for _log_has "$1"; then ok "log matches /$1/"; else bad "log missing /$1/"; fi; }
 # Like assert_log but with an explicit longer timeout, for the qemu-emulated
 # feeder: rbfeeder is an armhf binary run under qemu-arm-static, so it can take
 # well over the default poll to reach "started" on a loaded CI host.
@@ -377,25 +377,43 @@ case_allfeeders() {
   assert_log_within 90 'service radarvirtuel successfully started'
   assert_log_within 90 'service radarvirtuel-mlat successfully started'
   # pw-feeder is a native multi-arch Go binary (glibc-only); assert it was staged.
-  docker exec "${CONTAINER}" test -x /usr/local/sbin/pw-feeder 2>/dev/null &&
-    ok "pw-feeder binary present + executable" || bad "pw-feeder binary missing"
+  if docker exec "${CONTAINER}" test -x /usr/local/sbin/pw-feeder 2>/dev/null; then
+    ok "pw-feeder binary present + executable"
+  else
+    bad "pw-feeder binary missing"
+  fi
   # RadarVirtuel is pure Python; assert the feeder + its requests dep are staged.
-  docker exec "${CONTAINER}" test -f /docker-entrypoint.py 2>/dev/null &&
-    ok "radarvirtuel entrypoint staged" || bad "radarvirtuel /docker-entrypoint.py missing"
-  docker exec "${CONTAINER}" python3 -c 'import requests' 2>/dev/null &&
-    ok "python3-requests available for radarvirtuel feeder" || bad "python3-requests missing (feeder would exit)"
+  if docker exec "${CONTAINER}" test -f /docker-entrypoint.py 2>/dev/null; then
+    ok "radarvirtuel entrypoint staged"
+  else
+    bad "radarvirtuel /docker-entrypoint.py missing"
+  fi
+  if docker exec "${CONTAINER}" python3 -c 'import requests' 2>/dev/null; then
+    ok "python3-requests available for radarvirtuel feeder"
+  else
+    bad "python3-requests missing (feeder would exit)"
+  fi
   assert_log_within 90 'service sdrmap successfully started'
   assert_log_within 90 'service sdrmap-stunnel successfully started'
   assert_log_within 90 'service sdrmap-mlat successfully started'
   # sdrmap: shell feeder staged + stunnel apt-installed (with its OpenSSL libs).
-  docker exec "${CONTAINER}" test -x /usr/lib/sdrmapfeeder/sdrmapfeeder.sh 2>/dev/null &&
-    ok "sdrmapfeeder.sh staged + executable" || bad "sdrmapfeeder.sh missing"
-  docker exec "${CONTAINER}" sh -c 'command -v stunnel >/dev/null && ldd "$(command -v stunnel)" | grep -q libssl' 2>/dev/null &&
-    ok "stunnel present + linked to libssl" || bad "stunnel missing or unlinked (sdrmap MLAT would fail)"
+  if docker exec "${CONTAINER}" test -x /usr/lib/sdrmapfeeder/sdrmapfeeder.sh 2>/dev/null; then
+    ok "sdrmapfeeder.sh staged + executable"
+  else
+    bad "sdrmapfeeder.sh missing"
+  fi
+  if docker exec "${CONTAINER}" sh -c 'command -v stunnel >/dev/null && ldd "$(command -v stunnel)" | grep -q libssl' 2>/dev/null; then
+    ok "stunnel present + linked to libssl"
+  else
+    bad "stunnel missing or unlinked (sdrmap MLAT would fail)"
+  fi
   assert_log_within 90 'service uk1090 successfully started'
   # 1090MHz UK: the radar binary (glibc-only) must be staged + executable.
-  docker exec "${CONTAINER}" test -x /usr/sbin/radar 2>/dev/null &&
-    ok "radar (1090MHz UK) binary present + executable" || bad "radar binary missing"
+  if docker exec "${CONTAINER}" test -x /usr/sbin/radar 2>/dev/null; then
+    ok "radar (1090MHz UK) binary present + executable"
+  else
+    bad "radar binary missing"
+  fi
   # rbfeeder's internal intern_port (default 32008) must not collide with readsb's
   # SBS-input block (32006-32009); 02-rbfeeder pins it to 32208. Guard the readsb
   # crash-loop this caused (readsb can't bind 32008 -> "Address already in use").
@@ -404,17 +422,29 @@ case_allfeeders() {
   # regression guards for the alt-suffix bug that silently disabled MLAT (rbfeeder
   # skips MLAT unless alt is a bare number), plus the intern_port move and the
   # listen-mode mlat_cmd that let the community mlat-client actually launch.
-  docker exec "${CONTAINER}" sh -c 'grep -qE "^alt=-?[0-9]+$" /etc/rbfeeder.ini' 2>/dev/null &&
-    ok "rbfeeder.ini alt is a bare number" || bad "rbfeeder.ini alt not bare (MLAT would silently not start)"
-  docker exec "${CONTAINER}" sh -c 'grep -qx "intern_port=32208" /etc/rbfeeder.ini' 2>/dev/null &&
-    ok "rbfeeder.ini intern_port=32208" || bad "rbfeeder.ini intern_port not pinned off 32008"
-  docker exec "${CONTAINER}" sh -c 'grep -qE "^mlat_cmd=/usr/local/bin/rbfeeder-mlat --results beast,listen,30107$" /etc/rbfeeder.ini' 2>/dev/null &&
-    ok "rbfeeder.ini mlat_cmd is listen-mode on 30107 via rbfeeder-mlat shim" || bad "rbfeeder.ini mlat_cmd not the listen-mode fix"
+  if docker exec "${CONTAINER}" sh -c 'grep -qE "^alt=-?[0-9]+$" /etc/rbfeeder.ini' 2>/dev/null; then
+    ok "rbfeeder.ini alt is a bare number"
+  else
+    bad "rbfeeder.ini alt not bare (MLAT would silently not start)"
+  fi
+  if docker exec "${CONTAINER}" sh -c 'grep -qx "intern_port=32208" /etc/rbfeeder.ini' 2>/dev/null; then
+    ok "rbfeeder.ini intern_port=32208"
+  else
+    bad "rbfeeder.ini intern_port not pinned off 32008"
+  fi
+  if docker exec "${CONTAINER}" sh -c 'grep -qE "^mlat_cmd=/usr/local/bin/rbfeeder-mlat --results beast,listen,30107$" /etc/rbfeeder.ini' 2>/dev/null; then
+    ok "rbfeeder.ini mlat_cmd is listen-mode on 30107 via rbfeeder-mlat shim"
+  else
+    bad "rbfeeder.ini mlat_cmd not the listen-mode fix"
+  fi
   # The rbfeeder-mlat shim (re-tags client output as [mlat]) must exist and be executable.
-  docker exec "${CONTAINER}" test -x /usr/local/bin/rbfeeder-mlat 2>/dev/null &&
-    ok "rbfeeder-mlat shim is executable" || bad "rbfeeder-mlat shim missing or not executable"
+  if docker exec "${CONTAINER}" test -x /usr/local/bin/rbfeeder-mlat 2>/dev/null; then
+    ok "rbfeeder-mlat shim is executable"
+  else
+    bad "rbfeeder-mlat shim missing or not executable"
+  fi
   # The bridge strips a trailing unit from the altitude (all-feeders.json sets "250m").
-  [ "$(env_val ALT)" = "250" ] && ok "bridge stripped ALT unit -> bare '250'" || bad "bridge did not strip ALT unit (got: '$(env_val ALT)')"
+  if [ "$(env_val ALT)" = "250" ]; then ok "bridge stripped ALT unit -> bare '250'"; else bad "bridge did not strip ALT unit (got: '$(env_val ALT)')"; fi
   # The feeders export BEASTHOST=localhost in their own wrappers to reach readsb,
   # but readsb itself must NOT self-connect to its own 30005 output — that is the
   # Beast feedback loop that pegged a CPU core. This is the real regression guard.
@@ -476,7 +506,7 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
       "${HERE}/fixtures/mqtt.json" >"${optfile}"
     docker run -d --name "${CONTAINER}" --network "${MQTT_NET}" \
       -e SUPERVISOR_TOKEN=test \
-      -e SUPERVISOR_CORE_API=http://${API_MOCK}:8099/core/api \
+      -e SUPERVISOR_CORE_API="http://${API_MOCK}:8099/core/api" \
       -v "${optfile}:/data/options.json:ro" "${IMAGE}" >/dev/null
     rm -f "${optfile}"
     if wait_for _log_has 'MQTT connected to'; then
@@ -491,7 +521,7 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
     mq_deadline=$((SECONDS + 50))
     while [ "${SECONDS}" -lt "${mq_deadline}" ]; do
       CAP="$(docker exec "${MQTT_BROKER}" timeout 4 mosquitto_sub -t '#' -v 2>/dev/null || true)"
-      case "${CAP}" in *"aviation_feeder/aircraft_total/state"*) break ;; esac
+      case "${CAP}" in *"aviation_feeder/aircraft_total/state"*) break ;; *) ;; esac
       sleep 1
     done
     case "${CAP}" in
@@ -642,7 +672,7 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
   docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
   docker run -d --name "${CONTAINER}" --network "${MQTT_NET}" \
     -e SUPERVISOR_TOKEN=test \
-    -e SUPERVISOR_CORE_API=http://${API_MOCK}:8099/core/api \
+    -e SUPERVISOR_CORE_API="http://${API_MOCK}:8099/core/api" \
     -v "${HERE}/fixtures/auto-location.json:/data/options.json:ro" "${IMAGE}" >/dev/null
   # Wait for the config bridge to finish.
   deadline=$((SECONDS + POLL_TIMEOUT))
@@ -655,7 +685,7 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
   # Bare metres, NO unit suffix -- a trailing "m" silently breaks rbfeeder's MLAT
   # autostart and makes openskyd log "Garbage after number ignored". Exact match so
   # a returning "43m" fails.
-  [ "$(env_val ALT)" = "43" ] && ok "env ALT is bare metres '43'" || bad "env ALT not bare '43' (got: '$(env_val ALT)')"
+  if [ "$(env_val ALT)" = "43" ]; then ok "env ALT is bare metres '43'"; else bad "env ALT not bare '43' (got: '$(env_val ALT)')"; fi
   assert_log 'inherited station location from Home Assistant'
   docker rm -f "${API_MOCK}" >/dev/null 2>&1 || true
   docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
@@ -690,9 +720,11 @@ case_tmpfs() {
   else
     bad "readsb output not tmpfs-backed"
   fi
-  wait_for _file_exists /run/readsb/aircraft.json &&
-    ok "readsb writes aircraft.json through the tmpfs symlink" ||
+  if wait_for _file_exists /run/readsb/aircraft.json; then
+    ok "readsb writes aircraft.json through the tmpfs symlink"
+  else
     bad "readsb aircraft.json missing on tmpfs"
+  fi
 
   teardown_case
 }
@@ -730,7 +762,7 @@ for idx in "${!CASES[@]}"; do
     # top-level cleanup() — which would nuke sibling containers + the shared
     # RESULTS_DIR mid-run.
     trap - EXIT
-    "${CASES[$idx]}"
+    "${CASES[${idx}]}"
     echo "$?" >"${RESULTS_DIR}/${idx}.status"
   ) \
     >"${RESULTS_DIR}/${idx}.log" 2>&1 &
@@ -749,7 +781,7 @@ for idx in "${!CASES[@]}"; do
   total_fail=$((total_fail + ${f:-0}))
   if [ "${st}" -ne 0 ]; then
     total_crash=$((total_crash + 1))
-    printf '  CRASH: %s exited %s (no clean completion)\n' "${CASES[$idx]}" "${st}"
+    printf '  CRASH: %s exited %s (no clean completion)\n' "${CASES[${idx}]}" "${st}"
   fi
 done
 

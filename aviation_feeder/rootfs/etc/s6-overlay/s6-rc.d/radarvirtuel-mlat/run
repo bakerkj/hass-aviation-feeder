@@ -1,4 +1,5 @@
 #!/command/with-contenv bash
+# shellcheck shell=bash
 # RadarVirtuel MLAT: waits for the feeder to register the station (station_id +
 # station_uid written to /data), then runs mlat-client to adsbnetwork's MLAT
 # server, reading Beast from our readsb and republishing results on 30109

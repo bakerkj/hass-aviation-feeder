@@ -1,4 +1,5 @@
 #!/command/with-contenv sh
+# shellcheck shell=sh
 # Gate PlaneFinder: needs enable_planefinder + a sharecode. Idle otherwise.
 . /usr/local/bin/feeder-gate
 gate "[pfclient]" ENABLE_PLANEFINDER SHARECODE

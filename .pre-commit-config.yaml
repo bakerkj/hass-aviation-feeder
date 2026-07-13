@@ -32,18 +32,53 @@ repos:
         args: ["--prose-wrap", "always"]
         language_version: system
 
+  # Shell linting. Two things worth knowing:
+  #
+  # 1. MATCH BY PATH, NOT BY EXTENSION. `files: \.sh$` only ever saw 3 of our 36
+  #    shell scripts: every s6-overlay script (cont-init.d/*, s6-rc.d/*/{run,up},
+  #    scripts/*, the sourced /usr/local/bin/feeder-gate library) is extensionless,
+  #    so the 31 scripts that actually run inside the container -- including the
+  #    gate logic 16 feeders depend on -- were never linted at all.
+  #    The exclude drops the non-shell s6 control files (type, contents.d/,
+  #    dependencies.d/) and the stunnel config that live under the same tree.
+  #
+  # 2. STRICTER THAN THE DEFAULT. `-S style -o all` is well past the usual
+  #    `-S warning`: it catches unquoted expansions (SC2086) and `A && B || C`
+  #    misuse (SC2015), which sit BELOW the warning threshold and were therefore
+  #    invisible. The five exclusions are deliberate, not convenience:
+  #      SC1091 - can't follow sourced paths that only exist inside the image
+  #      SC2312 - "command substitution masks a return value"; fires on nearly
+  #               every $(...) in a string, for a failure mode we don't have
+  #      SC2154 - "referenced but not assigned": LAT/LONG/ALT/*_API_KEY are
+  #               injected at runtime by s6's with-contenv, which shellcheck
+  #               structurally cannot see. All false positives.
+  #      SC2310 - "function in an if condition disables set -e": every hit is a
+  #               predicate we deliberately branch on. That IS the intent.
+  #      SC2292 - "prefer [[ ]] over [ ]": several scripts are POSIX
+  #               `#!/command/with-contenv sh`, where [[ ]] is not portable.
+  #    Everything else is FIXED rather than suppressed; the tree is at zero.
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.11.0.1
     hooks:
       - id: shellcheck
-        files: \.sh$
-        args: ["-S", "warning", "-e", "SC1091"]
+        files: ^(scripts/.*\.sh|tests/.*\.sh|aviation_feeder/rootfs/.*)$
+        exclude: (/type$|/contents\.d/|/dependencies\.d/|\.conf$)
+        args:
+          [
+            "-S",
+            "style",
+            "-o",
+            "all",
+            "-e",
+            "SC1091,SC2312,SC2154,SC2310,SC2292",
+          ]
 
   - repo: https://github.com/scop/pre-commit-shfmt
     rev: v3.13.0-1
     hooks:
       - id: shfmt
-        files: \.sh$
+        files: ^(scripts/.*\.sh|tests/.*\.sh|aviation_feeder/rootfs/.*)$
+        exclude: (/type$|/contents\.d/|/dependencies\.d/|\.conf$)
         args: ["-w", "-i", "2", "-ci"]
 
   - repo: https://github.com/AleksaC/hadolint-py

@@ -1,9 +1,10 @@
 #!/command/with-contenv bash
+# shellcheck shell=bash
 # sdrmap ADS-B feeder: sdrmapfeeder.sh scrapes our readsb /run/readsb/aircraft.json
 # and HTTPS-POSTs to sdrmap (it sources /scripts/common and has its own
 # credential check). Gate on the toggle + credentials so it idles when
 # disabled/unconfigured. sdrmapfeeder.sh reads LON (our bridge var is LONG).
 . /usr/local/bin/feeder-gate
 gate "[sdrmap]" ENABLE_SDRMAP SMUSERNAME SMPASSWORD
-export LON="${LON:-$LONG}"
+export LON="${LON:-${LONG}}"
 exec /usr/lib/sdrmapfeeder/sdrmapfeeder.sh

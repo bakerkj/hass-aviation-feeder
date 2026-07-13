@@ -1,4 +1,5 @@
 #!/command/with-contenv sh
+# shellcheck shell=sh
 # Persist data that must survive add-on rebuilds/updates on the /data volume.
 #
 # A HA add-on's container filesystem is ephemeral: it is recreated on every

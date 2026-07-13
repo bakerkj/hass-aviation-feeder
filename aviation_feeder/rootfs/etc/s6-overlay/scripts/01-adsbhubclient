@@ -1,4 +1,5 @@
 #!/command/with-contenv sh
+# shellcheck shell=sh
 # Gated wrapper for the ADSBHub config oneshot: skip cleanly when the feeder is
 # off or unconfigured (the real script hard-exits on missing SBSHOST/CLIENTKEY,
 # which would fail s6 init).

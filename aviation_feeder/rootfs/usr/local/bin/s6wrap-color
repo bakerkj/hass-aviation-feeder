@@ -26,19 +26,19 @@ palette=(31 32 33 34 35 36)
 color_tag() {
   local tag="$1" c sum=0 i ord
   case "${tag}" in
-  readsb) c=34 ;;                                                          # blue
-  dump978 | pfclient | opensky-feeder | uk1090) c=36 ;;                    # cyan
-  tar1090 | graphs1090 | graphs1090-readback | collectd | ha-mqtt) c=32 ;; # green
-  piaware | adsbhubclient | rbfeeder) c=33 ;;                              # yellow
-  mlat-client | mlathub) c=35 ;;                                           # magenta
-  fr24feed | fr24uat-feed) c=31 ;;                                         # red
-  *)
-    for ((i = 0; i < ${#tag}; i++)); do
-      printf -v ord '%d' "'${tag:i:1}"
-      sum=$((sum + ord))
-    done
-    c="${palette[sum % ${#palette[@]}]}"
-    ;;
+    readsb) c=34 ;;                                                          # blue
+    dump978 | pfclient | opensky-feeder | uk1090) c=36 ;;                    # cyan
+    tar1090 | graphs1090 | graphs1090-readback | collectd | ha-mqtt) c=32 ;; # green
+    piaware | adsbhubclient | rbfeeder) c=33 ;;                              # yellow
+    mlat-client | mlathub) c=35 ;;                                           # magenta
+    fr24feed | fr24uat-feed) c=31 ;;                                         # red
+    *)
+      for ((i = 0; i < ${#tag}; i++)); do
+        printf -v ord '%d' "'${tag:i:1}"
+        sum=$((sum + ord))
+      done
+      c="${palette[sum%${#palette[@]}]}"
+      ;;
   esac
   printf '\033[%sm%s\033[0m' "${c}" "${tag}"
 }
@@ -46,8 +46,8 @@ color_tag() {
 args=()
 for a in "$@"; do
   case "${a}" in
-  --prepend=?*) args+=("--prepend=$(color_tag "${a#--prepend=}")") ;;
-  *) args+=("${a}") ;;
+    --prepend=?*) args+=("--prepend=$(color_tag "${a#--prepend=}")") ;;
+    *) args+=("${a}") ;;
   esac
 done
 exec "${real}" "${args[@]}"

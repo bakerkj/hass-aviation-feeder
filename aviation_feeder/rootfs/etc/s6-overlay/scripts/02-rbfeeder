@@ -1,4 +1,5 @@
 #!/command/with-contenv sh
+# shellcheck shell=sh
 # Gated wrapper for the RadarBox config oneshot: skip cleanly when RadarBox is
 # disabled OR unconfigured. The real upstream script `sleep infinity`s on hosts
 # without a thermal sensor, which would otherwise stall s6 init. The gate here

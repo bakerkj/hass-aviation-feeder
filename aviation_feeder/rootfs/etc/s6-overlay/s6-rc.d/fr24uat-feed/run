@@ -1,4 +1,5 @@
 #!/command/with-contenv sh
+# shellcheck shell=sh
 # Gate the FlightRadar24 UAT (978) feeder: needs enable_fr24 plus a separate
 # UAT sharing key (fr24_uat_key). Idle otherwise so it never error-loops.
 . /usr/local/bin/feeder-gate

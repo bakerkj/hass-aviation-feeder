@@ -1,4 +1,5 @@
 #!/command/with-contenv sh
+# shellcheck shell=sh
 # Gate the 978 UAT decoder: run it whenever 978 is decoded locally -- rtlsdr mode
 # with UAT enabled, or uat-only mode (00-haos-options forces ENABLE_UAT on there).
 # In remote mode there is no local SDR, and UAT arrives via the remote Beast.

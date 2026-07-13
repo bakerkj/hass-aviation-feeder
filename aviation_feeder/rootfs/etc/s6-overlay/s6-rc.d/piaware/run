@@ -1,4 +1,5 @@
 #!/command/with-contenv sh
+# shellcheck shell=sh
 # Gate the piaware feeder behind the enable_piaware add-on option. When
 # disabled the longrun stays "up" but idle so it never connects to
 # FlightAware. Overrides the thin run shim copied from docker-piaware.
