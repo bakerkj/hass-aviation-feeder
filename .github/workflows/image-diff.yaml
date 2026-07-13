@@ -102,7 +102,13 @@ jobs:
           go-version: "1.25"
           cache: false
 
-      - name: Build mechanical briefing
+      # PREFETCH, don't inline. Everything heavy (full patches, whole before/after
+      # files, commit lists) is staged into upstream/ and the briefing is just the
+      # index into it. The agent then reads only what it needs, so the bulk never
+      # has to fit in a context window and nothing needs clipping to protect it.
+      # The tree is uploaded as an artifact too, so when a verdict looks wrong you
+      # can read exactly what the agent was handed.
+      - name: Prefetch upstream data + build briefing
         if: steps.diff.outputs.has_diff == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -110,19 +116,19 @@ jobs:
           set -euo pipefail
           python3 .github/scripts/renovate_image_briefing.py \
             "origin/${{ github.base_ref }}" "${{ github.event.pull_request.head.sha }}" \
-            > /tmp/briefing.md
-          cat /tmp/briefing.md
+            upstream
+          cp /tmp/image-diff.md upstream/image-diff.md
+          echo "--- prefetched tree ---"
+          find upstream -type f | sort
+          echo "--- briefing ---"
+          cat upstream/briefing.md
 
-      # Hand the resolved ranges + briefing to the review job rather than
-      # resolving twice.
-      - name: Upload resolved ranges
+      - name: Upload prefetched upstream data
         if: steps.diff.outputs.has_diff == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: upstream-ranges-pr${{ github.event.pull_request.number }}
-          path: |
-            /tmp/image-diff.md
-            /tmp/briefing.md
+          name: upstream-pr${{ github.event.pull_request.number }}
+          path: upstream/
           retention-days: 7
 
   review:
@@ -142,11 +148,11 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Download resolved ranges
+      - name: Download prefetched upstream data
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: upstream-ranges-pr${{ github.event.pull_request.number }}
-          path: .
+          name: upstream-pr${{ github.event.pull_request.number }}
+          path: upstream/
 
       # continue-on-error: this review INFORMS, it never blocks. A Claude failure
       # (or a false positive) must not wedge a dependency bump; the merge gate
@@ -166,12 +172,29 @@ jobs:
             change -- worthless to review. The real change is UPSTREAM, in the
             images we build on and extract from.
 
-            Two files have been PRE-COMPUTED for you and downloaded into the
-            workspace. Read BOTH before doing anything else:
+            The upstream data has been PRE-FETCHED into `upstream/` in the
+            workspace. You do not need to go and gather it.
 
-            `image-diff.md`  -- every image whose digest actually changed, with
-                                the old and new upstream commit and a compare
-                                range (resolved from the OCI revision labels).
+            START by reading `upstream/briefing.md`. It is the INDEX -- small on
+            purpose. Everything bulky sits beside it on disk, and you read only
+            what you need (Read/Grep):
+
+                upstream/briefing.md              the index: ranges, the hits
+                                                  table, the ENV table
+                upstream/<image>/range.txt        repo, old/new rev, compare URL,
+                                                  how provenance was established
+                upstream/<image>/commits.md       every commit subject in range
+                upstream/<image>/changed-files.txt every file the range touched
+                upstream/<image>/patches/*.diff   the FULL patch, per changed file
+                upstream/<image>/extracted/*.before
+                upstream/<image>/extracted/*.after
+                                                  the WHOLE file, at both revs, for
+                                                  files we extract and RUN -- a diff
+                                                  hunk's 3 lines of context are often
+                                                  too little to judge a script
+
+            `upstream/image-diff.md` is the compare-link summary already posted on
+            the PR.
 
             `briefing.md`    -- the MECHANICAL analysis, computed deterministically.
                                 It already contains:
@@ -319,6 +342,31 @@ jobs:
             review" -- if you cannot name the file we depend on, it is not a
             finding. Do not pad with summary or praise.
 
+            ## Then close verdict.md with a short `## Prefetch feedback` section
+
+            This is a feedback loop and we act on it, so be concrete and honest.
+            The prefetch in `upstream/` is meant to give you everything you need
+            up front; where it fell short, we want to fix the SCRIPT
+            (.github/scripts/renovate_image_briefing.py), not paper over it in the
+            prompt next time.
+
+            Answer these:
+
+            - Did you have to fetch anything yourself (gh api / git) that the
+              prefetch should have staged? Name the exact thing and why you needed
+              it. (Needing the network is not a failure -- chasing a linked PR
+              discussion or a file the patch references is legitimate. We just want
+              to know WHAT, so we can decide whether to prefetch it.)
+            - Was anything staged that you did not use at all? Say so -- we would
+              rather stop fetching it.
+            - Is there data that DOESN'T exist yet which would have made this
+              review sharper or faster? Be specific and mechanical: "the upstream
+              s6 service tree at both revs, so a renamed service is a diff not a
+              guess" is useful; "more context" is not.
+
+            If the prefetch was sufficient, say exactly that in one line. Do not
+            invent gaps to fill the section.
+
           # This workflow exists to feed Claude UNTRUSTED content: commit
           # messages and diffs from 11 third-party repos. So it holds NO tool
           # that can write anything outside the workspace:
@@ -333,10 +381,17 @@ jobs:
           #     by the next step instead. That removes the last write-capable tool
           #     from the agent AND makes the comment sticky (see below).
           #
-          # Net: the worst an injected instruction can now achieve is a wrong
-          # verdict in a comment -- not a mutation of the repo or the PR.
+          # The gh api endpoints that remain are GET-only and path-scoped. The
+          # prefetch means they are not needed for the common case -- but they are
+          # deliberately NOT removed: understanding a change can mean chasing the
+          # linked upstream PR discussion, a file the patch references, or another
+          # repo entirely (pw-feeder's source lives in a DIFFERENT repo from its
+          # image). Prefetch removes the NEED for network, not the ability.
+          #
+          # Net: an injected instruction can at worst send the agent reading. It
+          # cannot mutate this repo or this PR -- there is no tool for that.
           claude_args: |
-            --allowedTools "Read,Write,Grep,Glob,Bash(gh api repos/*/*/compare/*),Bash(gh api repos/*/*/commits/*),Bash(git log:*),Bash(git show:*)"
+            --allowedTools "Read,Write,Grep,Glob,Bash(gh api repos/*/*/compare/*),Bash(gh api repos/*/*/commits/*),Bash(gh api repos/*/*/contents/*),Bash(gh api repos/*/*/pulls/*),Bash(git log:*),Bash(git show:*)"
 
       # Sticky, with its own header so it is independent of the compare-link
       # comment: a re-push REPLACES the previous verdict instead of stacking a

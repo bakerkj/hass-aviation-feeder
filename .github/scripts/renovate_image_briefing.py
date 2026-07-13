@@ -29,9 +29,35 @@
 #      do NOT, we silently inherit the new value -- which is exactly the class of
 #      bug that hides.
 #
-# Emits markdown. Exits 0 with no output when nothing changed.
+# It does NOT inline the bulk. Everything heavy is PRE-FETCHED into a directory
+# that is handed to the agent, and the briefing is just the index into it:
 #
-# Usage: renovate_image_briefing.py <base-ref> <head-ref> [dockerfile]
+#   upstream/
+#     briefing.md                     <- small, high-signal: ranges, hits, ENV table
+#     <image>/
+#       range.txt                     repo, old/new rev, compare URL, provenance
+#       commits.md                    every commit subject in the range
+#       changed-files.txt             every file the range touched
+#       patches/<flat-path>.diff      the FULL patch per changed file (unclipped)
+#       extracted/<flat-path>.before  whole file at the OLD rev  } for files WE
+#       extracted/<flat-path>.after   whole file at the NEW rev  } extract + run
+#
+# Why a directory rather than one big briefing:
+#   * the briefing stays small -- the bulk never has to fit in the context window,
+#     and nothing needs clipping to protect it. The agent reads only what it needs.
+#   * we can stage MORE than a patch. A diff hunk carries 3 lines of context, which
+#     is often too little to judge a shell script; the whole before/after file is
+#     staged for anything we actually extract and execute.
+#   * the agent then needs NO NETWORK. With the data on disk, it holds no gh/api
+#     tool at all -- so an instruction injected into an upstream commit message has
+#     no egress and no write path.
+#   * it is inspectable: the directory uploads as a CI artifact, so when a verdict
+#     looks wrong you can read exactly what the agent was handed.
+#
+# Writes the tree; prints nothing. Exits 0 having written nothing when no digest
+# changed.
+#
+# Usage: renovate_image_briefing.py <base-ref> <head-ref> <out-dir> [dockerfile]
 
 import base64
 import json
@@ -40,6 +66,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from renovate_image_diff import IMAGE_RE, labels_for, refs_in, run
 
@@ -182,6 +209,31 @@ def compare(repo_path, old, new, token):
     return patches, subjects
 
 
+def file_at(repo_path, path, rev, token):
+    """Whole file content at a revision, or None. Used to stage the BEFORE/AFTER
+    of files we extract: a patch hunk carries 3 lines of context, which is often
+    too little to judge a shell script that runs in our container."""
+    data = gh_json(
+        f"https://api.github.com/repos/{repo_path}/contents/{path}?ref={rev}", token
+    )
+    if not data or "content" not in data:
+        return None
+    try:
+        return base64.b64decode(data["content"]).decode("utf-8", "replace")
+    except (ValueError, TypeError):
+        return None
+
+
+def flat(path):
+    """A filesystem-safe leaf name for an upstream path."""
+    return path.strip("/").replace("/", "__")
+
+
+def write(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
 def clip(patch):
     """Bound a patch so one huge file cannot crowd out the rest of the briefing."""
     lines = patch.splitlines()
@@ -231,7 +283,8 @@ def suffix_hits(extracted, upstream_files):
 
 def main():
     base, head = sys.argv[1], sys.argv[2]
-    dockerfile = sys.argv[3] if len(sys.argv) > 3 else DOCKERFILE
+    out = Path(sys.argv[3] if len(sys.argv) > 3 else "upstream")
+    dockerfile = sys.argv[4] if len(sys.argv) > 4 else DOCKERFILE
     token = __import__("os").environ.get("GITHUB_TOKEN", "")
 
     diff = run("git", "diff", f"{base}...{head}", "--", dockerfile, fatal=True).splitlines()
@@ -247,47 +300,42 @@ def main():
     for image in sorted(set(old) & set(new)):
         (_, old_digest), (_, new_digest) = old[image], new[image]
         if old_digest == new_digest:
-            continue  # retag only
+            continue  # retag only -- same image, nothing upstream changed
 
         name = image.rsplit("/", 1)[-1]
-        new_lab = labels_for(image, new_digest) or {}
-        old_lab = labels_for(image, old_digest) or {}
-        source = new_lab.get("org.opencontainers.image.source") or ""
-        old_rev = old_lab.get("org.opencontainers.image.revision")
-        new_rev = new_lab.get("org.opencontainers.image.revision")
+        d = out / name
 
         extracted = []
         for stage in image_stages.get(image, []):
             extracted.extend(extracts.get(stage, []))
 
+        new_lab = labels_for(image, new_digest) or {}
+        old_lab = labels_for(image, old_digest) or {}
+        source = new_lab.get("org.opencontainers.image.source") or ""
+        old_rev = old_lab.get("org.opencontainers.image.revision")
+        new_rev = new_lab.get("org.opencontainers.image.revision")
         repo_path = (
             source[len("https://github.com/"):].rstrip("/")
-            if source.startswith("https://github.com/")
-            else None
+            if source.startswith("https://github.com/") else None
         )
         provenance = "OCI `revision` label"
         go_provenance = False
 
-        # No labels? Ask the BINARY. A Go binary embeds vcs.revision, so we can
-        # recover the exact commit from the artifact we actually extract and run
-        # -- and its source repo is often NOT the repo that builds the image
-        # (pw-feeder's commits live in plane-watch/pw-feeder, not
-        # plane-watch/docker-plane-watch), so the repo is confirmed against
-        # GitHub rather than guessed.
+        # No labels? Ask the BINARY -- see go_buildinfo().
         if not (old_rev and new_rev):
             new_rev, module = go_buildinfo(image, new_digest, extracted)
             old_rev, _ = go_buildinfo(image, old_digest, extracted)
             if new_rev and old_rev:
                 repo_path = resolve_repo(image, module, new_rev, token)
-                provenance = "Go build info (`vcs.revision`) — image ships no OCI labels"
+                provenance = "Go build info (`vcs.revision`) -- image ships no OCI labels"
                 go_provenance = True
 
         if not (repo_path and old_rev and new_rev):
             sections.append(
-                f"### `{name}`\n\n"
-                ":warning: upstream range could NOT be resolved — no OCI provenance "
-                "labels, and no Go build info recoverable from the files we extract. "
-                "No mechanical analysis was possible. **Do not guess a range.**\n"
+                f"### `{name}`\n\n:warning: upstream range could NOT be resolved -- no "
+                "OCI provenance labels, and no Go build info recoverable from the files "
+                "we extract. No mechanical analysis was possible. **Do not guess a "
+                "range.**\n"
             )
             continue
 
@@ -295,137 +343,141 @@ def main():
         if patches is None:
             sections.append(f"### `{name}`\n\n:warning: compare API failed.\n")
             continue
-        files = list(patches)
-
-        # 1. files we EXTRACT that changed upstream
-        hits = suffix_hits(extracted, files)
-
-        # 2. upstream ENV defaults that changed, and whether we inherit them.
-        # Only meaningful for the repo that BUILDS the image: when provenance came
-        # from a Go binary, repo_path is the binary's SOURCE repo, which has no
-        # Dockerfile and no ENV defaults of its own. Don't 404 chasing one.
-        if go_provenance:
-            env_old = env_new = None
-        else:
-            env_old, env_new = env_at(repo_path, old_rev, token), env_at(repo_path, new_rev, token)
-        env_rows = []
-        if env_old is not None and env_new is not None:
-            for key in sorted(set(env_old) | set(env_new)):
-                before, after = env_old.get(key), env_new.get(key)
-                if before == after:
-                    continue
-                inherited = not we_set(key)
-                env_rows.append((key, before, after, inherited))
 
         repo_url = f"https://github.com/{repo_path}"
+        compare_url = f"{repo_url}/compare/{old_rev}...{new_rev}"
+
+        # ---- stage the bulk on disk (the agent reads only what it needs) ----
+        write(d / "range.txt",
+              f"image:      {image}\n"
+              f"repo:       {repo_path}\n"
+              f"old_rev:    {old_rev}\n"
+              f"new_rev:    {new_rev}\n"
+              f"compare:    {compare_url}\n"
+              f"provenance: {provenance}\n")
+        write(d / "commits.md",
+              "\n".join(f"- {s}" for s in subjects) or "(none)")
+        write(d / "changed-files.txt", "\n".join(patches) or "(none)")
+        for f, patch in patches.items():
+            if patch:
+                write(d / "patches" / f"{flat(f)}.diff", patch)
+
+        hits = suffix_hits(extracted, list(patches))
+
+        # Whole before/after of the files we EXTRACT AND RUN. A hunk's 3 lines of
+        # context are often not enough to judge a script; give the agent the file.
+        for path, f in hits:
+            before = file_at(repo_path, f, old_rev, token)
+            after = file_at(repo_path, f, new_rev, token)
+            if before is not None:
+                write(d / "extracted" / f"{flat(path)}.before", before)
+            if after is not None:
+                write(d / "extracted" / f"{flat(path)}.after", after)
+
+        # ---- the INDEX entry (small, high-signal) --------------------------
         body = [
-            f"### `{name}`  ({len(files)} upstream file(s) changed)\n",
-            f"- range: [`{old_rev[:7]}…{new_rev[:7]}`]"
-            f"({repo_url}/compare/{old_rev}...{new_rev}) in `{repo_path}`",
-            f"- provenance: {provenance}\n",
+            f"### `{name}`",
+            "",
+            f"- range: [`{old_rev[:7]}…{new_rev[:7]}`]({compare_url}) in `{repo_path}`",
+            f"- provenance: {provenance}",
+            f"- {len(patches)} upstream file(s) changed; "
+            f"{len(subjects)} commit(s); we `COPY --from` {len(extracted)} path(s)",
+            f"- prefetched: `{d}/` "
+            f"(`range.txt`, `commits.md`, `changed-files.txt`, `patches/`"
+            f"{', `extracted/`' if hits else ''})",
+            "",
         ]
 
-        body.append(f"**Files we `COPY --from` this image: {len(extracted)}**\n")
-
-        # A COMPILED artifact has no counterpart file in the upstream repo, so the
-        # path intersection below can never hit for it -- and reporting "no file we
-        # extract changed" would be actively misleading. When provenance came from
-        # the binary's own Go build info, that repo IS the source of the binary we
-        # execute: every commit in the range is a change to code we run. Say so,
-        # and hand over all the diffs.
         if go_provenance:
-            body.append(
-                f":rotating_light: **`{extracted[0] if extracted else '(binary)'}` is a "
-                f"COMPILED binary built from `{repo_path}` — it has no source file in "
-                "the image repo, so the path intersection below cannot apply. EVERY "
-                "commit in this range is a change to code we execute. The diffs are "
-                "inlined; judge them.**\n"
-            )
-            for f, patch in list(patches.items())[:10]:
-                body.append(
-                    f"<details open><summary><code>{f}</code></summary>\n"
-                )
-                body.append("```diff")
-                body.append(clip(patch) or "(no textual diff)")
-                body.append("```\n</details>\n")
-            if len(patches) > 10:
-                body.append(f"_… and {len(patches) - 10} more changed file(s)._\n")
+            binary = extracted[0] if extracted else "(binary)"
+            body += [
+                f":rotating_light: **`{binary}` is a COMPILED binary built from "
+                f"`{repo_path}`.** It has no source file in the image repo, so the "
+                "extracted-path intersection cannot apply -- and 'no file we extract "
+                "changed' would be MISLEADING. **Every commit in this range is a change "
+                f"to code we execute.** Read the diffs in `{d}/patches/`.",
+                "",
+            ]
         elif hits:
-            body.append(
-                ":rotating_light: **We extract files that CHANGED upstream — these "
-                "land in our image and run. Their diffs are inlined below; that is "
-                "the code you must judge.**\n"
-            )
+            body += [
+                ":rotating_light: **We extract files that CHANGED upstream — these land "
+                "in our image and RUN. This is the highest-signal finding available; "
+                "read these first.**",
+                "",
+                "| we extract | upstream source | full diff | whole file before/after |",
+                "|---|---|---|---|",
+            ]
             for path, f in hits:
                 body.append(
-                    f"<details open><summary><code>{path}</code> "
-                    f"&larr; <a href=\"{repo_url}/blob/{new_rev}/{f}\">"
-                    f"<code>{f}</code></a></summary>\n"
-                )
-                body.append("```diff")
-                body.append(clip(patches.get(f, "")) or "(no textual diff — binary or renamed)")
-                body.append("```\n</details>\n")
-        else:
-            body.append(
-                "No file we extract was touched in this range "
-                "(mechanically verified: the extracted paths do not intersect the "
-                "upstream changed-file list).\n"
-            )
-
-        if go_provenance:
-            body.append(
-                "_ENV defaults not compared: the resolved repo is the BINARY's source "
-                "repo, which builds no image and defines no ENV._\n"
-            )
-        elif env_old is None or env_new is None:
-            body.append(
-                ":grey_question: Could not read the upstream Dockerfile at both "
-                "revisions, so ENV defaults were NOT compared.\n"
-            )
-        elif env_rows:
-            body.append("**Upstream ENV defaults that changed:**\n")
-            body.append("| env | before | after | do we set it? |")
-            body.append("|---|---|---|---|")
-            for key, before, after, inherited in env_rows:
-                verdict = (
-                    ":rotating_light: **NO — we INHERIT the new value**"
-                    if inherited
-                    else "yes — we override it, no impact"
-                )
-                body.append(
-                    f"| `{key}` | `{before or '(unset)'}` | `{after or '(removed)'}` | {verdict} |"
+                    f"| `{path}` | [`{f}`]({repo_url}/blob/{new_rev}/{f}) "
+                    f"| `{d}/patches/{flat(f)}.diff` "
+                    f"| `{d}/extracted/{flat(path)}.{{before,after}}` |"
                 )
             body.append("")
         else:
-            body.append("No upstream ENV default changed in this range.\n")
+            body += [
+                "No file we extract was touched in this range (mechanically verified: "
+                "the extracted paths do not intersect the upstream changed-file list).",
+                "",
+            ]
 
-        # The full commit list, so the agent can scan the range for the things
-        # that CANNOT be mechanized (a renamed s6 service, a new option upstream
-        # now expects, a behavioural change inside a compiled binary) without
-        # having to go and fetch it.
-        if subjects:
-            body.append(
-                f"<details><summary>all {len(subjects)} upstream commit(s) in range"
-                "</summary>\n"
-            )
-            body.extend(f"- {s}" for s in subjects[:40])
-            if len(subjects) > 40:
-                body.append(f"- … and {len(subjects) - 40} more")
-            body.append("\n</details>\n")
+        # ENV defaults -- only meaningful for the repo that BUILDS the image.
+        if go_provenance:
+            body += [
+                "_ENV defaults not compared: the resolved repo is the BINARY's source "
+                "repo, which builds no image and defines no ENV._",
+                "",
+            ]
+        else:
+            env_old, env_new = env_at(repo_path, old_rev, token), env_at(repo_path, new_rev, token)
+            if env_old is None or env_new is None:
+                body += [
+                    ":grey_question: Could not read the upstream Dockerfile at both "
+                    "revisions, so ENV defaults were NOT compared.",
+                    "",
+                ]
+            else:
+                rows = []
+                for key in sorted(set(env_old) | set(env_new)):
+                    before, after = env_old.get(key), env_new.get(key)
+                    if before != after:
+                        rows.append((key, before, after, not we_set(key)))
+                if rows:
+                    body += [
+                        "**Upstream ENV defaults that changed:**",
+                        "",
+                        "| env | before | after | do we set it? |",
+                        "|---|---|---|---|",
+                    ]
+                    for key, before, after, inherited in rows:
+                        verdict = (
+                            ":rotating_light: **NO — we INHERIT the new value**"
+                            if inherited else "yes — we override it, no impact"
+                        )
+                        body.append(
+                            f"| `{key}` | `{before or '(unset)'}` | "
+                            f"`{after or '(removed)'}` | {verdict} |"
+                        )
+                    body.append("")
+                else:
+                    body += ["No upstream ENV default changed in this range.", ""]
 
         sections.append("\n".join(body))
 
     if not sections:
         return
 
-    print("## Mechanical briefing\n")
-    print(
-        "_Computed, not inferred: the extracted-path intersection and the ENV-default "
-        "diff below are set arithmetic over our Dockerfile and the upstream compare "
-        "API. Trust these facts and spend your effort on JUDGEMENT — what the changed "
-        "code actually does inside our container._\n"
-    )
-    print("\n".join(sections))
+    index = [
+        "## Mechanical briefing",
+        "",
+        "_Computed, not inferred. The extracted-path intersection and the ENV-default "
+        "diff are set arithmetic over our Dockerfile and the upstream compare API. "
+        "The bulk (full patches, whole before/after files, commit lists) is PREFETCHED "
+        "to disk — read only what you need with Read/Grep. You need no network._",
+        "",
+    ] + sections
+    write(out / "briefing.md", "\n".join(index))
+    print(f"wrote {out}/briefing.md and prefetched upstream data", file=sys.stderr)
 
 
 if __name__ == "__main__":
