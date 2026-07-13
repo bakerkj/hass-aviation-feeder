@@ -1,0 +1,39 @@
+# Build context = aviation_feeder/. The Dockerfile copies exactly three things
+# out of it: aviation_feeder_mqtt/, rootfs/, and patch-mlat-client.py. Everything
+# else is add-on metadata that Home Assistant reads straight from the repo, or
+# developer files. Excluding them keeps the context small -- and, more
+# importantly, keeps the image reproducible.
+
+# --- Correctness, not just tidiness ---------------------------------------
+# `COPY aviation_feeder_mqtt /opt/aviation_feeder_mqtt` takes the WHOLE directory,
+# so a stray local __pycache__ gets baked into the image -- including bytecode
+# from whatever Python the developer happens to run. We were shipping
+# cpython-314 .pyc into an image whose python3 is 3.13. That makes image contents
+# depend on the builder's machine, and every local test run regenerates the .pyc,
+# changing the COPY layer's hash and busting its build cache (and every layer
+# after it). The Dockerfile runs `python3 -m compileall` anyway, so the correct
+# in-image bytecode is generated at build time.
+# NB: the `**/` prefixes are load-bearing. Docker matches .dockerignore patterns
+# with Go's filepath.Match against the path relative to the context root, so a
+# bare `__pycache__/` matches ONLY a top-level one -- it would NOT match the
+# nested aviation_feeder_mqtt/__pycache__/, which is the one that actually gets
+# copied into the image.
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.venv/
+
+# --- Add-on metadata: HA reads these from the repo, never COPY'd into the image
+config.json
+translations/
+icon.png
+logo.png
+brand/
+
+# --- Developer docs: not part of the image --------------------------------
+*.md
+
+# --- Build plumbing itself -------------------------------------------------
+Dockerfile
+.dockerignore

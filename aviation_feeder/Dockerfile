@@ -336,7 +336,18 @@ RUN mkdir -p /etc/s6-overlay/s6-rc.d/02-rbfeeder/dependencies.d \
 # Python package (paho-mqtt) that publishes readsb feeder-health metrics to HA.
 # Run as the ha-mqtt s6 longrun (see rootfs) via `python3 -m aviation_feeder_mqtt`.
 COPY aviation_feeder_mqtt /opt/aviation_feeder_mqtt
-RUN python3 -m compileall -q /opt/aviation_feeder_mqtt
+# compileall precompiles every module (and so fails the build on a syntax error),
+# but it never IMPORTS one -- a missing runtime dep (paho) would still sail
+# through and only surface when the add-on starts. So also import each submodule
+# against this image's python + apt-installed deps. __main__ is skipped: importing
+# it would run the publisher. See .dockerignore for why no host __pycache__ is
+# present to shadow this (compileall adds bytecode, it does not remove foreign
+# bytecode that COPY brought in).
+RUN python3 -m compileall -q /opt/aviation_feeder_mqtt \
+  && PYTHONPATH=/opt python3 -c "\
+import importlib, pkgutil, aviation_feeder_mqtt as pkg; \
+[importlib.import_module('aviation_feeder_mqtt.' + m.name) \
+ for m in pkgutil.iter_modules(pkg.__path__) if m.name != '__main__']"
 
 # --- HAOS glue: config bridge + service enablement ------------------------
 # 00-haos-options is committed with its executable bit set, which COPY
