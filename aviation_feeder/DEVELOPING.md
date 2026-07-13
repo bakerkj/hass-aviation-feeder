@@ -24,8 +24,8 @@ client-binary feeders and a config bridge on top.
 
 The `Dockerfile` is a **multi-stage** build. The final image is
 `FROM ${BUILD_FROM}`, where `BUILD_FROM` defaults to the pinned ultrafeeder base
-`ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest@sha256:38b6e1e355c0…bc02832`
-(the digest changes on every Renovate bump — read it from the top of the
+`ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest-build-939@sha256:38b6e1e355c0…bc02832`
+(the tag+digest change on every Renovate bump — read them from the top of the
 Dockerfile, don't trust a copy here). Each account-based feeder is its own
 `FROM …@sha256:… AS <stage>` pulling a prebuilt upstream image, and the final
 image `COPY --from=<stage>`s just the binaries + s6 service files it needs
@@ -449,18 +449,23 @@ the Dockerfile for live values).
   (`--server 127.0.0.1:12346`, authed with the API key), and republishes results
   on **30108**; it depends on `pw-feeder` (+ 5 s sleep) so the relay binds
   first.
-- **Special handling.** `pw-feeder/run` exports a **scoped**
-  `SSL_CERT_FILE=/usr/local/share/pw-feeder-ca.crt` — plane.watch's TLS uses
-  Let's Encrypt Gen-Y roots that Go's `crypto/x509` won't bridge against the
-  stock trixie store, so only this process trusts plane.watch's own CA bundle;
-  the global store stays stock.
+- **Special handling.** None — it uses the stock trust store like every other
+  feeder. It did **not** always: pw-feeder `<v0.0.9` passed the _system_ cert
+  pool as `x509.VerifyOptions.Intermediates`, so Let's Encrypt's Gen-Y
+  cross-sign chain — which the server _sends_ but which is not in the system
+  store — could never be built, and it died with
+  `x509: certificate signed by unknown authority`. We worked around that by
+  staging plane.watch's own CA bundle and pointing only this process at it via
+  `SSL_CERT_FILE`. Upstream fixed it in v0.0.9 (`plane-watch/pw-feeder` 2dcd20d,
+  "verify TLS chains using server-provided intermediates"): the intermediates
+  pool is now built from the certs the server presents and anchored in the
+  system roots, where `ISRG Root X1` already lives. **Do not re-add the CA
+  workaround** — it is obsolete.
 - **How it's built.** Stage
-  `FROM ghcr.io/plane-watch/docker-plane-watch@sha256:f98637…e8874f AS planewatch`.
-  Two copies: `COPY --from=planewatch /usr/local/sbin/pw-feeder …` (the Go
-  binary, no extra shared libs) and
-  `COPY --from=planewatch /etc/ssl/certs/ca-certificates.crt /usr/local/share/pw-feeder-ca.crt`
-  (the scoped CA bundle, versioned with this digest). The gated s6 services
-  (`pw-feeder`, `planewatch-mlat`) live in `rootfs/`. No extra apt.
+  `FROM ghcr.io/plane-watch/docker-plane-watch:v0.0.9@sha256:54531e…6eb520 AS planewatch`.
+  One copy: `COPY --from=planewatch /usr/local/sbin/pw-feeder …` (the Go binary,
+  no extra shared libs). The gated s6 services (`pw-feeder`, `planewatch-mlat`)
+  live in `rootfs/`. No extra apt.
 
 #### RadarVirtuel / adsbnetwork (radarvirtuel + radarvirtuel-mlat)
 

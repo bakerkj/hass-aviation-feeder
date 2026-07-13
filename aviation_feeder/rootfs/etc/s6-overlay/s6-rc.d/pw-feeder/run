@@ -7,10 +7,11 @@
 # key so a disabled/unconfigured feeder idles instead of crash-looping.
 . /usr/local/bin/feeder-gate
 gate "[pw-feeder]" ENABLE_PLANEWATCH PLANEWATCH_API_KEY
-# pw-feeder (Go) needs Let's Encrypt's Gen-Y roots to validate plane.watch's TLS
-# cert; point it at a dedicated bundle (staged in the Dockerfile from the plane-watch
-# image) so ONLY this process trusts that set -- the global store stays stock.
-export SSL_CERT_FILE=/usr/local/share/pw-feeder-ca.crt
+# No SSL_CERT_FILE override: pw-feeder >=v0.0.9 verifies plane.watch's TLS chain
+# using the intermediates the server presents, so the stock system trust store
+# validates it. (Before that it searched the system pool for Let's Encrypt's Gen-Y
+# cross-sign intermediates, which aren't there, and failed x509 -- hence the old
+# staged CA bundle. See the Dockerfile note.)
 # pw-feeder (zerolog) self-tags every line "[pw-feeder] <RFC3339> INF ..." -- a
 # format unlike every other engine, plus a redundant second timestamp once s6wrap
 # adds the house "[ts][pw-feeder]". Route it through s6wrap (coloured tag + house

@@ -241,15 +241,15 @@ ENV OPENSKY_DEVICE_TYPE=default
 # on MLATSERVERHOST:MLATSERVERPORT (127.0.0.1:12346) that our planewatch-mlat
 # service tunnels a mlat-client through. The gated s6 services live in rootfs.
 COPY --from=planewatch /usr/local/sbin/pw-feeder /usr/local/sbin/pw-feeder
-# plane.watch's feed server uses Let's Encrypt's Gen-Y hierarchy (leaf -> "YR2" ->
-# cross-signed "ISRG Root YR"). Go's crypto/x509 -- unlike openssl -- won't bridge
-# that cross-sign up to the long-trusted ISRG Root X1, and trixie's ca-certificates
-# (20250419) has no self-signed Gen-Y root yet, so pw-feeder fails x509 against the
-# stock store (empirically only the full standard-roots+Gen-Y set validates it).
-# Rather than widen the GLOBAL trust store for all ~15 feeders, stage plane.watch's
-# own CA bundle to a dedicated path and point ONLY pw-feeder at it via SSL_CERT_FILE
-# (set in its s6 run script). Scoped; versioned with the pinned planewatch digest.
-COPY --from=planewatch /etc/ssl/certs/ca-certificates.crt /usr/local/share/pw-feeder-ca.crt
+# NB: pw-feeder used to need plane.watch's own CA bundle staged here (and pointed
+# at via SSL_CERT_FILE in its s6 run script): its TLS verify put the SYSTEM cert
+# pool in x509.VerifyOptions.Intermediates, so Let's Encrypt's Gen-Y cross-sign
+# chain -- which the server SENDS but which is not in the system store -- could
+# never be built, and it failed "x509: certificate signed by unknown authority".
+# pw-feeder v0.0.9 (plane-watch/pw-feeder 2dcd20d, "verify TLS chains using
+# server-provided intermediates") now builds the intermediates pool from the certs
+# the server presents and anchors in the system roots -- where ISRG Root X1 already
+# lives -- so the stock trust store validates and the workaround is gone.
 
 # --- RadarVirtuel / adsbnetwork (pure-Python feeder) ----------------------
 # No compiled binary: feeder_radarvirtuel.py reads our readsb's
