@@ -1,4 +1,5 @@
 #!/command/with-contenv sh
+# shellcheck shell=sh
 # Gate OpenSky: needs enable_opensky + a username + a station position. Idle
 # otherwise -- openskyd hard-exits without LAT/LONG/ALT, so without this location
 # check an enabled+named feeder with no location would error-loop instead of idle.

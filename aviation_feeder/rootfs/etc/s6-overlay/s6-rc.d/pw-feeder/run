@@ -1,4 +1,5 @@
 #!/command/with-contenv bash
+# shellcheck shell=bash
 # plane.watch feeder (pw-feeder): a native Go binary that feeds ADS-B Beast from
 # our in-container readsb (it reads BEASTHOST/BEASTPORT, set globally to
 # localhost:30005) to plane.watch, and opens a local MLAT relay on
@@ -19,6 +20,8 @@ gate "[pw-feeder]" ENABLE_PLANEWATCH PLANEWATCH_API_KEY
 # lines read "[ts][pw-feeder] INF ...". proc-sub keeps pw-feeder the exec'd (and
 # thus s6-signalled) leaf; sed is a side filter. The API key is passed as a
 # positional param so it isn't baked into the shell -c string.
+# shellcheck disable=SC2016  # "$1" must NOT expand here -- that is the whole point:
+# the key is passed as a positional param so it never appears in the -c string.
 exec /usr/local/bin/s6wrap --quiet --timestamps --prepend=pw-feeder --args \
   bash -c 'exec /usr/local/sbin/pw-feeder --apikey "$1" \
     > >(stdbuf -oL sed -E "s/^\[pw-feeder\] (\x1b\[90m)?[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z(\x1b\[0m)? //") 2>&1' \

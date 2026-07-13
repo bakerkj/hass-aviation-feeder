@@ -1,4 +1,5 @@
 #!/command/with-contenv bash
+# shellcheck shell=bash
 # 1090MHz UK (radar1090): the proprietary `radar` binary reads our in-container
 # readsb Beast output (localhost:30005, radar's own defaults) and forwards it to
 # 1090MHz UK's aggregator (radar's compiled-in default host), identified by the

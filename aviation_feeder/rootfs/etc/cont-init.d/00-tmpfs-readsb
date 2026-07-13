@@ -1,4 +1,5 @@
 #!/command/with-contenv sh
+# shellcheck shell=sh
 # Redirect the high-frequency /run output dirs of readsb and collectd to a
 # RAM-backed tmpfs so they do not wear the SD/eMMC on flash-based hosts (e.g. a
 # Raspberry Pi):

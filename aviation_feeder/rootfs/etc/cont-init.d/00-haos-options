@@ -24,7 +24,7 @@ mkdir -p "${ENV_DIR}"
 # discipline as the direwolf_igate add-on). Echoes "" when unset/null.
 opt() {
   local key="$1" val
-  val="$(jq -r --arg k "$key" '.[$k] // empty' "${OPTIONS_FILE}")"
+  val="$(jq -r --arg k "${key}" '.[$k] // empty' "${OPTIONS_FILE}")"
   val="${val//\"/}"
   val="${val//\\/}"
   val="${val//$'\n'/}"
@@ -39,7 +39,7 @@ opt() {
 # so an explicit false is distinguishable from unset.
 opt_bool() {
   local key="$1" def="$2" val
-  val="$(jq -r --arg k "$key" '.[$k]' "${OPTIONS_FILE}")"
+  val="$(jq -r --arg k "${key}" '.[$k]' "${OPTIONS_FILE}")"
   [ "${val}" = "null" ] && val="${def}"
   printf '%s' "${val}"
 }
@@ -176,7 +176,7 @@ setenv RECEIVER_MODE "${RECEIVER_MODE}"
 # is forced on regardless of the enable_uat toggle -- that toggle is the
 # rtlsdr-mode opt-in for a SECOND stick) or in rtlsdr mode with it enabled. This
 # one value drives the dump978 gate, the piaware UAT pointer, and readsb's input.
-if [[ "${RECEIVER_MODE}" == "uat" || ( "${RECEIVER_MODE}" == "rtlsdr" && "$(opt enable_uat)" == "true" ) ]]; then
+if [[ "${RECEIVER_MODE}" == "uat" || ("${RECEIVER_MODE}" == "rtlsdr" && "$(opt enable_uat)" == "true") ]]; then
   ENABLE_UAT_VAL="true"
 else
   ENABLE_UAT_VAL="false"
@@ -318,9 +318,9 @@ fi
 # override falls back to the shared UUID when its field is blank.
 add_aggregator() {
   local key="$1" ahost="$2" aport="$3" mhost="$4" mport="$5" ovkey="$6"
-  [[ "$(opt "$key")" == "true" ]] || return 0
+  [[ "$(opt "${key}")" == "true" ]] || return 0
   local u="${UUID}" ov uuid_suffix=""
-  ov="$(opt "$ovkey")"
+  ov="$(opt "${ovkey}")"
   [[ -n "${ov}" ]] && u="${ov}"
   [[ -n "${u}" ]] && uuid_suffix=",uuid=${u}"
   UF+=("adsb,${ahost},${aport},beast_reduce_plus_out${uuid_suffix}")
@@ -329,7 +329,7 @@ add_aggregator() {
   # to feed this aggregator's ADS-B but skip its MLAT -- useful when two networks
   # share one MLAT backend (feeding both looks like a duplicate receiver).
   local mlat_opt="${ovkey%_uuid}_mlat"
-  if [[ -n "${mhost}" && "$(opt_bool "$mlat_opt" true)" != "false" ]]; then
+  if [[ -n "${mhost}" && "$(opt_bool "${mlat_opt}" true)" != "false" ]]; then
     UF+=("mlat,${mhost},${mport}${uuid_suffix}")
   fi
   # Explicit success: without this the trailing test returns 1 for aggregators
@@ -337,23 +337,23 @@ add_aggregator() {
   return 0
 }
 
-add_aggregator feed_adsblol       in.adsb.lol            30004 in.adsb.lol            31090 adsblol_uuid
-add_aggregator feed_adsbfi        feed.adsb.fi           30004 feed.adsb.fi           31090 adsbfi_uuid
-add_aggregator feed_airplaneslive feed.airplanes.live    30004 feed.airplanes.live    31090 airplaneslive_uuid
+add_aggregator feed_adsblol in.adsb.lol 30004 in.adsb.lol 31090 adsblol_uuid
+add_aggregator feed_adsbfi feed.adsb.fi 30004 feed.adsb.fi 31090 adsbfi_uuid
+add_aggregator feed_airplaneslive feed.airplanes.live 30004 feed.airplanes.live 31090 airplaneslive_uuid
 # Planespotters runs MLAT on a SEPARATE host (mlat.planespotters.net) from its
 # ADS-B ingest (feed.planespotters.net); the feed box refuses :31090. Verified
 # by DNS (distinct IPs) + reachability.
 add_aggregator feed_planespotters feed.planespotters.net 30004 mlat.planespotters.net 31090 planespotters_uuid
 add_aggregator feed_theairtraffic feed.theairtraffic.com 30004 feed.theairtraffic.com 31090 theairtraffic_uuid
-add_aggregator feed_avdelphi      data.avdelphi.com      24999 ""                     ""    avdelphi_uuid
-add_aggregator feed_flyitaly      dati.flyitalyadsb.com  4905  dati.flyitalyadsb.com  30100 flyitaly_uuid
-add_aggregator feed_adsbitalia    feed.adsbitalia.it     31108 mlat.adsbitalia.it     41113 adsbitalia_uuid
-add_aggregator feed_adsbexchange  feed1.adsbexchange.com 30004 feed.adsbexchange.com  31090 adsbexchange_uuid
+add_aggregator feed_avdelphi data.avdelphi.com 24999 "" "" avdelphi_uuid
+add_aggregator feed_flyitaly dati.flyitalyadsb.com 4905 dati.flyitalyadsb.com 30100 flyitaly_uuid
+add_aggregator feed_adsbitalia feed.adsbitalia.it 31108 mlat.adsbitalia.it 41113 adsbitalia_uuid
+add_aggregator feed_adsbexchange feed1.adsbexchange.com 30004 feed.adsbexchange.com 31090 adsbexchange_uuid
 # Ports differ per aggregator -- do NOT assume 30004/31090. adsb.one uses
 # 64004/64006 (HpRadar is 30004/31090). Verified from each aggregator's own feed
 # instructions.
-add_aggregator feed_adsbone       feed.adsb.one          64004 feed.adsb.one          64006 adsbone_uuid
-add_aggregator feed_hpradar       skyfeed.hpradar.com    30004 skyfeed.hpradar.com    31090 hpradar_uuid
+add_aggregator feed_adsbone feed.adsb.one 64004 feed.adsb.one 64006 adsbone_uuid
+add_aggregator feed_hpradar skyfeed.hpradar.com 30004 skyfeed.hpradar.com 31090 hpradar_uuid
 
 # Raw passthrough for anything not covered above (advanced users).
 RAW_UF="$(opt ultrafeeder_config)"

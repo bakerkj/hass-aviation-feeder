@@ -1,4 +1,5 @@
 #!/command/with-contenv bash
+# shellcheck shell=bash
 # stunnel TLS tunnel for sdrmap MLAT (apt-installed stunnel at /usr/bin/stunnel):
 # listens on 127.0.0.1:3333 and forwards, TLS-wrapped, to mlat.feed.sdrmap.org.
 # sdrmap-mlat's mlat-client connects to :3333. Only run when sdrmap MLAT is

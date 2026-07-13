@@ -1,4 +1,5 @@
 #!/command/with-contenv sh
+# shellcheck shell=sh
 # Gated wrapper for the FR24 config oneshot: skip cleanly when fr24 is off or
 # unconfigured (the real script hard-exits on missing FR24KEY, which would fail
 # s6 init on every install where fr24 is disabled).

@@ -1,4 +1,5 @@
 #!/command/with-contenv sh
+# shellcheck shell=sh
 # Override of the base image's collectd longrun.
 # (Upstream is simply: `#!/bin/sh` + `exec /etc/s6-overlay/scripts/collectd`.)
 #

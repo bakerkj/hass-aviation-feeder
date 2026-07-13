@@ -1,4 +1,5 @@
 #!/command/with-contenv bash
+# shellcheck shell=bash
 # Optionally skip IPv6 (AAAA) DNS resolution (add-on option `prefer_ipv4`,
 # default true). If this container has a global IPv6 address but no working IPv6
 # route, every IPv6 connect fails with errno 101 (Network unreachable) and the
@@ -20,7 +21,7 @@ if [[ "${prefer_ipv4}" != "true" ]]; then
 fi
 
 if [[ -w /etc/resolv.conf ]] && ! grep -q '^options no-aaaa' /etc/resolv.conf 2>/dev/null; then
-  echo 'options no-aaaa' >> /etc/resolv.conf || true
+  echo 'options no-aaaa' >>/etc/resolv.conf || true
 fi
-printf 'no-aaaa' > /run/s6/container_environment/RES_OPTIONS 2>/dev/null || true
+printf 'no-aaaa' >/run/s6/container_environment/RES_OPTIONS 2>/dev/null || true
 echo "[01-prefer-ipv4] prefer_ipv4=true; AAAA resolution disabled (no-aaaa)"

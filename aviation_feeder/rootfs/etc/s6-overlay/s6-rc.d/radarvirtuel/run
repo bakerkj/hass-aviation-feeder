@@ -1,4 +1,5 @@
 #!/command/with-contenv bash
+# shellcheck shell=bash
 # RadarVirtuel (adsbnetwork) feeder: a pure-Python client (docker-entrypoint.py)
 # that reads readsb aircraft and POSTs to radarvirtuel, auto-registering the
 # station from RV_CONTRIB_NAME/EMAIL and persisting the station id/uid to /data.
@@ -14,7 +15,7 @@
 # is LONG).
 . /usr/local/bin/feeder-gate
 gate "[radarvirtuel]" ENABLE_RADARVIRTUEL RV_CONTRIB_NAME RV_CONTRIB_EMAIL
-export RV_LAT="${RV_LAT:-$LAT}" RV_LON="${RV_LON:-$LONG}" RV_ALT="${RV_ALT:-$ALT}"
+export RV_LAT="${RV_LAT:-${LAT}}" RV_LON="${RV_LON:-${LONG}}" RV_ALT="${RV_ALT:-${ALT}}"
 sleep 5
 exec /usr/local/bin/s6wrap --quiet --timestamps --prepend=radarvirtuel --args \
   python3 -u /docker-entrypoint.py

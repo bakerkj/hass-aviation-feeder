@@ -5,7 +5,7 @@
 # then close, without draining the stream). Fail OPEN after ~30s so a readsb
 # problem can never wedge the feeders queued behind this gate.
 tries=0
-while [ "$tries" -lt 60 ]; do
+while [ "${tries}" -lt 60 ]; do
   if (exec 3<>/dev/tcp/127.0.0.1/30005) 2>/dev/null; then
     echo "[wait-for-readsb] readsb :30005 is up; releasing feeders"
     exit 0
