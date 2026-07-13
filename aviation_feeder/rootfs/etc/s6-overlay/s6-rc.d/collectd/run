@@ -9,6 +9,11 @@
 # /run/collectd and is rewritten every ~15s, so after the first restart those
 # writes would land on the SD/eMMC instead of tmpfs. Re-establish the tmpfs
 # symlink (00-tmpfs-readsb sets it up initially) before handing off.
-sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/collectd collectd
+# `|| exit 1` is load-bearing -- same reason as readsb/run: this call MUTATES
+# state (rm -rf + re-symlink), and link-tmpfs-dir now runs `set -e`, so it can
+# abort after the rm and before the ln. Falling through to the exec would let
+# collectd recreate /run/collectd as a real dir on the overlay, silently sending
+# the ~1/15s RRD rewrites back to the SD card. Fail the service instead.
+sh /etc/s6-overlay/scripts/link-tmpfs-dir /run/collectd collectd || exit 1
 
 exec /etc/s6-overlay/scripts/collectd
