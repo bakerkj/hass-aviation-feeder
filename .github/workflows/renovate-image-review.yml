@@ -1,0 +1,229 @@
+name: renovate-image-review
+
+# Claude reviews the UPSTREAM changes behind a Renovate base-image bump.
+#
+# Why this exists as its own workflow:
+#
+#   * claude-code-review.yml deliberately SKIPS Renovate PRs, and it is right to:
+#     the diff of a Renovate image PR is a single line (a digest), so reviewing
+#     the diff tells you nothing. All of the actual change is upstream, outside
+#     the diff entirely.
+#   * image-diff.yaml resolves each digest to its upstream commit and posts a
+#     compare link. That says WHAT changed upstream -- but not whether it
+#     affects US.
+#
+# This closes that gap: it hands Claude the upstream commit range and asks the
+# one question neither of the above answers -- does anything in this range change
+# behaviour we depend on?
+#
+# Scoped to Renovate PRs only (see the job `if`). Gating on the PR AUTHOR rather
+# than the `renovate/` branch prefix is deliberate: a human can rename a branch,
+# but cannot author a PR as `renovate[bot]`.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "aviation_feeder/Dockerfile"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Upstream behaviour review
+    # Renovate PRs only.
+    if: github.event.pull_request.user.login == 'renovate[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Need both sides of the PR to diff the image pins.
+          fetch-depth: 0
+
+      # Reuse the resolver from image-diff.yaml rather than re-deriving the
+      # digest -> commit mapping: it already turns each changed digest into an
+      # `org.opencontainers.image.revision` and a compare range. Empty output
+      # means no digest actually changed (a retag-only PR), and there is nothing
+      # upstream to review -- so we skip Claude entirely rather than pay for a
+      # run that has nothing to look at.
+      - name: Resolve upstream commit ranges
+        id: ranges
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/renovate_image_diff.py \
+            "origin/${{ github.base_ref }}" "${{ github.event.pull_request.head.sha }}" \
+            > /tmp/upstream-ranges.md
+          if [ -s /tmp/upstream-ranges.md ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            cat /tmp/upstream-ranges.md
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No image digest changed (retag-only) -- nothing upstream to review."
+          fi
+
+      # continue-on-error: this review INFORMS, it never blocks. A Claude failure
+      # (or a false positive) must not wedge a dependency bump; the merge gate
+      # stays the build + e2e checks, which are the things that actually prove
+      # the image works.
+      - name: Review upstream changes
+        if: steps.ranges.outputs.has_changes == 'true'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@e90deca47693f9457b72f2b53c17d7c445a87342 # v1.0.171
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Renovate has bumped one or more pinned base-image digests in
+            `aviation_feeder/Dockerfile`. The PR diff itself is just the digest
+            change -- worthless to review. The real change is UPSTREAM, in the
+            images we build on.
+
+            The upstream commit ranges have ALREADY been resolved for you, by
+            .github/scripts/renovate_image_diff.py, which mapped each changed
+            digest back to its `org.opencontainers.image.revision` commit.
+
+            YOUR FIRST ACTION: read that resolved output --
+
+                cat /tmp/upstream-ranges.md
+
+            It names every image whose digest actually changed, with the old and
+            new upstream commit for each and a compare range. Work from it; do
+            not try to re-derive the digest -> commit mapping yourself.
+
+            ## What this add-on is
+
+            A single Home Assistant add-on that layers the sdr-enthusiasts
+            proprietary feeders onto the docker-adsb-ultrafeeder base image, all
+            in ONE container. readsb decodes 1090MHz ADS-B, dump978 decodes
+            978MHz UAT; the aggregator feeders (piaware, fr24feed, pfclient,
+            rbfeeder, opensky, adsbhub, plane-watch, radarvirtuel, sdrmap,
+            uk1090) are staged in from their own upstream images via
+            `COPY --from` and pointed at the merged Beast stream. s6-overlay
+            supervises everything.
+
+            ## Two DIFFERENT kinds of image are pinned here
+
+            Treat them differently -- the risk is not the same:
+
+            a) THE BASE IMAGE (docker-adsb-ultrafeeder). We inherit its whole
+               filesystem, its ENV defaults, and its s6 service tree.
+
+            b) THE EXTRACTION IMAGES (piaware, fr24feed, pfclient, rbfeeder,
+               opensky, adsbhub, plane-watch, radarvirtuel, sdrmap, uk1090,
+               dump978...). We do NOT run these containers. We reach in and
+               `COPY --from` SPECIFIC PATHS out of them -- binaries, entrypoint
+               scripts, and upstream s6 scripts -- and then execute those files
+               inside OUR container, under OUR env, wired to OUR readsb.
+
+            (b) is the sharpest signal available to you, and the easiest to
+            check: if a file we EXTRACT changed upstream, that change lands
+            directly in our image and runs, with nothing to fail. An upstream
+            author editing their own entrypoint or s6 script is free to assume
+            their container's env and their own service tree -- assumptions that
+            may not hold in our merged single-container layout.
+
+            ## Your job -- and what NOT to do
+
+            CI already builds this image on amd64 AND aarch64 and runs a 129-
+            assertion e2e suite against it. So do NOT spend effort on anything a
+            failed build would have caught:
+
+            - an apt pin that no longer resolves -> the build FAILS. Not your job.
+            - a path we `COPY --from` that moved/vanished -> the build FAILS.
+            - a binary that disappeared -> the build FAILS.
+
+            Your job is the class of change CI CANNOT see, because nothing errors
+            and the container comes up looking healthy:
+
+            1. A file we EXTRACT was edited upstream (see (b) above) -- its
+               behaviour changed under us. Highest priority.
+            2. An ENV DEFAULT changed upstream that we INHERIT (we do not set it
+               ourselves, so we silently pick up the new value).
+            3. A NEW option/env upstream now expects, which we never set -- so a
+               feeder quietly does nothing (this is exactly how the rbfeeder MLAT
+               alt-suffix bug hid: no error, MLAT just never started).
+            4. An s6 service, script or unit RENAMED upstream, where our own
+               rootfs scripts or the Dockerfile's s6 bridging still reference the
+               OLD name.
+            5. A behavioural change in readsb / mlat-client / a feeder that our
+               e2e assertions do not happen to cover.
+            6. An option we still pass that upstream removed or renamed.
+
+            ## How to work
+
+            START HERE, for each image whose digest changed:
+
+            1. Work out exactly what we take from it:
+               `grep -n "COPY --from=<stage>" aviation_feeder/Dockerfile`
+               That gives you the precise list of paths we extract. (For the base
+               image, the answer is "everything we don't override".)
+            2. Then check whether ANY of those exact paths changed in that image's
+               upstream commit range, via
+               `gh api repos/<owner>/<repo>/compare/<base>...<head>` -- the
+               response lists every changed file, so you can intersect it directly
+               with the paths from step 1.
+            3. A hit there is a real finding: read the upstream diff of that file
+               (`gh api repos/<owner>/<repo>/commits/<sha>`) and work out what it
+               does differently inside OUR container.
+
+            Then, and only then, look at the wider commit range for categories
+            2-6 above.
+
+            - Cross-reference EVERY candidate finding against our real usage
+              before reporting it. Grep this repo: `aviation_feeder/Dockerfile`
+              (what we COPY --from, what ENV we set), `aviation_feeder/rootfs/`
+              (our s6 run scripts + the 00-haos-options config bridge), and
+              `aviation_feeder/config.json` (the options we expose).
+            - An upstream change we do not use is NOT a finding. Say so and move
+              on. Most base bumps are genuinely inert for us; "no impact" is the
+              expected result and is a useful answer.
+            - NOTE: plane-watch ships NO OCI provenance labels, so its commit
+              range may be unresolved above. If so, say that plainly rather than
+              guessing -- do not invent a range you could not resolve.
+
+            ## Output
+
+            Post exactly ONE top-level PR comment via `gh pr comment`, starting
+            with a verdict line:
+
+            `VERDICT: no impact` -- nothing upstream touches behaviour we rely on.
+            `VERDICT: needs attention` -- at least one real, load-bearing change.
+
+            For `needs attention`, each finding MUST give: the upstream commit,
+            what changed, the exact file:line in THIS repo that depends on it,
+            and the concrete consequence. No hedging, no "you may want to
+            review" -- if you cannot name the file we depend on, it is not a
+            finding.
+
+            Do not leave inline diff comments (the diff is one line, there is
+            nothing to annotate). Do not pad with summary or praise.
+          claude_args: |
+            --allowedTools "Read,Grep,Glob,Bash(gh api:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git log:*),Bash(git show:*),Bash(cat /tmp/upstream-ranges.md)"
+
+      # The action redacts its tool-use transcript from the public CI log; keep
+      # the raw record as a collaborator-only artifact so a bad review (or a
+      # permission denial) can actually be diagnosed. `always()` so failures are
+      # captured too.
+      - name: Upload Claude execution log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: claude-image-review-pr${{ github.event.pull_request.number }}
+          path: ${{ runner.temp }}/claude-execution-output.json
+          if-no-files-found: ignore
+          retention-days: 14
