@@ -76,9 +76,11 @@
       "allowedVersions": "<3.14"
     },
     {
+      "description": "sdr-enthusiasts images are pinned to their latest-build-NNN tag (they publish no semver). Track the build counter as a patch version — NOT major — so Renovate's maxMajorIncrement (500) doesn't cap large build-number jumps, and the PR shows a readable build-N -> build-M delta plus the resolved sourceUrl.",
       "matchManagers": ["dockerfile"],
       "matchPackageNames": ["/^ghcr\\.io/sdr-enthusiasts//"],
-      "groupName": "sdr-enthusiasts base images"
+      "groupName": "sdr-enthusiasts base images",
+      "versioning": "regex:^latest-build-(?<patch>\\d+)$"
     },
     {
       "description": "Override the helpers:pinGitHubActionDigestsToSemver preset's semver versioning for home-assistant/builder, which moved from semver tags (1.x-7.x) to calver tags (2026.06.0+).",

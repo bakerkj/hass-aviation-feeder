@@ -19,21 +19,21 @@
 # FROM so it is usable as a global build arg in the final-stage FROM. Builds
 # (local and CI) use this pinned default -- we intentionally do NOT ship a
 # build.yaml / let the HA builder override BUILD_FROM, so the digest stays fixed.
-ARG BUILD_FROM=ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest@sha256:38b6e1e355c0ffffbe72ce717276c18389a3f477d2744fac58a07b5f4bc02832
+ARG BUILD_FROM=ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest-build-939@sha256:38b6e1e355c0ffffbe72ce717276c18389a3f477d2744fac58a07b5f4bc02832
 
 # --- Feeder source stages -------------------------------------------------
 # Images pinned to tag@digest so Renovate's dockerfile manager (grouped as
 # "sdr-enthusiasts base images") tracks and bumps them.
-FROM ghcr.io/sdr-enthusiasts/docker-dump978:latest@sha256:d223d94e19f398447f2e11273f78fce7616989b5dbe7ba44ebbdc0b2af3da2ae AS dump978
-FROM ghcr.io/sdr-enthusiasts/docker-piaware:latest@sha256:8d3298cfd60002309aca06b636984f23a3be6dddabd8c81a3b07948499143015 AS piaware
-FROM ghcr.io/sdr-enthusiasts/docker-flightradar24:latest@sha256:f329680660f8c72885061955353735f6d9b8d261fb77ee0ba60f277f7a0630f1 AS fr24
-FROM ghcr.io/sdr-enthusiasts/docker-planefinder:latest@sha256:974f64a1e1629dabffdd440082248ff0f17a9a501a6439523066907be9799d38 AS planefinder
-FROM ghcr.io/sdr-enthusiasts/docker-opensky-network:latest@sha256:d0a0aa79445eea3e79f23b950c061f0dc6bb7a6c9de4a81c035d32331a564644 AS opensky
-FROM ghcr.io/sdr-enthusiasts/docker-adsbhub:latest@sha256:7f896c932362121a3760f00e2b20e6e8a3f0e0fe82d2a8cd67f7bf4c61ffcb14 AS adsbhub
-FROM ghcr.io/plane-watch/docker-plane-watch:latest@sha256:f98637421cc8a61fc90bc59d92682ffc8a64a087c6db5f6657edb922d1e8874f AS planewatch
-FROM ghcr.io/sdr-enthusiasts/docker-radarvirtuel:latest@sha256:1f6543e1725431222bd440d05641f9d0c578801087e05003e2d274b1e657bc34 AS radarvirtuel
-FROM ghcr.io/sdr-enthusiasts/docker-sdrmap:latest@sha256:57c87f930333f2d9f9a40306c3d2277711da363ffc7354b674843d10b6bb8c40 AS sdrmap
-FROM ghcr.io/sdr-enthusiasts/docker-radarbox:latest@sha256:835abbf7bd110cc251a93a4882c16557e5e03449031aea41c8da1b0b39878b20 AS radarbox
+FROM ghcr.io/sdr-enthusiasts/docker-dump978:latest-build-799@sha256:d223d94e19f398447f2e11273f78fce7616989b5dbe7ba44ebbdc0b2af3da2ae AS dump978
+FROM ghcr.io/sdr-enthusiasts/docker-piaware:latest-build-663@sha256:8d3298cfd60002309aca06b636984f23a3be6dddabd8c81a3b07948499143015 AS piaware
+FROM ghcr.io/sdr-enthusiasts/docker-flightradar24:latest-build-855@sha256:f329680660f8c72885061955353735f6d9b8d261fb77ee0ba60f277f7a0630f1 AS fr24
+FROM ghcr.io/sdr-enthusiasts/docker-planefinder:latest-build-538@sha256:974f64a1e1629dabffdd440082248ff0f17a9a501a6439523066907be9799d38 AS planefinder
+FROM ghcr.io/sdr-enthusiasts/docker-opensky-network:latest-build-833@sha256:d0a0aa79445eea3e79f23b950c061f0dc6bb7a6c9de4a81c035d32331a564644 AS opensky
+FROM ghcr.io/sdr-enthusiasts/docker-adsbhub:latest-build-527@sha256:7f896c932362121a3760f00e2b20e6e8a3f0e0fe82d2a8cd67f7bf4c61ffcb14 AS adsbhub
+FROM ghcr.io/plane-watch/docker-plane-watch:v0.0.8@sha256:f98637421cc8a61fc90bc59d92682ffc8a64a087c6db5f6657edb922d1e8874f AS planewatch
+FROM ghcr.io/sdr-enthusiasts/docker-radarvirtuel:latest-build-797@sha256:1f6543e1725431222bd440d05641f9d0c578801087e05003e2d274b1e657bc34 AS radarvirtuel
+FROM ghcr.io/sdr-enthusiasts/docker-sdrmap:latest-build-96@sha256:57c87f930333f2d9f9a40306c3d2277711da363ffc7354b674843d10b6bb8c40 AS sdrmap
+FROM ghcr.io/sdr-enthusiasts/docker-radarbox:latest-build-879@sha256:835abbf7bd110cc251a93a4882c16557e5e03449031aea41c8da1b0b39878b20 AS radarbox
 # AirNav ships rbfeeder only for ARM. On arm64 the base image has a NATIVE
 # rbfeeder (and no qemu); on amd64 it has the armhf binary + qemu-arm-static.
 # Stage exactly the runtime this arch needs into /rbx so the final image can copy
@@ -59,7 +59,7 @@ RUN set -eu; mkdir -p /rbx/usr/bin; \
     fi
 
 # 1090MHz UK feeder source: just the self-contained `radar` binary (glibc-only).
-FROM ghcr.io/sdr-enthusiasts/docker-radar1090:latest@sha256:45ebf71776683fcdec3608d8c46128cc94c91f2139eb38d285cf41c9ec2fb8f5 AS radar1090
+FROM ghcr.io/sdr-enthusiasts/docker-radar1090:latest-build-313@sha256:45ebf71776683fcdec3608d8c46128cc94c91f2139eb38d285cf41c9ec2fb8f5 AS radar1090
 
 # --- Final image ----------------------------------------------------------
 FROM ${BUILD_FROM}
