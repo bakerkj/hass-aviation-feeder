@@ -322,18 +322,19 @@ def inherited_hits(upstream_files, statuses=None):
     return hits
 
 
-def suffix_hits(extracted, upstream_files):
+def suffix_hits(extracted, upstream_files, statuses=None):
     """Upstream files that ARE the source of a path we extract.
 
     Upstream repos stage the container tree under rootfs/, so
     rootfs/etc/s6-overlay/scripts/pfclient -> /etc/s6-overlay/scripts/pfclient.
     """
+    statuses = statuses or {}
     hits = []
     for path in extracted:
         tail = path.lstrip("/")
         for f in upstream_files:
             if f == tail or f.endswith("/" + tail):
-                hits.append((path, f))
+                hits.append((path, f, statuses.get(f, "modified")))
     return hits
 
 
@@ -440,17 +441,19 @@ def main():
                 write(d / "patches" / f"{flat(f)}.diff",
                       f"# status: {meta['status']}\n{meta['patch']}")
 
-        hits = suffix_hits(extracted, list(patches))
+        statuses = {f: m["status"] for f, m in patches.items()}
+        hits = suffix_hits(extracted, list(patches), statuses)
         # The base image is inherited whole, not COPY'd from: its rootfs IS our
         # container's filesystem.
-        statuses = {f: m["status"] for f, m in patches.items()}
         base_hits = inherited_hits(list(patches), statuses) if not extracted else []
 
         # Whole before/after of the files we EXTRACT AND RUN. A hunk's 3 lines of
         # context are often not enough to judge a script; give the agent the file.
-        for path, f in hits:
+        for path, f, status in hits:
             before = file_at(repo_path, f, old_rev, token)
-            after = file_at(repo_path, f, new_rev, token)
+            # A removed file has no `after` -- do not silently write nothing and
+            # leave the table pointing at a file that was never created.
+            after = None if status == "removed" else file_at(repo_path, f, new_rev, token)
             if before is not None:
                 write(d / "extracted" / f"{flat(path)}.before", before)
             if after is not None:
@@ -516,14 +519,20 @@ def main():
                 "in our image and RUN. This is the highest-signal finding available; "
                 "read these first.**",
                 "",
-                "| we extract | upstream source | full diff | whole file before/after |",
-                "|---|---|---|---|",
+                "| we extract | upstream source | change | full diff | whole file |",
+                "|---|---|---|---|---|",
             ]
-            for path, f in hits:
+            for path, f, status in hits:
+                if status == "removed":
+                    whole = (
+                        ":rotating_light: **DELETED upstream** — only "
+                        f"`{d}/extracted/{flat(path)}.before` exists"
+                    )
+                else:
+                    whole = f"`{d}/extracted/{flat(path)}.{{before,after}}`"
                 body.append(
                     f"| `{path}` | [`{f}`]({repo_url}/blob/{new_rev}/{f}) "
-                    f"| `{d}/patches/{flat(f)}.diff` "
-                    f"| `{d}/extracted/{flat(path)}.{{before,after}}` |"
+                    f"| `{status}` | `{d}/patches/{flat(f)}.diff` | {whole} |"
                 )
             body.append("")
         else:
