@@ -258,12 +258,40 @@ def env_at(repo_path, rev, token):
 
 
 def we_set(key):
-    """Do WE set this env ourselves (-> we override, it cannot bite us)?"""
-    proc = subprocess.run(
-        ["grep", "-rqE", rf"(^|[^A-Z_]){re.escape(key)}\s*[=:]", *OUR_TREE],
-        capture_output=True,
+    """HOW do we set this env ourselves? -> a short string, or None if we do not.
+
+    Getting this WRONG is worse than not checking: the prompt tells the agent to
+    trust the briefing, so a false "we do not set it" turns an override we already
+    make into a confirmed finding -- a systematic false alarm.
+
+    The naive `KEY=` grep did exactly that. This add-on does NOT set container env
+    with `KEY=value`: 00-haos-options bridges HA options into the s6
+    container-environment directory through a helper --
+
+        setenv TAR1090_SITENAME "${SITE}"
+
+    -- which writes one file per variable. So `KEY=` never appears, and TAR1090_SITENAME,
+    MLAT_USER, READSB_DEVICE_TYPE and friends all read as "inherited" when we in
+    fact override every one of them.
+
+    Match the real forms, and skip comment lines so a variable merely MENTIONED in
+    prose is not mistaken for one we set (a false positive here silently suppresses
+    a real finding, which is the dangerous direction).
+    """
+    k = re.escape(key)
+    forms = (
+        (rf"^[^#]*\bsetenv\s+{k}\b", "setenv (00-haos-options bridge)"),
+        (rf"^[^#]*\bexport\s+{k}\s*=", "export"),
+        (rf"^[^#]*\bENV\s+{k}[=\s]", "Dockerfile ENV"),
+        (rf"^[^#]*(^|[^A-Z_]){k}\s*=", "assignment"),
     )
-    return proc.returncode == 0
+    for pattern, how in forms:
+        proc = subprocess.run(
+            ["grep", "-rqE", pattern, *OUR_TREE], capture_output=True
+        )
+        if proc.returncode == 0:
+            return how
+    return None
 
 
 OUR_ROOTFS = Path("aviation_feeder/rootfs")
@@ -277,14 +305,14 @@ def inherited_hits(upstream_files):
     changed" is "a file in its rootfs/ changed" -- that file lands in our container
     and executes, with nothing to fail.
 
-    Found the hard way: the build-939 -> build-942 bump ADDED a 443-line startup
-    script (rootfs/etc/s6-overlay/startup.d/52-adsbitalia-register) which runs in
-    our container on every start. The COPY --from intersection is empty for the
-    base image by definition, so it reported "no file we extract changed" -- true,
-    and beside the point.
+    Found the hard way: build-939 -> build-942 ADDED a 443-line startup script
+    (rootfs/etc/s6-overlay/startup.d/52-adsbitalia-register) that runs in our
+    container on every start. The COPY --from intersection is empty for the base
+    image BY DEFINITION, so it reported "no file we extract changed" -- true, and
+    beside the point.
 
-    Also reports whether WE ship our own file at the same container path, since
-    our rootfs is COPY'd over theirs and therefore WINS.
+    Also reports whether WE ship our own file at the same container path, since our
+    rootfs is COPY'd over theirs and therefore wins.
     """
     hits = []
     for f in upstream_files:
@@ -317,6 +345,17 @@ def main():
     dockerfile = sys.argv[4] if len(sys.argv) > 4 else DOCKERFILE
     token = __import__("os").environ.get("GITHUB_TOKEN", "")
 
+    # Consume what the resolve step ALREADY worked out (digest -> label -> revision,
+    # plus the whole compare payload). Re-deriving it here would mean a second
+    # `docker buildx imagetools inspect` per digest and a second compare API call
+    # per image, in the same job -- exactly the duplication we removed between the
+    # two workflows, just moved one step over. Falls back to computing it when run
+    # standalone (e.g. a local replay), so the script still works on its own.
+    resolved = {}
+    rj = __import__("os").environ.get("RESOLVED_JSON")
+    if rj and Path(rj).exists():
+        resolved = json.loads(Path(rj).read_text())
+
     diff = run("git", "diff", f"{base}...{head}", "--", dockerfile, fatal=True).splitlines()
     old, new = refs_in(diff, "-"), refs_in(diff, "+")
 
@@ -339,11 +378,16 @@ def main():
         for stage in image_stages.get(image, []):
             extracted.extend(extracts.get(stage, []))
 
-        new_lab = labels_for(image, new_digest) or {}
-        old_lab = labels_for(image, old_digest) or {}
-        source = new_lab.get("org.opencontainers.image.source") or ""
-        old_rev = old_lab.get("org.opencontainers.image.revision")
-        new_rev = new_lab.get("org.opencontainers.image.revision")
+        cached = resolved.get(image, {})
+        if cached:
+            source = cached.get("source") or ""
+            old_rev, new_rev = cached.get("old_rev"), cached.get("new_rev")
+        else:  # standalone run -- resolve it ourselves
+            new_lab = labels_for(image, new_digest) or {}
+            old_lab = labels_for(image, old_digest) or {}
+            source = new_lab.get("org.opencontainers.image.source") or ""
+            old_rev = old_lab.get("org.opencontainers.image.revision")
+            new_rev = new_lab.get("org.opencontainers.image.revision")
         repo_path = (
             source[len("https://github.com/"):].rstrip("/")
             if source.startswith("https://github.com/") else None
@@ -369,7 +413,11 @@ def main():
             )
             continue
 
-        patches, subjects = compare(repo_path, old_rev, new_rev, token)
+        # The compare payload is in the cache when the resolve step ran first.
+        if cached.get("files") is not None and cached.get("repo_path") == repo_path:
+            patches, subjects = cached["files"], cached.get("subjects", [])
+        else:
+            patches, subjects = compare(repo_path, old_rev, new_rev, token)
         if patches is None:
             sections.append(f"### `{name}`\n\n:warning: compare API failed.\n")
             continue
@@ -497,7 +545,7 @@ def main():
                 for key in sorted(set(env_old) | set(env_new)):
                     before, after = env_old.get(key), env_new.get(key)
                     if before != after:
-                        rows.append((key, before, after, not we_set(key)))
+                        rows.append((key, before, after, we_set(key)))
                 if rows:
                     body += [
                         "**Upstream ENV defaults that changed:**",
@@ -505,10 +553,11 @@ def main():
                         "| env | before | after | do we set it? |",
                         "|---|---|---|---|",
                     ]
-                    for key, before, after, inherited in rows:
+                    for key, before, after, how in rows:
                         verdict = (
-                            ":rotating_light: **NO — we INHERIT the new value**"
-                            if inherited else "yes — we override it, no impact"
+                            f"yes, via {how} — we override it, no impact"
+                            if how
+                            else ":rotating_light: **NO — we INHERIT the new value**"
                         )
                         body.append(
                             f"| `{key}` | `{before or '(unset)'}` | "

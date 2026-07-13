@@ -58,10 +58,24 @@ jobs:
           # Need both sides of the PR to diff the image pins.
           fetch-depth: 0
 
+      # This job holds a token and runs code, on a `pull_request` checkout of the
+      # PR HEAD. Renovate only ever touches the Dockerfile -- but a PR that CAN
+      # change the Dockerfile can change anything else in its head commit too, and
+      # nothing structurally stops that. So do not execute the head's copy of our
+      # scripts: force them back to the BASE branch's version, which is trusted
+      # and reviewed. The PR's Dockerfile is still read (that is the input we are
+      # here to analyse); only the CODE is pinned to base.
+      - name: Run scripts from the base branch, never the PR head
+        run: |
+          set -euo pipefail
+          git checkout "origin/${{ github.base_ref }}" -- .github/scripts
+          git status --short .github/scripts
+
       - name: Resolve upstream diff for changed images
         id: diff
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          RESOLVED_JSON: /tmp/resolved.json
         run: |
           set -euo pipefail
           python3 .github/scripts/renovate_image_diff.py \
@@ -112,6 +126,11 @@ jobs:
         if: steps.diff.outputs.has_diff == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Reuse what the resolve step already worked out: digest -> revision and
+          # the whole compare payload. Without this the briefing would re-run
+          # `imagetools inspect` per digest and re-call the compare API per image,
+          # in the same job.
+          RESOLVED_JSON: /tmp/resolved.json
         run: |
           set -euo pipefail
           python3 .github/scripts/renovate_image_briefing.py \
