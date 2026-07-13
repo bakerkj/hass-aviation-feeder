@@ -116,15 +116,31 @@ def gh_compare(repo_path, old, new, token):
         with urllib.request.urlopen(req, timeout=20) as r:
             data = json.load(r)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
-        return None, []
+        return None, [], {}
     subjects = [
         c["commit"]["message"].splitlines()[0]
         for c in data.get("commits", [])
     ]
-    return data.get("total_commits"), subjects
+    # The SAME response already carries every changed file and its patch. Return
+    # them so the briefing step does not have to make this call a second time.
+    # Keep the STATUS too (added / modified / removed / renamed). Discarding it made
+    # a DELETED upstream file report identically to an added one -- so a base bump
+    # that removes a rootfs script we do not override would still have been reported
+    # as ":rotating_light: theirs runs", for a file that no longer exists.
+    files = {
+        f["filename"]: {"patch": f.get("patch") or "", "status": f.get("status") or "modified"}
+        for f in data.get("files", [])
+    }
+    return data.get("total_commits"), subjects, files
 
 
 def main():
+    # Everything this script resolves (digests -> labels -> revisions -> the
+    # compare payload) is dumped here when RESOLVED_JSON is set, so the briefing
+    # step can CONSUME it instead of re-running `docker buildx imagetools inspect`
+    # on every digest and calling the compare API all over again. Resolving twice
+    # in one job is the same waste we removed across two workflows.
+    resolved = {}
     base, head = sys.argv[1], sys.argv[2]
     dockerfile = sys.argv[3] if len(sys.argv) > 3 else "aviation_feeder/Dockerfile"
     token = __import__("os").environ.get("GITHUB_TOKEN", "")
@@ -143,6 +159,10 @@ def main():
         name = image.rsplit("/", 1)[-1]
         change = f"`{old_tag}` → `{new_tag}`" if old_tag != new_tag else f"`{new_tag}`"
 
+        entry = resolved.setdefault(image, {
+            "old_tag": old_tag, "new_tag": new_tag,
+            "old_digest": old_digest, "new_digest": new_digest,
+        })
         old_lab, new_lab = labels_for(image, old_digest), labels_for(image, new_digest)
         if old_lab is None or new_lab is None:
             # Inspect failed -- say so. Do NOT fall through to the "no revision
@@ -156,10 +176,12 @@ def main():
         source = new_lab.get("org.opencontainers.image.source") or ""
         old_rev = old_lab.get("org.opencontainers.image.revision")
         new_rev = new_lab.get("org.opencontainers.image.revision")
+        entry.update(source=source, old_rev=old_rev, new_rev=new_rev)
 
         if source.startswith("https://github.com/") and old_rev and new_rev:
             repo_path = source[len("https://github.com/"):].rstrip("/")
-            count, subjects = gh_compare(repo_path, old_rev, new_rev, token)
+            count, subjects, files = gh_compare(repo_path, old_rev, new_rev, token)
+            entry.update(repo_path=repo_path, subjects=subjects, files=files)
             link = f"{source}/compare/{old_rev}...{new_rev}"
             rows.append(
                 f"| `{name}` | {change} | {count if count is not None else '?'} "
@@ -179,6 +201,11 @@ def main():
                 f"| `{name}` | {change} | ? | "
                 f"[browse commits]({guess}/commits) — no `revision` label |"
             )
+
+    dump = __import__("os").environ.get("RESOLVED_JSON")
+    if dump:
+        with open(dump, "w", encoding="utf-8") as fh:
+            json.dump(resolved, fh)
 
     if not rows:
         return
