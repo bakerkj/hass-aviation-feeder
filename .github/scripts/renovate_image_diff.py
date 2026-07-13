@@ -123,7 +123,14 @@ def gh_compare(repo_path, old, new, token):
     ]
     # The SAME response already carries every changed file and its patch. Return
     # them so the briefing step does not have to make this call a second time.
-    files = {f["filename"]: f.get("patch") or "" for f in data.get("files", [])}
+    # Keep the STATUS too (added / modified / removed / renamed). Discarding it made
+    # a DELETED upstream file report identically to an added one -- so a base bump
+    # that removes a rootfs script we do not override would still have been reported
+    # as ":rotating_light: theirs runs", for a file that no longer exists.
+    files = {
+        f["filename"]: {"patch": f.get("patch") or "", "status": f.get("status") or "modified"}
+        for f in data.get("files", [])
+    }
     return data.get("total_commits"), subjects, files
 
 

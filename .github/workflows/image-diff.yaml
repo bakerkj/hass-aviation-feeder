@@ -330,9 +330,11 @@ jobs:
             ## How to work
 
             1. Read `briefing.md`. Every file it flags under "we extract files
-               that CHANGED upstream" is a confirmed hit -- go read that file's
-               upstream diff (`gh api repos/<owner>/<repo>/commits/<sha>`) and
-               judge what it does differently in OUR container.
+               that CHANGED upstream" (or, for the inherited base image, under
+               "runs in our container") is a confirmed hit. Its FULL diff is
+               already staged at `upstream/<image>/patches/<file>.diff` -- Read it
+               from disk. Do NOT go and fetch it; it is the same data, and the
+               staged copy is unclipped.
             2. Every ENV row the briefing marks "we INHERIT the new value" is a
                confirmed silent behaviour change -- judge whether the new default
                hurts us, given how we wire that variable.
@@ -407,17 +409,28 @@ jobs:
           #     by the next step instead. That removes the last write-capable tool
           #     from the agent AND makes the comment sticky (see below).
           #
-          # The gh api endpoints that remain are GET-only and path-scoped. The
-          # prefetch means they are not needed for the common case -- but they are
-          # deliberately NOT removed: understanding a change can mean chasing the
-          # linked upstream PR discussion, a file the patch references, or another
-          # repo entirely (pw-feeder's source lives in a DIFFERENT repo from its
-          # image). Prefetch removes the NEED for network, not the ability.
+          # NB: a `Bash(gh api ...)` glob does NOT restrict the HTTP METHOD. It was
+          # wrong of an earlier version of this comment to claim otherwise. So each
+          # surviving endpoint must be safe even if an INJECTED instruction appends
+          # `-X PATCH/POST/DELETE` to it:
           #
-          # Net: an injected instruction can at worst send the agent reading. It
-          # cannot mutate this repo or this PR -- there is no tool for that.
+          #   compare/*, commits/*  -- read-only endpoints; the write verbs do not
+          #                            exist on them at all.
+          #   contents/*            -- a write here needs `contents: write`; this job
+          #                            holds `contents: read`, so a mutating call 403s.
+          #
+          # `pulls/*` was REMOVED for exactly this reason: it has no such backstop.
+          # The job holds `pull-requests: write` (needed by the sticky-comment step),
+          # so `gh api repos/O/R/pulls/N -X PATCH -f state=closed` would have matched
+          # the glob AND succeeded -- an injected instruction in an upstream commit
+          # message could have closed this PR with our own token. The prompt never
+          # calls the pulls endpoint; nothing is lost.
+          #
+          # Net, and now actually true: an injected instruction can at worst send the
+          # agent reading, or write a wrong verdict.md. Every write path to the repo
+          # or the PR is either absent or 403s on this job's permissions.
           claude_args: |
-            --allowedTools "Read,Write,Grep,Glob,Bash(gh api repos/*/*/compare/*),Bash(gh api repos/*/*/commits/*),Bash(gh api repos/*/*/contents/*),Bash(gh api repos/*/*/pulls/*),Bash(git log:*),Bash(git show:*)"
+            --allowedTools "Read,Write,Grep,Glob,Bash(gh api repos/*/*/compare/*),Bash(gh api repos/*/*/commits/*),Bash(gh api repos/*/*/contents/*),Bash(git log:*),Bash(git show:*)"
 
       # Sticky, with its own header so it is independent of the compare-link
       # comment: a re-push REPLACES the previous verdict instead of stacking a

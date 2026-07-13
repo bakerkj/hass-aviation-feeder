@@ -191,9 +191,6 @@ def stages_and_extracts(dockerfile_text):
     return stage_image, extracts
 
 
-MAX_PATCH_LINES = 200
-
-
 def compare(repo_path, old, new, token):
     """-> ({filename: patch}, [commit subjects]). (None, []) if the compare failed.
 
@@ -208,7 +205,10 @@ def compare(repo_path, old, new, token):
     )
     if data is None:
         return None, []
-    patches = {f["filename"]: f.get("patch") or "" for f in data.get("files", [])}
+    patches = {
+        f["filename"]: {"patch": f.get("patch") or "", "status": f.get("status") or "modified"}
+        for f in data.get("files", [])
+    }
     subjects = [
         c["commit"]["message"].splitlines()[0] for c in data.get("commits", [])
     ]
@@ -238,15 +238,6 @@ def flat(path):
 def write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
-
-
-def clip(patch):
-    """Bound a patch so one huge file cannot crowd out the rest of the briefing."""
-    lines = patch.splitlines()
-    if len(lines) <= MAX_PATCH_LINES:
-        return patch
-    kept = "\n".join(lines[:MAX_PATCH_LINES])
-    return f"{kept}\n… [truncated {len(lines) - MAX_PATCH_LINES} more diff lines]"
 
 
 def env_at(repo_path, rev, token):
@@ -303,7 +294,7 @@ def we_set(key):
 OUR_ROOTFS = Path("aviation_feeder/rootfs")
 
 
-def inherited_hits(upstream_files):
+def inherited_hits(upstream_files, statuses=None):
     """Changed files in the BASE image's rootfs -- i.e. code that runs in OUR container.
 
     The base image is not a `COPY --from` source: we inherit its ENTIRE filesystem,
@@ -320,13 +311,14 @@ def inherited_hits(upstream_files):
     Also reports whether WE ship our own file at the same container path, since our
     rootfs is COPY'd over theirs and therefore wins.
     """
+    statuses = statuses or {}
     hits = []
     for f in upstream_files:
         if not f.startswith("rootfs/"):
             continue
         container_path = f[len("rootfs"):]          # rootfs/etc/... -> /etc/...
         ours = OUR_ROOTFS / container_path.lstrip("/")
-        hits.append((container_path, f, ours.exists()))
+        hits.append((container_path, f, ours.exists(), statuses.get(f, "modified")))
     return hits
 
 
@@ -443,14 +435,16 @@ def main():
         write(d / "commits.md",
               "\n".join(f"- {s}" for s in subjects) or "(none)")
         write(d / "changed-files.txt", "\n".join(patches) or "(none)")
-        for f, patch in patches.items():
-            if patch:
-                write(d / "patches" / f"{flat(f)}.diff", patch)
+        for f, meta in patches.items():
+            if meta["patch"]:
+                write(d / "patches" / f"{flat(f)}.diff",
+                      f"# status: {meta['status']}\n{meta['patch']}")
 
         hits = suffix_hits(extracted, list(patches))
         # The base image is inherited whole, not COPY'd from: its rootfs IS our
         # container's filesystem.
-        base_hits = inherited_hits(list(patches)) if not extracted else []
+        statuses = {f: m["status"] for f, m in patches.items()}
+        base_hits = inherited_hits(list(patches), statuses) if not extracted else []
 
         # Whole before/after of the files we EXTRACT AND RUN. A hunk's 3 lines of
         # context are often not enough to judge a script; give the agent the file.
@@ -495,13 +489,19 @@ def main():
                 "(`COPY --from` intersection is empty for the base image by definition; "
                 "that is not evidence of safety.)",
                 "",
-                "| runs in our container as | upstream file | do we override it? |",
-                "|---|---|---|",
+                "| runs in our container as | upstream file | change | do we override it? |",
+                "|---|---|---|---|",
             ]
-            for container_path, f, overridden in base_hits:
+            for container_path, f, overridden, status in base_hits:
+                if status == "removed":
+                    verdict = "n/a — **file was DELETED upstream**, it no longer runs"
+                elif overridden:
+                    verdict = "yes — our rootfs wins, no impact"
+                else:
+                    verdict = ":rotating_light: **NO — theirs runs**"
                 body.append(
                     f"| `{container_path}` | [`{f}`]({repo_url}/blob/{new_rev}/{f}) "
-                    f"| {'yes — our rootfs wins, no impact' if overridden else ':rotating_light: **NO — theirs runs**'} |"
+                    f"| `{status}` | {verdict} |"
                 )
             body += [
                 "",
