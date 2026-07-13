@@ -14,7 +14,17 @@
 # via resolv.conf (read by every glibc process) and RES_OPTIONS (env fallback).
 # NB: gai.conf would only re-order IPv4/IPv6 results, not stop AAAA -- so it is
 # deliberately not used here.
-prefer_ipv4="$(jq -r '.prefer_ipv4 // true' /data/options.json 2>/dev/null)"
+#
+# Abort on the first failed command (see the note in 00-persist), with one
+# deliberate exception below. (No `set -u`.)
+set -e
+
+# `|| true` is load-bearing under `set -e`: with no /data/options.json (a bare
+# `docker run`, and the unconfigured e2e case) jq exits non-zero, which would
+# otherwise abort this script and fail container init. Swallowing it leaves
+# prefer_ipv4 empty, which falls through to the "leave IPv6 enabled" branch --
+# exactly the behaviour before `set -e`.
+prefer_ipv4="$(jq -r '.prefer_ipv4 // true' /data/options.json 2>/dev/null || true)"
 if [[ "${prefer_ipv4}" != "true" ]]; then
   echo "[01-prefer-ipv4] prefer_ipv4=${prefer_ipv4}; leaving IPv6/AAAA resolution enabled"
   exit 0
