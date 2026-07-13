@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#134074"/><stop offset="1" stop-color="#0B2545"/>
+    </linearGradient>
+    <linearGradient id="sweepg" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#4CC9F0" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#4CC9F0" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="26" fill="url(#sky)"/>
+  <circle cx="64" cy="64" r="47" fill="#081A33"/>
+  <!-- sweep: a wide 90deg wedge, bright at the leading edge -->
+  <path d="M64 64 L64 17 A47 47 0 0 1 111 64 Z" fill="url(#sweepg)"/>
+  <g fill="none" stroke="#4CC9F0">
+    <circle cx="64" cy="64" r="47" stroke-width="4" stroke-opacity="0.85"/>
+    <circle cx="64" cy="64" r="27" stroke-width="3" stroke-opacity="0.45"/>
+  </g>
+  <!-- leading edge of the sweep -->
+  <line x1="64" y1="64" x2="111" y2="64" stroke="#8FE3FF" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- aircraft blip, large enough to read at 48px -->
+  <g transform="translate(84 44) rotate(40) scale(0.46)"><path d="M0 -46 C 4 -46, 8 -38, 8 -26 L 8 -14 L 46 8 L 46 18 L 8 6 L 8 26 L 20 36 L 20 44 L 0 38 L -20 44 L -20 36 L -8 26 L -8 6 L -46 18 L -46 8 L -8 -14 L -8 -26 C -8 -38, -4 -46, 0 -46 Z" fill="#FFFFFF"/></g>
+  <circle cx="64" cy="64" r="4" fill="#8FE3FF"/>
+</svg>
