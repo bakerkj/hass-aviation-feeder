@@ -1,0 +1,65 @@
+name: image-diff
+
+# Post the UPSTREAM source diff for any base-image bump.
+#
+# This is NOT a Renovate feature and cannot be wired into Renovate: a docker
+# digest bump has no version range, and Renovate never maps a digest back to the
+# commit it was built from, so its PR shows only an opaque `f986374 -> 54531eb`.
+# Instead we hook the ordinary `pull_request` event and, for a Renovate PR that
+# changes an image pin, resolve both digests' `org.opencontainers.image.revision`
+# labels and post a real `compare/<old>...<new>` link with the commit list.
+#
+# Scoped to Renovate PRs only (see the job `if`). Gating on the PR AUTHOR rather
+# than the `renovate/` branch prefix is deliberate: a human can rename a branch,
+# but cannot author a PR as `renovate[bot]`.
+#
+# Renovate opens its PRs from branches in THIS repo (never a fork), so the plain
+# `pull_request` trigger has a writable GITHUB_TOKEN and can comment.
+
+on:
+  pull_request:
+    paths:
+      - "aviation_feeder/Dockerfile"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  image-diff:
+    name: Upstream image diff
+    # Renovate PRs only.
+    if: github.event.pull_request.user.login == 'renovate[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Need both sides of the PR to diff the image pins.
+          fetch-depth: 0
+
+      - name: Resolve upstream diff for changed images
+        id: diff
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/renovate_image_diff.py \
+            "origin/${{ github.base_ref }}" "${{ github.event.pull_request.head.sha }}" \
+            > /tmp/image-diff.md
+          if [ -s /tmp/image-diff.md ]; then
+            echo "has_diff=true" >> "$GITHUB_OUTPUT"
+            cat /tmp/image-diff.md
+          else
+            echo "has_diff=false" >> "$GITHUB_OUTPUT"
+            echo "No image digest changed (retag-only or no image pins touched)."
+          fi
+
+      # Sticky so a re-run/force-push updates the same comment instead of piling
+      # new ones up.
+      - name: Post upstream diff comment
+        if: steps.diff.outputs.has_diff == 'true'
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: image-diff
+          path: /tmp/image-diff.md
