@@ -87,7 +87,13 @@ ENV_RE = re.compile(r"^\s*ENV\s+(?P<key>[A-Z_][A-Z0-9_]*)[=\s]+(?P<val>.*)$", re
 
 
 def go_buildinfo(image, digest, candidate_paths):
-    """Recover (revision, module) from a Go binary we extract from the image.
+    """Recover (revision, module, path) from a Go binary we extract from the image.
+
+    Returns the PATH that actually yielded the build info, not just the revision:
+    a stage can extract several files (57 paths across 11 stages here), and only
+    one of them may be the Go binary. Labelling the wrong file as "the compiled
+    binary we execute" would hand the agent a false identity for the single
+    highest-priority finding category this workflow has.
 
     Some images ship NO OCI provenance labels at all (plane-watch is one), so
     the digest -> commit mapping everything else relies on is simply unavailable.
@@ -102,7 +108,7 @@ def go_buildinfo(image, digest, candidate_paths):
     for path in candidate_paths:
         cid = run("docker", "create", f"{image}@{digest}")
         if not cid:
-            return None, None
+            return None, None, None
         cid = cid.strip()
         local = f"/tmp/gobin-{path.strip('/').replace('/', '_')}"
         copied = run("docker", "cp", f"{cid}:{path}", local)
@@ -122,8 +128,8 @@ def go_buildinfo(image, digest, candidate_paths):
             elif len(parts) >= 2 and parts[0] == "path":
                 mod = mod or parts[1]
         if rev:
-            return rev, mod
-    return None, None
+            return rev, mod, path
+    return None, None, None
 
 
 def resolve_repo(image, module, rev, token):
@@ -394,11 +400,12 @@ def main():
         )
         provenance = "OCI `revision` label"
         go_provenance = False
+        go_path = None
 
         # No labels? Ask the BINARY -- see go_buildinfo().
         if not (old_rev and new_rev):
-            new_rev, module = go_buildinfo(image, new_digest, extracted)
-            old_rev, _ = go_buildinfo(image, old_digest, extracted)
+            new_rev, module, go_path = go_buildinfo(image, new_digest, extracted)
+            old_rev, _, _ = go_buildinfo(image, old_digest, extracted)
             if new_rev and old_rev:
                 repo_path = resolve_repo(image, module, new_rev, token)
                 provenance = "Go build info (`vcs.revision`) -- image ships no OCI labels"
@@ -470,7 +477,8 @@ def main():
         ]
 
         if go_provenance:
-            binary = extracted[0] if extracted else "(binary)"
+            # the path that ACTUALLY yielded the build info -- not extracted[0]
+            binary = go_path or "(binary)"
             body += [
                 f":rotating_light: **`{binary}` is a COMPILED binary built from "
                 f"`{repo_path}`.** It has no source file in the image repo, so the "

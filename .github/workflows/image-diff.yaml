@@ -109,8 +109,15 @@ jobs:
       # reads the build info embedded in a Go binary we extract, which is how we
       # get a commit range for images that ship NO OCI labels (plane-watch).
       # Pinned rather than trusting whatever Go the runner image happens to have.
+      # continue-on-error: Go is only needed for the PROVENANCE FALLBACK (label-less
+      # images). If this step ever fails, go_buildinfo() simply finds no `go`, the
+      # briefing reports "upstream range could NOT be resolved -- do not guess" for
+      # that one image, and everything else still runs. Failing the whole job here
+      # would lose the compare comment too, which is a far worse outcome than
+      # degrading one image's analysis.
       - name: Set up Go
         if: steps.diff.outputs.has_diff == 'true'
+        continue-on-error: true
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.25"
