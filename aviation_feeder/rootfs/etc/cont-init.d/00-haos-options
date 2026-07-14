@@ -102,7 +102,7 @@ checked() {
 uf_safe() { printf '%s' "${1//[,;]/_}"; }
 
 # Patterns for the values that reach a parser. Deliberately narrow.
-RE_HOST='^[A-Za-z0-9._:-]+$'                        # hostname / IPv4 / IPv6
+RE_HOST='^[A-Za-z0-9._:-]+$'                        # hostname / IPv4 / bare IPv6
 RE_GAIN='^(autogain|auto|-?[0-9]+(\.[0-9]+)?)$'     # autogain, auto, or a number
 RE_DEVICE='^[A-Za-z0-9:._-]+$'                      # dongle serial / index
 RE_SERIAL='^-?[0-9]+$'                              # opensky serial (may be negative)
@@ -252,7 +252,8 @@ fi
 if [[ "${ENABLE_UAT_VAL}" == "true" ]]; then
   setenv DUMP978_RTLSDR_DEVICE \
     "$(checked dump978_rtlsdr_device "$(opt dump978_rtlsdr_device)" "${RE_DEVICE}" "letters, digits, : . _ -")"
-  setenv DUMP978_SDR_GAIN "$(opt dump978_gain)"
+  setenv DUMP978_SDR_GAIN \
+    "$(checked dump978_gain "$(opt dump978_gain)" "${RE_GAIN}" "autogain, auto, or a number")"
   setenv DUMP978_SDR_PPM "$(opt dump978_ppm)"
 fi
 

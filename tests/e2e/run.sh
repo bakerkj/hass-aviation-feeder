@@ -338,8 +338,10 @@ case_hostile_sdr() {
   assert_running
   assert_env_unset READSB_GAIN
   assert_env_unset READSB_RTLSDR_DEVICE
+  assert_env_unset DUMP978_SDR_GAIN
   assert_log "WARNING: readsb_gain=.* has been IGNORED"
   assert_log "WARNING: readsb_rtlsdr_device=.* has been IGNORED"
+  assert_log "WARNING: dump978_gain=.* has been IGNORED"
 
   teardown_case
 }
