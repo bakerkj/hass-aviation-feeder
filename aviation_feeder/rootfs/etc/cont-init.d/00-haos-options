@@ -334,11 +334,27 @@ fi
 # add_aggregator <toggle> <adsb_host> <adsb_port> <mlat_host> <mlat_port> <uuid_override_key>
 # mlat_host empty => aggregator offers no MLAT. The per-aggregator uuid
 # override falls back to the shared UUID when its field is blank.
+# Make a value safe to embed in an ULTRAFEEDER_CONFIG connector.
+#
+# That config is a ';'-separated list of connectors whose parameters are
+# ','-separated -- so an option value containing either character does not just
+# render oddly, it CHANGES THE PARSE. A station name of `Site, Two; evil` yields
+#   mlat,host,port,uuid=...,name=Site, Two; evil
+# where " Two" is read as an extra parameter and "; evil" STARTS A NEW CONNECTOR.
+# i.e. a station name can inject arbitrary feeder config.
+#
+# This cannot be fixed in opt(): the raw `ultrafeeder_config` passthrough option
+# legitimately contains both characters. So sanitise where the value is embedded.
+# Underscore (not deletion) because mlat already maps spaces to '_', so a name
+# stays recognisable rather than silently losing characters.
+uf_safe() { printf '%s' "${1//[,;]/_}"; }
+
 add_aggregator() {
   local key="$1" ahost="$2" aport="$3" mhost="$4" mport="$5" ovkey="$6"
   [[ "$(opt "${key}")" == "true" ]] || return 0
-  local u="${UUID}" ov uuid_suffix=""
-  ov="$(opt "${ovkey}")"
+  local u ov uuid_suffix=""
+  u="$(uf_safe "${UUID}")"
+  ov="$(uf_safe "$(opt "${ovkey}")")"
   [[ -n "${ov}" ]] && u="${ov}"
   [[ -n "${u}" ]] && uuid_suffix=",uuid=${u}"
   UF+=("adsb,${ahost},${aport},beast_reduce_plus_out${uuid_suffix}")
@@ -347,8 +363,32 @@ add_aggregator() {
   # to feed this aggregator's ADS-B but skip its MLAT -- useful when two networks
   # share one MLAT backend (feeding both looks like a duplicate receiver).
   local mlat_opt="${ovkey%_uuid}_mlat"
+  # Per-aggregator station NAME override: <short>_name (e.g. adsbfi_name).
+  #
+  # The name an aggregator DISPLAYS for your station is the MLAT --user, which
+  # normally comes from MLAT_USER (i.e. site_name) and is therefore the same on
+  # every network. But a receiver can be registered under a DIFFERENT name on
+  # different networks, and one site_name cannot express that -- so importing such
+  # a station silently RENAMES it on whichever network loses the coin toss.
+  #
+  # ultrafeeder's mlat-client script already parses a per-connector `name=` and
+  # prefers it over MLAT_USER, so just pass it through. Blank => this aggregator
+  # falls back to site_name, exactly as before.
+  #
+  # NB: upstream rewrites spaces to underscores (mlat rejects spaces in --user),
+  # so a name like "Some Site" reaches the network as "Some_Site".
+  local name_opt="${ovkey%_uuid}_name" name_suffix="" nm
+  nm="$(uf_safe "$(opt "${name_opt}")")"
+  [[ -n "${nm}" ]] && name_suffix=",name=${nm}"
   if [[ -n "${mhost}" && "$(opt_bool "${mlat_opt}" true)" != "false" ]]; then
-    UF+=("mlat,${mhost},${mport}${uuid_suffix}")
+    UF+=("mlat,${mhost},${mport}${uuid_suffix}${name_suffix}")
+  elif [[ -n "${nm}" ]]; then
+    # The name rides on the MLAT connector -- it IS the mlat --user. So if this
+    # aggregator has no MLAT (mhost empty, e.g. an ADS-B-only network) or its MLAT
+    # was switched off, the name cannot take effect anywhere. Say so, loudly:
+    # a name that is silently ignored is exactly the failure this option exists to
+    # remove, and the user would otherwise believe their station was renamed.
+    log "WARNING: ${name_opt} is set, but ${key} has no active MLAT connector (the name IS the MLAT user), so it has no effect. Remove it, or enable ${mlat_opt}."
   fi
   # Explicit success: without this the trailing test returns 1 for aggregators
   # that offer no MLAT (or have it toggled off), which trips `set -e`.

@@ -90,6 +90,14 @@ configuration:
     description:
       Only used when Feed ADS-B Exchange is on. Overrides the station UUID for
       ADS-B Exchange only; blank uses the shared Station UUID.
+  adsbexchange_name:
+    name: ADSBExchange station name
+    description: >-
+      Optional. The station name ADSBExchange shows for this receiver. Leave it
+      empty to use the shared Site name. Set it only when this network knows you
+      by a different name than the others -- without it, a single Site name is
+      used everywhere and a migration would silently rename your station on the
+      networks that knew you by something else.
   adsbexchange_mlat:
     name: ADS-B Exchange MLAT
     description:
@@ -103,6 +111,14 @@ configuration:
     description:
       Only used when Feed adsb.fi is on. Overrides the station UUID for adsb.fi
       only; blank uses the shared Station UUID.
+  adsbfi_name:
+    name: adsb.fi station name
+    description: >-
+      Optional. The station name adsb.fi shows for this receiver. Leave it empty
+      to use the shared Site name. Set it only when this network knows you by a
+      different name than the others -- without it, a single Site name is used
+      everywhere and a migration would silently rename your station on the
+      networks that knew you by something else.
   adsbfi_mlat:
     name: adsb.fi MLAT
     description:
@@ -124,6 +140,14 @@ configuration:
     description:
       Only used when Feed ADSBItalia is on. Overrides the station UUID for
       ADSBItalia only; blank uses the shared Station UUID.
+  adsbitalia_name:
+    name: ADSB Italia station name
+    description: >-
+      Optional. The station name ADSB Italia shows for this receiver. Leave it
+      empty to use the shared Site name. Set it only when this network knows you
+      by a different name than the others -- without it, a single Site name is
+      used everywhere and a migration would silently rename your station on the
+      networks that knew you by something else.
   adsbitalia_mlat:
     name: ADSBItalia MLAT
     description:
@@ -137,6 +161,14 @@ configuration:
     description:
       Only used when Feed adsb.lol is on. Overrides the station UUID for
       adsb.lol only; blank uses the shared Station UUID.
+  adsblol_name:
+    name: adsb.lol station name
+    description: >-
+      Optional. The station name adsb.lol shows for this receiver. Leave it
+      empty to use the shared Site name. Set it only when this network knows you
+      by a different name than the others -- without it, a single Site name is
+      used everywhere and a migration would silently rename your station on the
+      networks that knew you by something else.
   adsblol_mlat:
     name: adsb.lol MLAT
     description:
@@ -150,6 +182,14 @@ configuration:
     description:
       Only used when Feed adsb.one is on. Overrides the station UUID for
       adsb.one only; blank uses the shared Station UUID.
+  adsbone_name:
+    name: adsb.one station name
+    description: >-
+      Optional. The station name adsb.one shows for this receiver. Leave it
+      empty to use the shared Site name. Set it only when this network knows you
+      by a different name than the others -- without it, a single Site name is
+      used everywhere and a migration would silently rename your station on the
+      networks that knew you by something else.
   adsbone_mlat:
     name: adsb.one MLAT
     description: >-
@@ -181,6 +221,14 @@ configuration:
     description:
       Only used when Feed airplanes.live is on. Overrides the station UUID for
       airplanes.live only; blank uses the shared Station UUID.
+  airplaneslive_name:
+    name: airplanes.live station name
+    description: >-
+      Optional. The station name airplanes.live shows for this receiver. Leave
+      it empty to use the shared Site name. Set it only when this network knows
+      you by a different name than the others -- without it, a single Site name
+      is used everywhere and a migration would silently rename your station on
+      the networks that knew you by something else.
   airplaneslive_mlat:
     name: airplanes.live MLAT
     description:
@@ -229,6 +277,14 @@ configuration:
     description:
       Only used when Feed Fly Italy ADSB is on. Overrides the station UUID for
       Fly Italy ADSB only; blank uses the shared Station UUID.
+  flyitaly_name:
+    name: Fly Italy ADSB station name
+    description: >-
+      Optional. The station name Fly Italy ADSB shows for this receiver. Leave
+      it empty to use the shared Site name. Set it only when this network knows
+      you by a different name than the others -- without it, a single Site name
+      is used everywhere and a migration would silently rename your station on
+      the networks that knew you by something else.
   flyitaly_mlat:
     name: Fly Italy ADSB MLAT
     description:
@@ -244,6 +300,14 @@ configuration:
     description:
       Only used when Feed HpRadar is on. Overrides the station UUID for HpRadar
       only; blank uses the shared Station UUID.
+  hpradar_name:
+    name: HPRadar station name
+    description: >-
+      Optional. The station name HPRadar shows for this receiver. Leave it empty
+      to use the shared Site name. Set it only when this network knows you by a
+      different name than the others -- without it, a single Site name is used
+      everywhere and a migration would silently rename your station on the
+      networks that knew you by something else.
   hpradar_mlat:
     name: HpRadar MLAT
     description:
@@ -279,6 +343,14 @@ configuration:
     description:
       Only used when Feed Planespotters is on. Overrides the station UUID for
       Planespotters only; blank uses the shared Station UUID.
+  planespotters_name:
+    name: Planespotters station name
+    description: >-
+      Optional. The station name Planespotters shows for this receiver. Leave it
+      empty to use the shared Site name. Set it only when this network knows you
+      by a different name than the others -- without it, a single Site name is
+      used everywhere and a migration would silently rename your station on the
+      networks that knew you by something else.
   planespotters_mlat:
     name: Planespotters MLAT
     description:
@@ -330,6 +402,14 @@ configuration:
     description:
       Only used when Feed TheAirTraffic is on. Overrides the station UUID for
       TheAirTraffic only; blank uses the shared Station UUID.
+  theairtraffic_name:
+    name: TheAirTraffic station name
+    description: >-
+      Optional. The station name TheAirTraffic shows for this receiver. Leave it
+      empty to use the shared Site name. Set it only when this network knows you
+      by a different name than the others -- without it, a single Site name is
+      used everywhere and a migration would silently rename your station on the
+      networks that knew you by something else.
   theairtraffic_mlat:
     name: TheAirTraffic MLAT
     description:
