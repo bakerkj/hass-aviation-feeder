@@ -5,4 +5,17 @@
 # FlightAware. Overrides the thin run shim copied from docker-piaware.
 . /usr/local/bin/feeder-gate
 gate "[piaware]" ENABLE_PIAWARE
+
+# Identity discoverability, same trap as RadarVirtuel. With no piaware_feeder_id
+# in options, FlightAware issues one on first connect and piaware persists it to
+# /data (it does log "my feeder ID is ..."). But nothing tells you that value is
+# worth keeping -- so a wiped /data, or a reinstall (which gets a fresh /data),
+# silently registers a BRAND-NEW site and detaches you from your own stats, with
+# no error. Say so, once, while the option is empty.
+if [ -z "${FEEDER_ID:-}" ]; then
+  echo "[piaware] no 'piaware_feeder_id' set in options: FlightAware will issue one" \
+    "and piaware will log it below as 'my feeder ID is ...'. Copy that value into" \
+    "the 'piaware_feeder_id' option to keep this site across a reinstall or a wiped /data."
+fi
+
 exec /etc/s6-overlay/scripts/piaware

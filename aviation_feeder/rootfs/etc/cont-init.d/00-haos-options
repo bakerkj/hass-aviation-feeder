@@ -268,6 +268,24 @@ setenv PLANEWATCH_API_KEY "$(opt planewatch_api_key)"
 setenv ENABLE_RADARVIRTUEL "$(opt enable_radarvirtuel)"
 setenv RV_CONTRIB_NAME "$(opt radarvirtuel_contrib_name)"
 setenv RV_CONTRIB_EMAIL "$(opt radarvirtuel_contrib_email)"
+# RV_STATION_UID pins the station IDENTITY in options instead of in /data.
+#
+# The feeder registers on every start and keys the station off this UID; its
+# entrypoint takes RV_STATION_UID (priority 1) ABOVE the persisted
+# /data/station_uid.txt (priority 3), and re-derives /data/station_id.txt from the
+# registration. So with this set, /data holds no RadarVirtuel identity at all --
+# a reinstall, a new add-on slug, or a wiped volume all come back as the SAME
+# station. Without it, the UID is generated once into /data and losing /data
+# silently re-registers you as a NEW station.
+rv_uid="$(opt radarvirtuel_station_uid)"
+# The feeder SILENTLY IGNORES a UID shorter than 8 chars (it falls through to the
+# persisted file, then to generating a fresh one) -- so a typo'd short value looks
+# pinned and is not. Say so, loudly, rather than let someone believe their station
+# identity is safe when it is not.
+if [[ -n "${rv_uid}" && "${#rv_uid}" -lt 8 ]]; then
+  log "WARNING: radarvirtuel_station_uid is only ${#rv_uid} chars; the feeder ignores anything under 8 and will generate a NEW station identity instead. Fix it or clear it."
+fi
+setenv RV_STATION_UID "${rv_uid}"
 
 # sdrmap (shell ADS-B feeder + stunnel-tunnelled MLAT). sdrmapfeeder.sh reads
 # SMUSERNAME/SMPASSWORD; our run scripts add the stunnel + mlat-client wiring.

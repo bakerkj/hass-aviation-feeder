@@ -376,6 +376,11 @@ case_allfeeders() {
   assert_log_within 90 'service planewatch-mlat successfully started'
   assert_log_within 90 'service radarvirtuel successfully started'
   assert_log_within 90 'service radarvirtuel-mlat successfully started'
+  # The station identity must live in OPTIONS, not in /data: RV_STATION_UID takes
+  # priority over the persisted /data/station_uid.txt in the feeder's entrypoint,
+  # so pinning it means a wiped /data (or a new add-on slug) still comes back as
+  # the SAME RadarVirtuel station instead of silently re-registering a new one.
+  assert_env_contains RV_STATION_UID 'E2E-PINNED-UID-0001'
   # pw-feeder is a native multi-arch Go binary (glibc-only); assert it was staged.
   if docker exec "${CONTAINER}" test -x /usr/local/sbin/pw-feeder 2>/dev/null; then
     ok "pw-feeder binary present + executable"

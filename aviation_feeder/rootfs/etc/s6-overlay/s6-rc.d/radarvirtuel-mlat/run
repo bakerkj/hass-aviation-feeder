@@ -10,6 +10,17 @@
 gate "[radarvirtuel-mlat]" ENABLE_RADARVIRTUEL RV_CONTRIB_NAME RV_CONTRIB_EMAIL LAT LONG ALT
 # Wait for the feeder to register (it writes these once radarvirtuel accepts it).
 while [ ! -f /data/station_id.txt ] || [ ! -f /data/station_uid.txt ]; do sleep 2; done
+
+# Make the identity DISCOVERABLE. When radarvirtuel_station_uid is not set in
+# options, the feeder generated the UID into /data -- where it is one wiped volume
+# (or one add-on reinstall, which gives a NEW /data) away from silently
+# re-registering as a different station. Print it so it can be copied into
+# options, rather than requiring someone to know to go looking in /data.
+if [ -z "${RV_STATION_UID:-}" ]; then
+  echo "[radarvirtuel-mlat] station uid=$(cat /data/station_uid.txt) id=$(cat /data/station_id.txt)" \
+    "-- set 'radarvirtuel_station_uid' in the add-on options to keep this station identity" \
+    "across a reinstall or a wiped /data"
+fi
 # --stats-json exposes MLAT sync (peer_count, good_sync %) for the HA publisher.
 mkdir -p /run/mlat-client
 exec /usr/local/bin/s6wrap --quiet --timestamps --prepend=radarvirtuel-mlat --args \

@@ -302,6 +302,15 @@ configuration:
   radarvirtuel_contrib_email:
     name: RadarVirtuel email
     description: The contact email registered with RadarVirtuel.
+  radarvirtuel_station_uid:
+    name: RadarVirtuel station UID
+    description: >-
+      Optional. Pins your RadarVirtuel station identity. Leave empty on first
+      run and the feeder generates a UID, saves it under /data, and logs it.
+      Copy that value in here: the station is keyed on this UID, so once it is
+      set your station survives a reinstall, an add-on move, or a wiped /data.
+      Leave it empty and losing /data silently registers you as a brand-new
+      station.
   enable_sdrmap:
     name: Feed sdrmap
     description: Enable the sdrmap feeder. Sign up at https://sdrmap.org/
