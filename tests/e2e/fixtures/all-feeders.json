@@ -31,6 +31,7 @@
   "feed_adsblol": true,
   "feed_adsbfi": true,
   "adsbfi_name": "E2E Name, With; Sep",
-  "adsblol_name": "E2E Ineffective Name",
-  "adsblol_mlat": false
+  "feed_hpradar": true,
+  "hpradar_name": "E2E Ineffective Name",
+  "hpradar_mlat": false
 }

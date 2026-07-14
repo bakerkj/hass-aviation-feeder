@@ -399,16 +399,21 @@ case_allfeeders() {
   else
     ok "no injected connector: ',' and ';' in a station name are neutralised"
   fi
-  if env_val ULTRAFEEDER_CONFIG | grep -qE 'mlat,in\.adsb\.lol,[0-9]+[^;]*name='; then
+  # This must NOT pass vacuously: assert adsb.lol actually HAS an mlat connector
+  # first, then that the connector carries no name=. Without the first half, the
+  # check silently succeeds the moment adsb.lol stops emitting mlat at all.
+  if ! env_val ULTRAFEEDER_CONFIG | grep -qE 'mlat,in\.adsb\.lol,[0-9]+'; then
+    bad "adsb.lol has no mlat connector -- the no-leak assertion below would be vacuous"
+  elif env_val ULTRAFEEDER_CONFIG | grep -qE 'mlat,in\.adsb\.lol,[0-9]+[^;]*name='; then
     bad "adsb.lol got a name= it was never given (override leaked across aggregators)"
   else
-    ok "aggregator without a name override falls back to site_name"
+    ok "aggregator without a name override falls back to site_name (and does emit mlat)"
   fi
   # A station name IS the MLAT --user, so it can only take effect through an MLAT
   # connector. Set one on an aggregator whose MLAT is off (or which has none at
   # all, e.g. an ADS-B-only network) and it silently does nothing -- the exact
   # failure this option exists to remove. It must WARN instead.
-  assert_log 'WARNING: adsblol_name is set, but feed_adsblol has no active MLAT'
+  assert_log 'WARNING: hpradar_name is set, but feed_hpradar has no active MLAT'
   # pw-feeder is a native multi-arch Go binary (glibc-only); assert it was staged.
   if docker exec "${CONTAINER}" test -x /usr/local/sbin/pw-feeder 2>/dev/null; then
     ok "pw-feeder binary present + executable"
