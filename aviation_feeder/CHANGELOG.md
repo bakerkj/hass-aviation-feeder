@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.5](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.4...aviation_feeder-v0.0.5) (2026-07-14)
+
+
+### Features
+
+* **radarvirtuel:** pin the station identity in options, not in /data ([#29](https://github.com/bakerkj/hass-aviation-feeder/issues/29)) ([4521569](https://github.com/bakerkj/hass-aviation-feeder/commit/452156947f77f97c0f94a70977cb45179e772422))
+
 ## [0.0.4](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.3...aviation_feeder-v0.0.4) (2026-07-13)
 
 
