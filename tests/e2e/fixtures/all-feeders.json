@@ -21,6 +21,7 @@
   "enable_radarvirtuel": true,
   "radarvirtuel_contrib_name": "e2e-tester",
   "radarvirtuel_contrib_email": "e2e@example.com",
+  "radarvirtuel_station_uid": "E2E-PINNED-UID-0001",
   "enable_sdrmap": true,
   "sdrmap_username": "e2euser",
   "sdrmap_password": "e2epass",

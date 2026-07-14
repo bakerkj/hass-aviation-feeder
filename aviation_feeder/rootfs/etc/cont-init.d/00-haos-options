@@ -268,6 +268,16 @@ setenv PLANEWATCH_API_KEY "$(opt planewatch_api_key)"
 setenv ENABLE_RADARVIRTUEL "$(opt enable_radarvirtuel)"
 setenv RV_CONTRIB_NAME "$(opt radarvirtuel_contrib_name)"
 setenv RV_CONTRIB_EMAIL "$(opt radarvirtuel_contrib_email)"
+# RV_STATION_UID pins the station IDENTITY in options instead of in /data.
+#
+# The feeder registers on every start and keys the station off this UID; its
+# entrypoint takes RV_STATION_UID (priority 1) ABOVE the persisted
+# /data/station_uid.txt (priority 3), and re-derives /data/station_id.txt from the
+# registration. So with this set, /data holds no RadarVirtuel identity at all --
+# a reinstall, a new add-on slug, or a wiped volume all come back as the SAME
+# station. Without it, the UID is generated once into /data and losing /data
+# silently re-registers you as a NEW station.
+setenv RV_STATION_UID "$(opt radarvirtuel_station_uid)"
 
 # sdrmap (shell ADS-B feeder + stunnel-tunnelled MLAT). sdrmapfeeder.sh reads
 # SMUSERNAME/SMPASSWORD; our run scripts add the stunnel + mlat-client wiring.
