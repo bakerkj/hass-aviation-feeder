@@ -288,6 +288,62 @@ case_remote() {
   teardown_case
 }
 
+case_hostile() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names hostile
+  section "CASE hostile option values (parser-breaking input must be refused, not obeyed)"
+  # Every value in this fixture is chosen to CHANGE THE PARSE of something
+  # downstream rather than merely look odd:
+  #   remote_beast_host    ',' ends a connector param and ';' ends the connector,
+  #                        so an unguarded host injects a whole MLAT connector
+  #                        pointing at an arbitrary server. (Confirmed live before
+  #                        the guard existed.)
+  #   readsb_gain          whitespace splits argv, so " --net-only" would ride
+  #                        along as an extra readsb argument.
+  #   opensky_serial       ditto, plus shell metacharacters.
+  # The add-on schema rejects all of these at the HA config layer -- but
+  # /data/options.json is not only written by that path (this harness writes it
+  # directly), so the runtime guard must refuse them too.
+  start_container "${HERE}/fixtures/hostile-values.json"
+  assert_running
+
+  # 1. no injected connector: every connector must be adsb or mlat, and NOTHING
+  #    may point at the attacker host.
+  if env_val ULTRAFEEDER_CONFIG | tr ';' '\n' | grep -q 'evil.example.com'; then
+    bad "remote_beast_host injected a connector to an arbitrary host"
+  else
+    ok "hostile remote_beast_host injected no connector"
+  fi
+
+  # 2. the bad value is REFUSED (falls back to default), not silently rewritten
+  assert_env_unset OPENSKY_SERIAL
+
+  # 3. and the user is TOLD, rather than left wondering why their setting vanished
+  assert_log "WARNING: remote_beast_host=.* has been IGNORED"
+  assert_log "WARNING: opensky_serial=.* has been IGNORED"
+
+  teardown_case
+}
+
+case_hostile_sdr() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names hostilesdr
+  section "CASE hostile SDR values (gain/device reach a COMMAND LINE)"
+  # readsb_gain and readsb_rtlsdr_device are only set in rtlsdr mode, so a
+  # remote-mode fixture can never exercise them -- asserting them there passes
+  # vacuously. They land in READSB_GAIN / READSB_RTLSDR_DEVICE, which upstream
+  # splats onto readsb's command line, where WHITESPACE SPLITS ARGV: a gain of
+  # "auto --net-only" would smuggle in an extra readsb argument.
+  start_container "${HERE}/fixtures/hostile-sdr.json"
+  assert_running
+  assert_env_unset READSB_GAIN
+  assert_env_unset READSB_RTLSDR_DEVICE
+  assert_log "WARNING: readsb_gain=.* has been IGNORED"
+  assert_log "WARNING: readsb_rtlsdr_device=.* has been IGNORED"
+
+  teardown_case
+}
+
 case_uat() {
   local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
   setup_case_names uat
@@ -780,6 +836,8 @@ CASES=(
   case_default
   case_rtlsdr
   case_remote
+  case_hostile
+  case_hostile_sdr
   case_uat
   case_decoder
   case_unconfig

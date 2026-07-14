@@ -52,6 +52,61 @@ setenv() {
   log "set ${name}"
 }
 
+# Validate a user value that flows into something which PARSES it -- a
+# ULTRAFEEDER_CONFIG connector (';' between connectors, ',' between params) or a
+# command line built by an upstream script (whitespace splits arguments).
+#
+# In those places a stray character does not merely render oddly, it CHANGES THE
+# PARSE: a ';' in a hostname starts a new connector, a space in a gain becomes an
+# extra argv entry. Values reaching such a sink are checked against a whitelist
+# pattern; anything else is REFUSED (returns empty, so the consumer falls back to
+# its own default) and reported. Refuse-and-say-so beats silently rewriting the
+# user's value into something they never typed.
+#
+# The add-on schema (config.json) constrains these same options with match(...),
+# so Home Assistant rejects bad input at the point of entry with a visible error.
+# This is the second line: /data/options.json is NOT only written by that
+# validated path (the e2e harness writes it directly; a restored or hand-edited
+# config, or a Supervisor API call, can bypass schema validation), and a sink that
+# parses its input must never trust it.
+checked() {
+  local name="$1" val="$2" re="$3" allowed="$4"
+  [[ -n "${val}" ]] || return 0
+  if [[ "${val}" =~ ${re} ]]; then
+    printf '%s' "${val}"
+    return 0
+  fi
+  # STDERR, not stdout. checked() is called inside $( ), so anything it prints on
+  # stdout becomes the RETURN VALUE -- and this warning quotes the offending input,
+  # so logging it on stdout fed the hostile value straight back into the sink it
+  # was supposed to be kept out of. (Caught by the e2e case below, which saw the
+  # rejected host injected anyway, carried inside the warning text.)
+  log "WARNING: ${name}='${val}' is not a valid value here and has been IGNORED (falling back to the default). Allowed: ${allowed}" >&2
+}
+
+# Make a value safe to EMBED in an ULTRAFEEDER_CONFIG connector.
+#
+# checked() refuses a value outright; this one neutralises the two separators in a
+# value we still want to use. Both exist because they answer different needs: a
+# hostname that fails RE_HOST is garbage and should be dropped, but a station name
+# is free text the user legitimately chose -- deleting it would be worse than
+# rendering "Site, Two" as "Site_ Two".
+#
+# NB: this CANNOT live in opt(): the raw `ultrafeeder_config` passthrough option
+# legitimately contains both ',' and ';', so the sanitising has to happen where a
+# value is interpolated, not where it is read.
+#
+# Defined here, above every caller: bash resolves a function at CALL time, and the
+# remote-host guard below runs at top level -- a definition further down the file
+# would simply not exist yet.
+uf_safe() { printf '%s' "${1//[,;]/_}"; }
+
+# Patterns for the values that reach a parser. Deliberately narrow.
+RE_HOST='^[A-Za-z0-9._:-]+$'                        # hostname / IPv4 / IPv6
+RE_GAIN='^(autogain|auto|-?[0-9]+(\.[0-9]+)?)$'     # autogain, auto, or a number
+RE_DEVICE='^[A-Za-z0-9:._-]+$'                      # dongle serial / index
+RE_SERIAL='^-?[0-9]+$'                              # opensky serial (may be negative)
+
 # --- Station identity ---
 # lat/long/alt each accept one of three things: an explicit value, a blank, or
 # the HOMEASSISTANT_* sentinel that is the option's default. Blank and the
@@ -186,14 +241,17 @@ setenv ENABLE_UAT "${ENABLE_UAT_VAL}"
 # 1090 MHz RTL-SDR (readsb) -- only when we decode 1090 locally.
 if [[ "${RECEIVER_MODE}" == "rtlsdr" ]]; then
   setenv READSB_DEVICE_TYPE "rtlsdr"
-  setenv READSB_RTLSDR_DEVICE "$(opt readsb_rtlsdr_device)"
-  setenv READSB_GAIN "$(opt readsb_gain)"
+  setenv READSB_RTLSDR_DEVICE \
+    "$(checked readsb_rtlsdr_device "$(opt readsb_rtlsdr_device)" "${RE_DEVICE}" "letters, digits, : . _ -")"
+  setenv READSB_GAIN \
+    "$(checked readsb_gain "$(opt readsb_gain)" "${RE_GAIN}" "autogain, auto, or a number")"
   setenv READSB_RTLSDR_PPM "$(opt readsb_ppm)"
 fi
 # 978 MHz RTL-SDR (dump978) -- whenever we decode 978 locally (rtlsdr+UAT or
 # uat-only). readsb picks the UAT stream up over the net (uat_in) either way.
 if [[ "${ENABLE_UAT_VAL}" == "true" ]]; then
-  setenv DUMP978_RTLSDR_DEVICE "$(opt dump978_rtlsdr_device)"
+  setenv DUMP978_RTLSDR_DEVICE \
+    "$(checked dump978_rtlsdr_device "$(opt dump978_rtlsdr_device)" "${RE_DEVICE}" "letters, digits, : . _ -")"
   setenv DUMP978_SDR_GAIN "$(opt dump978_gain)"
   setenv DUMP978_SDR_PPM "$(opt dump978_ppm)"
 fi
@@ -237,7 +295,8 @@ setenv SHARECODE "$(opt planefinder_sharecode)"
 # OpenSky Network (openskyd-dump1090 in net-input mode)
 setenv ENABLE_OPENSKY "$(opt enable_opensky)"
 setenv OPENSKY_USERNAME "$(opt opensky_username)"
-setenv OPENSKY_SERIAL "$(opt opensky_serial)"
+setenv OPENSKY_SERIAL \
+  "$(checked opensky_serial "$(opt opensky_serial)" "${RE_SERIAL}" "digits (optionally negative)")"
 
 # ADSBHub (consumes SBS/BaseStation on localhost:30003 via socat)
 setenv ENABLE_ADSBHUB "$(opt enable_adsbhub)"
@@ -324,7 +383,14 @@ declare -a UF=()
 # local dump978 UAT stream whenever 978 is decoded locally -- the sole input in
 # uat-only mode, an added band alongside the 1090 SDR in rtlsdr mode.
 if [[ "${RECEIVER_MODE}" == "remote" ]]; then
-  RBH="$(opt remote_beast_host)"
+  # The host is embedded directly into a connector below, so it must not be able
+  # to CHANGE THE PARSE. Verified before this guard: a host of
+  #   h.example.com,beast_in;mlat,evil.example.com,31090
+  # produced a SECOND connector -- an MLAT feed to an arbitrary host -- because
+  # ';' ends a connector and ',' ends a parameter. Reject anything that is not a
+  # plain hostname/IP, then belt-and-braces the separators out of whatever remains.
+  RBH="$(checked remote_beast_host "$(opt remote_beast_host)" "${RE_HOST}" "a hostname or IP address")"
+  RBH="$(uf_safe "${RBH}")"
   RBP="$(opt remote_beast_port)"
   [[ -n "${RBH}" ]] && UF+=("adsb,${RBH},${RBP:-30005},beast_in")
 elif [[ "${ENABLE_UAT_VAL}" == "true" ]]; then
@@ -334,21 +400,6 @@ fi
 # add_aggregator <toggle> <adsb_host> <adsb_port> <mlat_host> <mlat_port> <uuid_override_key>
 # mlat_host empty => aggregator offers no MLAT. The per-aggregator uuid
 # override falls back to the shared UUID when its field is blank.
-# Make a value safe to embed in an ULTRAFEEDER_CONFIG connector.
-#
-# That config is a ';'-separated list of connectors whose parameters are
-# ','-separated -- so an option value containing either character does not just
-# render oddly, it CHANGES THE PARSE. A station name of `Site, Two; evil` yields
-#   mlat,host,port,uuid=...,name=Site, Two; evil
-# where " Two" is read as an extra parameter and "; evil" STARTS A NEW CONNECTOR.
-# i.e. a station name can inject arbitrary feeder config.
-#
-# This cannot be fixed in opt(): the raw `ultrafeeder_config` passthrough option
-# legitimately contains both characters. So sanitise where the value is embedded.
-# Underscore (not deletion) because mlat already maps spaces to '_', so a name
-# stays recognisable rather than silently losing characters.
-uf_safe() { printf '%s' "${1//[,;]/_}"; }
-
 add_aggregator() {
   local key="$1" ahost="$2" aport="$3" mhost="$4" mport="$5" ovkey="$6"
   [[ "$(opt "${key}")" == "true" ]] || return 0
