@@ -244,14 +244,6 @@ configuration:
     description:
       Only used when Feed AVDelphi is on. Overrides the station UUID for
       AVDelphi only; blank uses the shared Station UUID.
-  avdelphi_name:
-    name: AVDelphi station name
-    description: >-
-      Optional. The station name AVDelphi shows for this receiver. Leave it
-      empty to use the shared Site name. Set it only when this network knows you
-      by a different name than the others -- without it, a single Site name is
-      used everywhere and a migration would silently rename your station on the
-      networks that knew you by something else.
   enable_piaware:
     name: Feed FlightAware
     description:

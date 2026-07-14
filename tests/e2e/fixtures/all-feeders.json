@@ -30,5 +30,7 @@
   "uuid": "01234567-89ab-cdef-0123-456789abcdef",
   "feed_adsblol": true,
   "feed_adsbfi": true,
-  "adsbfi_name": "E2E Name, With; Sep"
+  "adsbfi_name": "E2E Name, With; Sep",
+  "adsblol_name": "E2E Ineffective Name",
+  "adsblol_mlat": false
 }

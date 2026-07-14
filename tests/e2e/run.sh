@@ -404,6 +404,11 @@ case_allfeeders() {
   else
     ok "aggregator without a name override falls back to site_name"
   fi
+  # A station name IS the MLAT --user, so it can only take effect through an MLAT
+  # connector. Set one on an aggregator whose MLAT is off (or which has none at
+  # all, e.g. an ADS-B-only network) and it silently does nothing -- the exact
+  # failure this option exists to remove. It must WARN instead.
+  assert_log 'WARNING: adsblol_name is set, but feed_adsblol has no active MLAT'
   # pw-feeder is a native multi-arch Go binary (glibc-only); assert it was staged.
   if docker exec "${CONTAINER}" test -x /usr/local/sbin/pw-feeder 2>/dev/null; then
     ok "pw-feeder binary present + executable"
