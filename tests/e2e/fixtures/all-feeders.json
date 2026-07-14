@@ -28,5 +28,7 @@
   "enable_uk1090": true,
   "uk1090_key": "e2ekey000",
   "uuid": "01234567-89ab-cdef-0123-456789abcdef",
-  "feed_adsblol": true
+  "feed_adsblol": true,
+  "feed_adsbfi": true,
+  "adsbfi_name": "E2E Name, With; Sep"
 }

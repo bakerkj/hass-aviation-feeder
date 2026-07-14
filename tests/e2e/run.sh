@@ -381,6 +381,29 @@ case_allfeeders() {
   # so pinning it means a wiped /data (or a new add-on slug) still comes back as
   # the SAME RadarVirtuel station instead of silently re-registering a new one.
   assert_env_contains RV_STATION_UID 'E2E-PINNED-UID-0001'
+  # Per-aggregator station name: the name an aggregator DISPLAYS is the MLAT
+  # --user, which normally comes from site_name for every network alike. A
+  # receiver registered under a different name on one network cannot be expressed
+  # by a single site_name -- so <aggregator>_name overrides it for that connector
+  # only. Assert BOTH halves: the override reaches adsb.fi's mlat connector, and
+  # an aggregator WITHOUT an override (adsb.lol) still falls back to site_name.
+  assert_env_contains ULTRAFEEDER_CONFIG 'mlat,feed.adsb.fi,31090'
+  # The fixture's name deliberately contains BOTH ULTRAFEEDER_CONFIG separators
+  # (',' between a connector's params, ';' between connectors). Unsanitised, it
+  # does not merely render oddly -- it CHANGES THE PARSE: the comma invents an
+  # extra param and the semicolon STARTS A NEW CONNECTOR, so a station name can
+  # inject arbitrary feeder config. Both must arrive neutralised.
+  assert_env_contains ULTRAFEEDER_CONFIG 'name=E2E Name_ With_ Sep'
+  if env_val ULTRAFEEDER_CONFIG | tr ';' '\n' | grep -qvE '^(adsb|mlat),'; then
+    bad "ULTRAFEEDER_CONFIG has a connector that is neither adsb nor mlat (injection)"
+  else
+    ok "no injected connector: ',' and ';' in a station name are neutralised"
+  fi
+  if env_val ULTRAFEEDER_CONFIG | grep -qE 'mlat,in\.adsb\.lol,[0-9]+[^;]*name='; then
+    bad "adsb.lol got a name= it was never given (override leaked across aggregators)"
+  else
+    ok "aggregator without a name override falls back to site_name"
+  fi
   # pw-feeder is a native multi-arch Go binary (glibc-only); assert it was staged.
   if docker exec "${CONTAINER}" test -x /usr/local/sbin/pw-feeder 2>/dev/null; then
     ok "pw-feeder binary present + executable"
