@@ -188,6 +188,14 @@ jobs:
         uses: anthropics/claude-code-action@f1bd27ca5b54584506e40e17884d90bdaaa1a9b3 # v1.0.173
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # This job runs ONLY on renovate[bot] PRs (that is the whole point --
+          # the image-diff job gates on it), but claude-code-action refuses bot
+          # actors by default (allowed_bots defaults to "" = no bots), so without
+          # this the review step silently no-ops on every single image bump: it
+          # exits 1, continue-on-error masks that as success, verdict.md is never
+          # written, and the Post-verdict step skips. Scope it to exactly the one
+          # bot that can reach here.
+          allowed_bots: "renovate[bot]"
           track_progress: true
           prompt: |
             REPO: ${{ github.repository }}
@@ -441,6 +449,27 @@ jobs:
         with:
           header: image-review
           path: verdict.md
+
+      # Observability. The review step is continue-on-error (a Claude failure must
+      # never block a dependency bump), so if it dies before writing verdict.md the
+      # job is still green and NO comment appears -- which is indistinguishable from
+      # a clean run. That is exactly how the allowed_bots misconfig hid for a whole
+      # release: a green check, no verdict, no signal. When verdict.md is absent,
+      # post a sticky note saying the review did not complete, so a future
+      # regression surfaces instead of passing silently.
+      - name: Note that the review did not run
+        if: hashFiles('verdict.md') == ''
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: image-review
+          message: |
+            :warning: **Upstream behaviour review did not complete** — no verdict was produced.
+
+            The mechanical briefing still ran (see the "Upstream changes" comment
+            above and the `upstream-pr${{ github.event.pull_request.number }}`
+            artifact). Only the Claude review step failed to write a verdict; check
+            its logs. This bump is NOT auto-blocked — the merge gate is the build +
+            e2e checks.
 
       # The action redacts its tool-use transcript from the public CI log; keep
       # the raw record as a collaborator-only artifact so a bad review (or a
