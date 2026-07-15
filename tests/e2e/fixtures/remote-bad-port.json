@@ -1,0 +1,9 @@
+{
+  "receiver_mode": "remote",
+  "remote_beast_host": "h.example.com",
+  "remote_beast_port": "99999",
+  "lat": "42.0",
+  "long": "-71.0",
+  "alt": "50",
+  "site_name": "E2E Site"
+}

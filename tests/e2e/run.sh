@@ -350,6 +350,24 @@ case_hostile_sdr() {
   teardown_case
 }
 
+case_remote_bad_port() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names remotebadport
+  section "CASE remote_beast_port numerically out of range (the range-check branch)"
+  # The hostile-values fixture's port fails the digits-only RE_PORT, so it exercises
+  # checked()'s regex-rejection path. A digits-only-but-out-of-range port (99999)
+  # instead reaches the SEPARATE 1-65535 range check -- a distinct branch of the
+  # guard that would otherwise have no coverage.
+  start_container "${HERE}/fixtures/remote-bad-port.json"
+  assert_running
+  # falls back to the default :30005 connector, not the injected/garbage port
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,h.example.com,30005,beast_in'
+  assert_env_not_contains ULTRAFEEDER_CONFIG '99999'
+  assert_log "WARNING: remote_beast_port='99999' is out of range"
+
+  teardown_case
+}
+
 case_uat() {
   local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
   setup_case_names uat
@@ -844,6 +862,7 @@ CASES=(
   case_remote
   case_hostile
   case_hostile_sdr
+  case_remote_bad_port
   case_uat
   case_decoder
   case_unconfig
