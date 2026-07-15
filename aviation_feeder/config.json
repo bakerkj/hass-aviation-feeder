@@ -206,7 +206,7 @@
     "hpradar_mlat": "bool?",
     "enable_opensky": "bool?",
     "opensky_username": "str?",
-    "opensky_serial": "match(^-?[0-9]*$)?",
+    "opensky_serial": "match(^(-?[0-9]+)?$)?",
     "enable_planefinder": "bool?",
     "planefinder_sharecode": "str?",
     "feed_planespotters": "bool?",

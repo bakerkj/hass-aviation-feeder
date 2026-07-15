@@ -398,24 +398,6 @@ elif [[ "${ENABLE_UAT_VAL}" == "true" ]]; then
   UF+=("adsb,localhost,30978,uat_in")
 fi
 
-# add_aggregator <toggle> <adsb_host> <adsb_port> <mlat_host> <mlat_port> <uuid_override_key>
-# mlat_host empty => aggregator offers no MLAT. The per-aggregator uuid
-# override falls back to the shared UUID when its field is blank.
-# Make a value safe to embed in an ULTRAFEEDER_CONFIG connector.
-#
-# That config is a ';'-separated list of connectors whose parameters are
-# ','-separated -- so an option value containing either character does not just
-# render oddly, it CHANGES THE PARSE. A station name of `Site, Two; evil` yields
-#   mlat,host,port,uuid=...,name=Site, Two; evil
-# where " Two" is read as an extra parameter and "; evil" STARTS A NEW CONNECTOR.
-# i.e. a station name can inject arbitrary feeder config.
-#
-# This cannot be fixed in opt(): the raw `ultrafeeder_config` passthrough option
-# legitimately contains both characters. So sanitise where the value is embedded.
-# Underscore (not deletion) because mlat already maps spaces to '_', so a name
-# stays recognisable rather than silently losing characters.
-uf_safe() { printf '%s' "${1//[,;]/_}"; }
-
 add_aggregator() {
   local key="$1" ahost="$2" aport="$3" mhost="$4" mport="$5" ovkey="$6"
   [[ "$(opt "${key}")" == "true" ]] || return 0
