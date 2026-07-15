@@ -19,21 +19,21 @@
 # FROM so it is usable as a global build arg in the final-stage FROM. Builds
 # (local and CI) use this pinned default -- we intentionally do NOT ship a
 # build.yaml / let the HA builder override BUILD_FROM, so the digest stays fixed.
-ARG BUILD_FROM=ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest-build-942@sha256:59ed36cebf7c82be3f379118b64f9feb53be20302f72db393286660387024e86
+ARG BUILD_FROM=ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest-build-944@sha256:a5aba55cdcdbb86fa147f854132b1e2a1247a3feb281d1518b064bc6285f835c
 
 # --- Feeder source stages -------------------------------------------------
 # Images pinned to tag@digest so Renovate's dockerfile manager (grouped as
 # "sdr-enthusiasts base images") tracks and bumps them.
-FROM ghcr.io/sdr-enthusiasts/docker-dump978:latest-build-799@sha256:d223d94e19f398447f2e11273f78fce7616989b5dbe7ba44ebbdc0b2af3da2ae AS dump978
-FROM ghcr.io/sdr-enthusiasts/docker-piaware:latest-build-663@sha256:8d3298cfd60002309aca06b636984f23a3be6dddabd8c81a3b07948499143015 AS piaware
-FROM ghcr.io/sdr-enthusiasts/docker-flightradar24:latest-build-855@sha256:f329680660f8c72885061955353735f6d9b8d261fb77ee0ba60f277f7a0630f1 AS fr24
-FROM ghcr.io/sdr-enthusiasts/docker-planefinder:latest-build-538@sha256:974f64a1e1629dabffdd440082248ff0f17a9a501a6439523066907be9799d38 AS planefinder
+FROM ghcr.io/sdr-enthusiasts/docker-dump978:latest-build-801@sha256:9c04879d1b4003b2586ad63476612b0ec3f80c486a0bdf0861dba86c369f32cc AS dump978
+FROM ghcr.io/sdr-enthusiasts/docker-piaware:latest-build-665@sha256:912921ca1800ca1cce4058aa04380f62d9214ad09be20f7addf67d31c119d1ec AS piaware
+FROM ghcr.io/sdr-enthusiasts/docker-flightradar24:latest-build-857@sha256:f0e716f7d2c83bceb10cbb6cfe05bc35cb06680b48eedac5844684180686b817 AS fr24
+FROM ghcr.io/sdr-enthusiasts/docker-planefinder:latest-build-540@sha256:b0521c923127bc9722a114a4bdab7ddf2b642f316bcc4a2503de6fdc125f2c7a AS planefinder
 FROM ghcr.io/sdr-enthusiasts/docker-opensky-network:latest-build-833@sha256:d0a0aa79445eea3e79f23b950c061f0dc6bb7a6c9de4a81c035d32331a564644 AS opensky
-FROM ghcr.io/sdr-enthusiasts/docker-adsbhub:latest-build-527@sha256:7f896c932362121a3760f00e2b20e6e8a3f0e0fe82d2a8cd67f7bf4c61ffcb14 AS adsbhub
+FROM ghcr.io/sdr-enthusiasts/docker-adsbhub:latest-build-529@sha256:8d9953dc6b759539b2f7b236d31b2c143d934d6280591458526dc2c6d1363345 AS adsbhub
 FROM ghcr.io/plane-watch/docker-plane-watch:v0.0.9@sha256:54531eb196367e03a44bd36cde58f408c9984c275f6b28e1b7cb9adf816eb520 AS planewatch
-FROM ghcr.io/sdr-enthusiasts/docker-radarvirtuel:latest-build-797@sha256:1f6543e1725431222bd440d05641f9d0c578801087e05003e2d274b1e657bc34 AS radarvirtuel
-FROM ghcr.io/sdr-enthusiasts/docker-sdrmap:latest-build-96@sha256:57c87f930333f2d9f9a40306c3d2277711da363ffc7354b674843d10b6bb8c40 AS sdrmap
-FROM ghcr.io/sdr-enthusiasts/docker-radarbox:latest-build-879@sha256:835abbf7bd110cc251a93a4882c16557e5e03449031aea41c8da1b0b39878b20 AS radarbox
+FROM ghcr.io/sdr-enthusiasts/docker-radarvirtuel:latest-build-799@sha256:b5b4236e0aed6b06d4112a3669d775e8cd2be1bde19e9e6225d7aab8ea4f4ec0 AS radarvirtuel
+FROM ghcr.io/sdr-enthusiasts/docker-sdrmap:latest-build-98@sha256:8aab9e1c416f01f955a10d330016e1fc4b2d979e91249a9d7d15a062d3735212 AS sdrmap
+FROM ghcr.io/sdr-enthusiasts/docker-radarbox:latest-build-881@sha256:3562238cf66fb49ecbb099de54bb6d69a61b7df92082c2cdfbc71169d2212fa4 AS radarbox
 # AirNav ships rbfeeder only for ARM. On arm64 the base image has a NATIVE
 # rbfeeder (and no qemu); on amd64 it has the armhf binary + qemu-arm-static.
 # Stage exactly the runtime this arch needs into /rbx so the final image can copy
@@ -59,7 +59,7 @@ RUN set -eu; mkdir -p /rbx/usr/bin; \
     fi
 
 # 1090MHz UK feeder source: just the self-contained `radar` binary (glibc-only).
-FROM ghcr.io/sdr-enthusiasts/docker-radar1090:latest-build-313@sha256:45ebf71776683fcdec3608d8c46128cc94c91f2139eb38d285cf41c9ec2fb8f5 AS radar1090
+FROM ghcr.io/sdr-enthusiasts/docker-radar1090:latest-build-315@sha256:ac5260a9a73dab64e0bccfb30723d59e7792a3493916f1a20ec3b32af2702df7 AS radar1090
 
 # --- Final image ----------------------------------------------------------
 FROM ${BUILD_FROM}
