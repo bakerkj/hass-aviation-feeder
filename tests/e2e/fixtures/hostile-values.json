@@ -1,7 +1,7 @@
 {
   "receiver_mode": "remote",
   "remote_beast_host": "h.example.com,beast_in;mlat,evil.example.com,31090",
-  "remote_beast_port": 30005,
+  "remote_beast_port": "30005,beast_in;mlat,evil.example.com,31090",
   "lat": "42.0",
   "long": "-71.0",
   "alt": "50",

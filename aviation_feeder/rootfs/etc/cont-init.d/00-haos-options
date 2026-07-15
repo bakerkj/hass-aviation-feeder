@@ -106,6 +106,7 @@ RE_HOST='^[A-Za-z0-9._:-]+$'                        # hostname / IPv4 / bare IPv
 RE_GAIN='^(autogain|auto|-?[0-9]+(\.[0-9]+)?)$'     # autogain, auto, or a number
 RE_DEVICE='^[A-Za-z0-9:._-]+$'                      # dongle serial / index
 RE_SERIAL='^-?[0-9]+$'                              # opensky serial (may be negative)
+RE_PORT='^[0-9]+$'                                  # tcp port (range checked separately)
 
 # --- Station identity ---
 # lat/long/alt each accept one of three things: an explicit value, a blank, or
@@ -392,7 +393,17 @@ if [[ "${RECEIVER_MODE}" == "remote" ]]; then
   # plain hostname/IP, then belt-and-braces the separators out of whatever remains.
   RBH="$(checked remote_beast_host "$(opt remote_beast_host)" "${RE_HOST}" "a hostname or IP address")"
   RBH="$(uf_safe "${RBH}")"
-  RBP="$(opt remote_beast_port)"
+  # The PORT is interpolated into the same connector, so it is the same injection
+  # vector: a string port of "30005,beast_in;mlat,evil,31090" also spawns a rogue
+  # connector. Its schema is int(1,65535), but options.json can bypass schema
+  # validation (that is this whole file's premise), so guard it at runtime too.
+  # Digits-only already blocks the ',' / ';' injection; the range check keeps it
+  # in step with the schema. Anything else -> empty -> the ${RBP:-30005} default.
+  RBP="$(checked remote_beast_port "$(opt remote_beast_port)" "${RE_PORT}" "digits, 1-65535")"
+  if [[ -n "${RBP}" ]] && { [[ "${#RBP}" -gt 5 ]] || ((10#${RBP} < 1)) || ((10#${RBP} > 65535)); }; then
+    log "WARNING: remote_beast_port='${RBP}' is out of range (1-65535); using the default." >&2
+    RBP=""
+  fi
   [[ -n "${RBH}" ]] && UF+=("adsb,${RBH},${RBP:-30005},beast_in")
 elif [[ "${ENABLE_UAT_VAL}" == "true" ]]; then
   UF+=("adsb,localhost,30978,uat_in")

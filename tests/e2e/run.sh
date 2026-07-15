@@ -292,15 +292,15 @@ case_hostile() {
   local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
   setup_case_names hostile
   section "CASE hostile option values (parser-breaking input must be refused, not obeyed)"
-  # Every value in this fixture is chosen to CHANGE THE PARSE of something
-  # downstream rather than merely look odd:
-  #   remote_beast_host    ',' ends a connector param and ';' ends the connector,
-  #                        so an unguarded host injects a whole MLAT connector
-  #                        pointing at an arbitrary server. (Confirmed live before
-  #                        the guard existed.)
-  #   readsb_gain          whitespace splits argv, so " --net-only" would ride
-  #                        along as an extra readsb argument.
-  #   opensky_serial       ditto, plus shell metacharacters.
+  # This case runs in remote mode, so it exercises the values that reach a
+  # connector: the remote Beast host AND port. Both are interpolated into the same
+  # ULTRAFEEDER_CONFIG connector, where ',' ends a parameter and ';' ends the
+  # connector -- so an unguarded host OR port injects a whole MLAT connector
+  # pointing at an arbitrary server (both confirmed live before the guards
+  # existed). opensky_serial is also set here (it is mode-independent).
+  # The SDR-only values (readsb_gain / rtlsdr_device, dump978_gain) are argv
+  # sinks that only exist in rtlsdr/uat mode -- they are covered by
+  # case_hostile_sdr, NOT here.
   # The add-on schema rejects all of these at the HA config layer -- but
   # /data/options.json is not only written by that path (this harness writes it
   # directly), so the runtime guard must refuse them too.
@@ -310,16 +310,20 @@ case_hostile() {
   # 1. no injected connector: every connector must be adsb or mlat, and NOTHING
   #    may point at the attacker host.
   if env_val ULTRAFEEDER_CONFIG | tr ';' '\n' | grep -q 'evil.example.com'; then
-    bad "remote_beast_host injected a connector to an arbitrary host"
+    bad "remote_beast host/port injected a connector to an arbitrary host"
   else
-    ok "hostile remote_beast_host injected no connector"
+    ok "hostile remote_beast_host AND port injected no connector"
   fi
+  # both the host and the port carry separators in this fixture; assert BOTH were
+  # refused (the port is the same connector-injection vector as the host).
+  assert_log "WARNING: remote_beast_host=.* has been IGNORED"
+  assert_log "WARNING: remote_beast_port=.* has been IGNORED"
 
   # 2. the bad value is REFUSED (falls back to default), not silently rewritten
   assert_env_unset OPENSKY_SERIAL
 
   # 3. and the user is TOLD, rather than left wondering why their setting vanished
-  assert_log "WARNING: remote_beast_host=.* has been IGNORED"
+  #    (host + port warnings are asserted in step 1 above)
   assert_log "WARNING: opensky_serial=.* has been IGNORED"
 
   teardown_case
