@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.0.6](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.5...aviation_feeder-v0.0.6) (2026-07-15)
+
+
+### Features
+
+* **aggregators:** per-aggregator station name; reject separators in it ([#34](https://github.com/bakerkj/hass-aviation-feeder/issues/34)) ([8ae9402](https://github.com/bakerkj/hass-aviation-feeder/commit/8ae940264382a1760919f6d2c9d2f8efd3f70a9a))
+
+
+### Bug Fixes
+
+* **options:** validate every user value that reaches a parser or command line ([#37](https://github.com/bakerkj/hass-aviation-feeder/issues/37)) ([e61f59c](https://github.com/bakerkj/hass-aviation-feeder/commit/e61f59cf9dbdd74d4e4380bdd859a9ebc36a1fa4))
+
+
+### Miscellaneous Chores
+
+* **deps:** update sdr-enthusiasts base images ([#36](https://github.com/bakerkj/hass-aviation-feeder/issues/36)) ([6d8370e](https://github.com/bakerkj/hass-aviation-feeder/commit/6d8370ea70974f0c4a8ffb5fbb1460c4243f29ef))
+
 ## [0.0.5](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.4...aviation_feeder-v0.0.5) (2026-07-14)
 
 
