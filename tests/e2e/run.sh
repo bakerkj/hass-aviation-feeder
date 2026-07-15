@@ -288,6 +288,86 @@ case_remote() {
   teardown_case
 }
 
+case_hostile() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names hostile
+  section "CASE hostile option values (parser-breaking input must be refused, not obeyed)"
+  # This case runs in remote mode, so it exercises the values that reach a
+  # connector: the remote Beast host AND port. Both are interpolated into the same
+  # ULTRAFEEDER_CONFIG connector, where ',' ends a parameter and ';' ends the
+  # connector -- so an unguarded host OR port injects a whole MLAT connector
+  # pointing at an arbitrary server (both confirmed live before the guards
+  # existed). opensky_serial is also set here (it is mode-independent).
+  # The SDR-only values (readsb_gain / rtlsdr_device, dump978_gain) are argv
+  # sinks that only exist in rtlsdr/uat mode -- they are covered by
+  # case_hostile_sdr, NOT here.
+  # The add-on schema rejects all of these at the HA config layer -- but
+  # /data/options.json is not only written by that path (this harness writes it
+  # directly), so the runtime guard must refuse them too.
+  start_container "${HERE}/fixtures/hostile-values.json"
+  assert_running
+
+  # 1. no injected connector: every connector must be adsb or mlat, and NOTHING
+  #    may point at the attacker host.
+  if env_val ULTRAFEEDER_CONFIG | tr ';' '\n' | grep -q 'evil.example.com'; then
+    bad "remote_beast host/port injected a connector to an arbitrary host"
+  else
+    ok "hostile remote_beast_host AND port injected no connector"
+  fi
+  # both the host and the port carry separators in this fixture; assert BOTH were
+  # refused (the port is the same connector-injection vector as the host).
+  assert_log "WARNING: remote_beast_host=.* has been IGNORED"
+  assert_log "WARNING: remote_beast_port=.* has been IGNORED"
+
+  # 2. the bad value is REFUSED (falls back to default), not silently rewritten
+  assert_env_unset OPENSKY_SERIAL
+
+  # 3. and the user is TOLD, rather than left wondering why their setting vanished
+  #    (host + port warnings are asserted in step 1 above)
+  assert_log "WARNING: opensky_serial=.* has been IGNORED"
+
+  teardown_case
+}
+
+case_hostile_sdr() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names hostilesdr
+  section "CASE hostile SDR values (gain/device reach a COMMAND LINE)"
+  # readsb_gain and readsb_rtlsdr_device are only set in rtlsdr mode, so a
+  # remote-mode fixture can never exercise them -- asserting them there passes
+  # vacuously. They land in READSB_GAIN / READSB_RTLSDR_DEVICE, which upstream
+  # splats onto readsb's command line, where WHITESPACE SPLITS ARGV: a gain of
+  # "auto --net-only" would smuggle in an extra readsb argument.
+  start_container "${HERE}/fixtures/hostile-sdr.json"
+  assert_running
+  assert_env_unset READSB_GAIN
+  assert_env_unset READSB_RTLSDR_DEVICE
+  assert_env_unset DUMP978_SDR_GAIN
+  assert_log "WARNING: readsb_gain=.* has been IGNORED"
+  assert_log "WARNING: readsb_rtlsdr_device=.* has been IGNORED"
+  assert_log "WARNING: dump978_gain=.* has been IGNORED"
+
+  teardown_case
+}
+
+case_remote_bad_port() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names remotebadport
+  section "CASE remote_beast_port numerically out of range (the range-check branch)"
+  # The hostile-values fixture's port fails the digits-only RE_PORT, so it exercises
+  # checked()'s regex-rejection path. A digits-only-but-out-of-range port (99999)
+  # instead reaches the SEPARATE 1-65535 range check -- a distinct branch of the
+  # guard that would otherwise have no coverage.
+  start_container "${HERE}/fixtures/remote-bad-port.json"
+  assert_running
+  # falls back to the default :30005 connector, not the injected/garbage port
+  assert_env_contains ULTRAFEEDER_CONFIG 'adsb,h.example.com,30005,beast_in'
+  assert_env_not_contains ULTRAFEEDER_CONFIG '99999'
+  assert_log "WARNING: remote_beast_port='99999' is out of range"
+
+  teardown_case
+}
+
 case_uat() {
   local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
   setup_case_names uat
@@ -780,6 +860,9 @@ CASES=(
   case_default
   case_rtlsdr
   case_remote
+  case_hostile
+  case_hostile_sdr
+  case_remote_bad_port
   case_uat
   case_decoder
   case_unconfig

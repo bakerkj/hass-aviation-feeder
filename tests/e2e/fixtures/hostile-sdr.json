@@ -1,0 +1,12 @@
+{
+  "receiver_mode": "rtlsdr",
+  "lat": "42.0",
+  "long": "-71.0",
+  "alt": "50",
+  "site_name": "E2E Site",
+  "readsb_gain": "auto --net-only",
+  "readsb_rtlsdr_device": "dev ice",
+  "opensky_serial": "12; rm -rf /",
+  "enable_uat": true,
+  "dump978_gain": "auto; rm -rf /"
+}
