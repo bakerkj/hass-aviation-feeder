@@ -71,7 +71,11 @@ jobs:
 
             - Bugs — logic errors, race conditions, off-by-ones,
               broken edge cases. If you find one, leave an inline
-              comment at the specific line.
+              comment at the specific line. This add-on mostly passes
+              user-supplied options through to other tools' command
+              lines and config parsers, so watch for a user value that
+              is silently ignored, silently rewritten, or able to break
+              the parse it lands in — those fail quietly, without a crash.
             - CI / build correctness.
             - Addon hygiene, including MQTT.
             - Security.
