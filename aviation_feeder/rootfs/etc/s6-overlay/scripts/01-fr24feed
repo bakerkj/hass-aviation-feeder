@@ -3,6 +3,13 @@
 # Gated wrapper for the FR24 config oneshot: skip cleanly when fr24 is off or
 # unconfigured (the real script hard-exits on missing FR24KEY, which would fail
 # s6 init on every install where fr24 is disabled).
+#
+# The upstream 01-fr24feed-real FORCES the whole container to TZ=GMT by writing
+# the shared s6 container-environment TZ file (its fr24feed binary demands GMT+0).
+# We do NOT want that global side effect -- only fr24's own process needs GMT. So
+# that single write is patched OUT of 01-fr24feed-real at build time (see the
+# Dockerfile), and the fr24feed / fr24uat-feed run scripts give GMT to their own
+# processes instead. This wrapper therefore just gates and runs the real oneshot.
 if [ "${ENABLE_FR24:-false}" != "true" ] || [ -z "${FR24KEY}" ]; then
   echo "[01-fr24feed] fr24 disabled/unconfigured; skipping setup"
   exit 0
