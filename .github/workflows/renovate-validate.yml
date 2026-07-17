@@ -29,7 +29,7 @@ jobs:
 
       - name: Schema validation
         run:
-          npx --package renovate@43.265.5 -- renovate-config-validator
+          npx --package renovate@43.268.2 -- renovate-config-validator
           renovate.json
 
       - name: Dry-run lookup test
@@ -54,7 +54,7 @@ jobs:
             [{"matchHost":"github-apt-helper.keneli.org","token":"${{
             secrets.APT_HELPER_TOKEN }}"}]
         run: |
-          npx --package renovate@43.265.5 -- renovate --dry-run --platform=local > renovate-dry-run.log 2>&1 || true
+          npx --package renovate@43.268.2 -- renovate --dry-run --platform=local > renovate-dry-run.log 2>&1 || true
 
           # 1. Total-failure check: bail on any datasource lookup that
           # errored out. Catches auth failures, TLS errors, generic 5xx.
