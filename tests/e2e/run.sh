@@ -132,6 +132,10 @@ assert_env_not_contains() {
   if _env_has "$1" "$2"; then bad "env $1 unexpectedly contains '$2'"; else ok "env $1 excludes '$2'"; fi
 }
 assert_log() { if wait_for _log_has "$1"; then ok "log matches /$1/"; else bad "log missing /$1/"; fi; }
+# Single-shot negative log check. Unlike assert_log it does NOT poll: use it only
+# AFTER a positive assertion has confirmed the relevant startup phase is already in
+# the logs, so an absence means "never printed", not merely "not printed yet".
+assert_log_not() { if _log_has "$1"; then bad "log unexpectedly matches /$1/"; else ok "log excludes /$1/"; fi; }
 # Like assert_log but with an explicit longer timeout, for the qemu-emulated
 # feeder: rbfeeder is an armhf binary run under qemu-arm-static, so it can take
 # well over the default poll to reach "started" on a loaded CI host.
@@ -460,6 +464,29 @@ case_allfeeders() {
   # service reads.)
   assert_env_contains TZ 'America/Detroit'
   assert_env_not_contains TZ 'GMT'
+  # We also strip the upstream oneshot's now-false warning that TZ "is ignored ...
+  # because fr24feed requires ... GMT" -- we honour the container tz and scope GMT
+  # to fr24's own processes. fr24feed has already started above, so had the warning
+  # been going to print (its own if-block in 01-fr24feed-real), it would be logged
+  # by now; a single-shot negative is therefore sound here.
+  assert_log_not 'Setting timezone via TZ is ignored'
+  # GMT is pinned to the fr24feed BINARY alone: /usr/local/bin/fr24feed is a wrapper
+  # that flips TZ=GMT before exec'ing /usr/bin/fr24feed, so the run scripts and their
+  # s6wrap logger stay on the container tz and stamp fr24's log lines in LOCAL time
+  # rather than 4h-ahead GMT. Guard both halves of that mechanism.
+  if docker exec "${CONTAINER}" grep -q 'TZ=GMT' /usr/local/bin/fr24feed 2>/dev/null; then
+    ok "fr24feed wrapper pins TZ=GMT to the binary alone"
+  else
+    bad "fr24feed wrapper missing TZ=GMT (binary tz unpinned: GMT errors, or logs revert to GMT)"
+  fi
+  # Match the forcing CODE ('env TZ=GMT ...'), not the word "TZ=GMT" that the run
+  # scripts' own comments legitimately mention.
+  if docker exec "${CONTAINER}" grep -q 'env TZ=GMT' \
+    /etc/s6-overlay/s6-rc.d/fr24feed/run /etc/s6-overlay/s6-rc.d/fr24uat-feed/run 2>/dev/null; then
+    bad "fr24 run script still forces TZ=GMT -- s6wrap would stamp fr24 logs in GMT"
+  else
+    ok "fr24 run scripts leave s6wrap on the container tz (fr24 logs stamped local)"
+  fi
   assert_log_within 90 'service opensky-feeder successfully started'
   assert_log_within 90 'service adsbhubclient successfully started'
   assert_log_within 90 'service rbfeeder successfully started'
