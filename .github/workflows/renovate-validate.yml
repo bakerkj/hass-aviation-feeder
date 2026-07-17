@@ -47,7 +47,8 @@ jobs:
         run: |
           npx --package renovate@43.265.5 -- renovate --dry-run --platform=local > renovate-dry-run.log 2>&1 || true
 
-          # Check for datasource lookup failures
+          # 1. Total-failure check: bail on any datasource lookup that
+          # errored out. Catches auth failures, TLS errors, generic 5xx.
           errors=$(grep -i "no-result\|failed to look up" renovate-dry-run.log | grep -v "python-version" || true)
           if [ -n "$errors" ]; then
             echo "::error::Renovate datasource lookup failures detected:"
@@ -55,4 +56,20 @@ jobs:
             exit 1
           fi
 
-          echo "All datasource lookups succeeded"
+          # 2. Silent-fallback check. python3-requests is pinned to a
+          # trixie-security build (aviation_feeder/Dockerfile). If the
+          # matchDatasources:[deb] packageRule with the helper URLs ever
+          # stops applying (a typo, precedence conflict, auth failure, or
+          # helper-service outage), Renovate falls back to deb.debian.org
+          # main-only. That fetch still succeeds -- it just never returns
+          # a +deb13uN release, so the check above stays green while the
+          # regression this workaround exists to prevent silently returns.
+          # Guard against that by requiring evidence that the helper host
+          # was actually reached during the dry-run.
+          if ! grep -qE "github-apt-helper\.keneli\.org" renovate-dry-run.log; then
+            echo "::error::Renovate never contacted github-apt-helper.keneli.org during the dry-run. The matchDatasources:[deb] packageRule may not be applying, or auth to the helper failed. Last 30 lines of Renovate's log:"
+            tail -30 renovate-dry-run.log
+            exit 1
+          fi
+
+          echo "All datasource lookups succeeded (and the helper host was queried)"
