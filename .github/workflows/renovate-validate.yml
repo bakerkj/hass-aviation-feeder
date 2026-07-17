@@ -34,12 +34,30 @@ jobs:
 
       - name: Dry-run lookup test
         env:
-          LOG_LEVEL: debug
+          # Debug level is sufficient: the assertions below key off the
+          # "getReleases statistics summary" and "Skipping component due
+          # to an error" lines, both emitted at debug. Trace would work
+          # too but bloats the log by ~100x (44k trace lines vs 574
+          # debug in a real dry-run) which makes the artifact upload
+          # bigger and the on-failure tail useless. Renovate's getEnv()
+          # looks up RENOVATE_LOG_LEVEL first, then LOG_LEVEL -- use
+          # the prefixed form so unrelated LOG_LEVEL settings in a
+          # broader scope cannot silently downgrade this.
+          RENOVATE_LOG_LEVEL: debug
           GITHUB_COM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The dry-run runs vanilla ``npx renovate`` on a GH Actions
+          # runner, without the Host Rules that our production Renovate
+          # sees. Inject the bearer for the helper host via
+          # RENOVATE_HOST_RULES from the ``APT_HELPER_TOKEN`` repo
+          # secret (``GITHUB_`` prefix is reserved by GH Actions).
+          RENOVATE_HOST_RULES: >-
+            [{"matchHost":"github-apt-helper.keneli.org","token":"${{
+            secrets.APT_HELPER_TOKEN }}"}]
         run: |
           npx --package renovate@43.265.5 -- renovate --dry-run --platform=local > renovate-dry-run.log 2>&1 || true
 
-          # Check for datasource lookup failures
+          # 1. Total-failure check: bail on any datasource lookup that
+          # errored out. Catches auth failures, TLS errors, generic 5xx.
           errors=$(grep -i "no-result\|failed to look up" renovate-dry-run.log | grep -v "python-version" || true)
           if [ -n "$errors" ]; then
             echo "::error::Renovate datasource lookup failures detected:"
@@ -47,4 +65,49 @@ jobs:
             exit 1
           fi
 
-          echo "All datasource lookups succeeded"
+          # 2. Positive assertion: prove that each trixie sub-suite URL
+          # on the helper was actually queried AND received a real
+          # response. Renovate emits a "getReleases statistics summary"
+          # block at debug level (lib/util/stats.ts) that lists each
+          # registryUrl with its request count, e.g.
+          #     "https://github-apt-helper.keneli.org/debian?suite=trixie-updates&...": {
+          #       "stats": { "count": 11, "avgMs": 274, ... }
+          # A URL only appears in this block if the deb datasource
+          # actually reached it -- so a positive count paired with the
+          # helper URL is the authoritative "the packageRule applied AND
+          # the helper worked" signal. The URL string also appears in
+          # earlier config-echo dumps but WITHOUT a following count line,
+          # so `grep -A 4 <url> | grep count > 0` uniquely matches only
+          # the stats context.
+          for suite in trixie-updates trixie-security; do
+            hits=$(grep -A 4 "github-apt-helper\.keneli\.org/debian?suite=$suite" renovate-dry-run.log | grep -cE '"count": *[1-9]')
+            if [ "$hits" -lt 1 ]; then
+              echo "::error::Renovate never made a successful request to github-apt-helper.keneli.org for $suite. The matchDatasources:[deb] packageRule may not be applying, or the helper is not returning usable data. Last 50 lines of Renovate's log:"
+              tail -50 renovate-dry-run.log
+              exit 1
+            fi
+          done
+
+          # 3. Rule out silent per-URL failures. The `deb` datasource's
+          # registryStrategy: 'merge' tolerates partial URL failures --
+          # if the helper 401s or 5xxs, that component gets skipped and
+          # Renovate carries on with whatever succeeded (i.e. main only).
+          # The datasource logs those skips at debug level as
+          # "Skipping component due to an error" with the componentUrl
+          # (lib/modules/datasource/deb/index.ts).
+          skipped=$(grep -E "Skipping component due to an error.*github-apt-helper" renovate-dry-run.log || true)
+          if [ -n "$skipped" ]; then
+            echo "::error::Renovate reached the helper but the response was rejected (auth failure, 5xx, TLS, or similar). Skipped component lines:"
+            echo "$skipped"
+            exit 1
+          fi
+
+          echo "All datasource lookups succeeded, helper was queried, no components were skipped"
+
+      - name: Upload dry-run log for debugging
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: renovate-dry-run-log
+          path: renovate-dry-run.log
+          retention-days: 7
