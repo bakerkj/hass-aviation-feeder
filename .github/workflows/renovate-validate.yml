@@ -34,14 +34,16 @@ jobs:
 
       - name: Dry-run lookup test
         env:
-          # Trace level (not debug) is required so Renovate's HTTP client
-          # emits the outgoing request URLs. Debug-level logging only
-          # records error/skip cases, so a successful helper query would
-          # be invisible to grep. Renovate's getEnv() looks up
-          # RENOVATE_LOG_LEVEL first, then LOG_LEVEL -- use the prefixed
-          # form so unrelated LOG_LEVEL settings in a broader scope
-          # cannot silently downgrade this.
-          RENOVATE_LOG_LEVEL: trace
+          # Debug level is sufficient: the assertions below key off the
+          # "getReleases statistics summary" and "Skipping component due
+          # to an error" lines, both emitted at debug. Trace would work
+          # too but bloats the log by ~100x (44k trace lines vs 574
+          # debug in a real dry-run) which makes the artifact upload
+          # bigger and the on-failure tail useless. Renovate's getEnv()
+          # looks up RENOVATE_LOG_LEVEL first, then LOG_LEVEL -- use
+          # the prefixed form so unrelated LOG_LEVEL settings in a
+          # broader scope cannot silently downgrade this.
+          RENOVATE_LOG_LEVEL: debug
           GITHUB_COM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # The dry-run runs vanilla ``npx renovate`` on a GH Actions
           # runner, without the Host Rules that our production Renovate
@@ -63,20 +65,28 @@ jobs:
             exit 1
           fi
 
-          # 2. Positive assertion: prove that the *deb datasource* itself
-          # queried the helper for a trixie sub-suite. Renovate's HttpBase
-          # logs "HTTP request: GET <url>" at trace level for every
-          # outbound request (lib/util/http/http.ts, `logger.trace`).
-          # Anchoring on the `/debian?suite=trixie-` query-string prefix
-          # (not just the hostname) means the assertion can only pass if
-          # the deb datasource walked componentUrls -- an unrelated auth
-          # probe or cache metadata GET to the helper root would not
-          # match.
-          if ! grep -qE "HTTP request:\s+GET\s+https?://github-apt-helper\.keneli\.org/debian\?suite=trixie-" renovate-dry-run.log; then
-            echo "::error::Renovate never made a deb-datasource HTTP request to github-apt-helper.keneli.org for a trixie sub-suite. The matchDatasources:[deb] packageRule is likely not applying (typo, precedence conflict, or the helper URL is filtered out somewhere). Last 50 lines of Renovate's log:"
-            tail -50 renovate-dry-run.log
-            exit 1
-          fi
+          # 2. Positive assertion: prove that each trixie sub-suite URL
+          # on the helper was actually queried AND received a real
+          # response. Renovate emits a "getReleases statistics summary"
+          # block at debug level (lib/util/stats.ts) that lists each
+          # registryUrl with its request count, e.g.
+          #     "https://github-apt-helper.keneli.org/debian?suite=trixie-updates&...": {
+          #       "stats": { "count": 11, "avgMs": 274, ... }
+          # A URL only appears in this block if the deb datasource
+          # actually reached it -- so a positive count paired with the
+          # helper URL is the authoritative "the packageRule applied AND
+          # the helper worked" signal. The URL string also appears in
+          # earlier config-echo dumps but WITHOUT a following count line,
+          # so `grep -A 4 <url> | grep count > 0` uniquely matches only
+          # the stats context.
+          for suite in trixie-updates trixie-security; do
+            hits=$(grep -A 4 "github-apt-helper\.keneli\.org/debian?suite=$suite" renovate-dry-run.log | grep -cE '"count": *[1-9]')
+            if [ "$hits" -lt 1 ]; then
+              echo "::error::Renovate never made a successful request to github-apt-helper.keneli.org for $suite. The matchDatasources:[deb] packageRule may not be applying, or the helper is not returning usable data. Last 50 lines of Renovate's log:"
+              tail -50 renovate-dry-run.log
+              exit 1
+            fi
+          done
 
           # 3. Rule out silent per-URL failures. The `deb` datasource's
           # registryStrategy: 'merge' tolerates partial URL failures --
