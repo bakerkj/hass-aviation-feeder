@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.7](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.6...aviation_feeder-v0.0.7) (2026-07-17)
+
+
+### Features
+
+* **fr24:** scope fr24's GMT requirement to its own processes, not the container ([#49](https://github.com/bakerkj/hass-aviation-feeder/issues/49)) ([1b6a374](https://github.com/bakerkj/hass-aviation-feeder/commit/1b6a374f108fb3e2328db6fbc198b9fbf4d97bcc))
+
+
+### Miscellaneous Chores
+
+* **deps:** update ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder docker tag to latest-build-945 ([#47](https://github.com/bakerkj/hass-aviation-feeder/issues/47)) ([f91385f](https://github.com/bakerkj/hass-aviation-feeder/commit/f91385f06618624685461171bff1033c46355f30))
+* **deps:** update ghcr.io/sdr-enthusiasts/docker-flightradar24 docker tag to latest-build-858 ([#42](https://github.com/bakerkj/hass-aviation-feeder/issues/42)) ([1213910](https://github.com/bakerkj/hass-aviation-feeder/commit/12139104f6d5ea198747a49e9450a6de7d67b757))
+
 ## [0.0.6](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.5...aviation_feeder-v0.0.6) (2026-07-15)
 
 

@@ -4,7 +4,7 @@
   "description": "Merged ADS-B (1090) + UAT (978) + MLAT feeder with tar1090 map, built on docker-adsb-ultrafeeder.",
   "url": "https://github.com/bakerkj/hass-aviation-feeder",
   "image": "ghcr.io/bakerkj/{arch}-aviation_feeder",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "arch": [
     "amd64",
     "aarch64"
