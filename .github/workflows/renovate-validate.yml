@@ -36,6 +36,14 @@ jobs:
         env:
           LOG_LEVEL: debug
           GITHUB_COM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The dry-run runs vanilla ``npx renovate`` on a GH Actions
+          # runner, without the Host Rules that our production Renovate
+          # sees. Inject the bearer for the helper host via
+          # RENOVATE_HOST_RULES from the ``APT_HELPER_TOKEN`` repo
+          # secret (``GITHUB_`` prefix is reserved by GH Actions).
+          RENOVATE_HOST_RULES: >-
+            [{"matchHost":"github-apt-helper.keneli.org","token":"${{
+            secrets.APT_HELPER_TOKEN }}"}]
         run: |
           npx --package renovate@43.265.5 -- renovate --dry-run --platform=local > renovate-dry-run.log 2>&1 || true
 

@@ -47,7 +47,7 @@
     },
     {
       "customType": "regex",
-      "description": "Pinned Debian apt package versions in add-on Dockerfiles (deb datasource)",
+      "description": "Pinned Debian apt package versions in Dockerfiles. Main trixie goes directly to deb.debian.org; the two trixie sub-suites (updates + security) resolve through a helper service that transforms Debian's .xz index into the .gz format the deb datasource requires. Full URL list lives on the matchDatasources: [deb] packageRule below (customManagers don't accept multi-URL fields).",
       "managerFilePatterns": ["/[^/]+/Dockerfile$/"],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>\\S+)\\s+\\S+=(?<currentValue>[^\\s\\\\]+)"
@@ -69,6 +69,16 @@
       "description": "The uv/pyproject unit-test deps (pyproject.toml + uv.lock) land in one PR. config:recommended enables the pep621 manager, which tracks the declared deps and maintains uv.lock.",
       "matchManagers": ["pep621"],
       "groupName": "python dependencies"
+    },
+    {
+      "description": "Fully overrides the customManager's single registryUrlTemplate with the three URLs the deb datasource must merge across: main trixie direct from deb.debian.org, plus trixie-updates and trixie-security via our helper service. Debian publishes those two sub-suites only as .xz which the built-in deb datasource cannot decompress (upstream renovatebot/renovate#35865). The deb datasource declares registryStrategy = 'merge' so all three URLs are queried and version lists unioned. Auth for the helper host is injected out-of-band: the Renovate service uses an org-level Host Rule; the renovate-validate CI dry-run uses a RENOVATE_HOST_RULES env-var overlay.",
+      "matchDatasources": ["deb"],
+      "groupName": "apt packages",
+      "registryUrls": [
+        "https://deb.debian.org/debian?suite=trixie&components=main&binaryArch=amd64",
+        "https://github-apt-helper.keneli.org/debian?suite=trixie-updates&components=main&binaryArch=amd64",
+        "https://github-apt-helper.keneli.org/debian?suite=trixie-security&components=main&binaryArch=amd64"
+      ]
     },
     {
       "description": "Pin the unit-test venv to the Python 3.13 series — it must match python3 in the add-on image's Debian trixie base. A 3.14 bump would make uv build a standalone 3.14 that diverges from the shipped interpreter. Lift when the base moves to a Debian release with 3.14.",
