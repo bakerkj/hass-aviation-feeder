@@ -448,7 +448,18 @@ case_allfeeders() {
   assert_log_within 90 'service dump978 successfully started'
   assert_log_within 90 'service piaware successfully started'
   assert_log_within 90 'service fr24feed successfully started'
+  assert_log_within 90 'service fr24uat-feed successfully started'
   assert_log_within 90 'service pfclient successfully started'
+  # fr24feed's binary demands TZ=GMT, and upstream enforces it by clobbering the
+  # SHARED s6 container-environment TZ file -- forcing tar1090/graphs/logs/MQTT
+  # onto GMT too. We patch that global write out (Dockerfile) and give GMT to
+  # fr24's OWN processes instead. So with fr24 enabled AND a tz set (this fixture:
+  # America/Detroit), the shared TZ file must NOT have been clobbered to GMT.
+  # Before the fix this env file was literally "GMT". (This env file -- not a
+  # per-process TZ -- is the thing fr24's clobber overwrote and every with-contenv
+  # service reads.)
+  assert_env_contains TZ 'America/Detroit'
+  assert_env_not_contains TZ 'GMT'
   assert_log_within 90 'service opensky-feeder successfully started'
   assert_log_within 90 'service adsbhubclient successfully started'
   assert_log_within 90 'service rbfeeder successfully started'

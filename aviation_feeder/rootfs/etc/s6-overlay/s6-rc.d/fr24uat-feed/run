@@ -4,4 +4,7 @@
 # UAT sharing key (fr24_uat_key). Idle otherwise so it never error-loops.
 . /usr/local/bin/feeder-gate
 gate "[fr24uat-feed]" ENABLE_FR24 FR24KEY_UAT
-exec /etc/s6-overlay/scripts/fr24uat-feed
+# fr24uat-feed runs the SAME fr24feed binary (--config-file=fr24uat-feed.ini),
+# which likewise demands TZ=GMT. Give GMT to its own process only, same as
+# fr24feed/run -- the container itself stays on the user's tz.
+exec env TZ=GMT bash /etc/s6-overlay/scripts/fr24uat-feed

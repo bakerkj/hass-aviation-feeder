@@ -5,4 +5,13 @@
 # otherwise restart-loop.
 . /usr/local/bin/feeder-gate
 gate "[fr24feed]" ENABLE_FR24 FR24KEY
-exec /etc/s6-overlay/scripts/fr24feed
+# fr24feed's binary requires TZ=GMT or it spams "should be set as GMT+0" errors.
+# We keep the CONTAINER on the user's timezone (fr24's config oneshot used to force
+# the whole container to GMT by writing the shared TZ file -- that write is patched
+# out at build time; see the Dockerfile), and give GMT to fr24's process ALONE
+# here. `env TZ=GMT` alone would not survive: /etc/s6-overlay/scripts/fr24feed
+# is itself `#!/command/with-contenv`, whose launch RE-READS the (now user-TZ)
+# shared env file and would overwrite our TZ. So invoke it via `bash` directly --
+# skipping that second with-contenv reload -- with the env this run script's own
+# with-contenv already loaded, plus our TZ=GMT override on top.
+exec env TZ=GMT bash /etc/s6-overlay/scripts/fr24feed

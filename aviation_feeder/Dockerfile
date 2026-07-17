@@ -373,3 +373,17 @@ COPY patch-mlat-client.py /tmp/patch-mlat-client.py
 RUN python3 /tmp/patch-mlat-client.py \
   && python3 -c "import mlat.client.stats as s, mlat.client.jsonclient; assert hasattr(s, '_haf_write_client_stats'), 'stats patch missing'" \
   && rm -f /tmp/patch-mlat-client.py
+
+# Stop fr24feed's config oneshot from forcing the WHOLE container to TZ=GMT.
+# Upstream 01-fr24feed-real writes the SHARED s6 container-environment TZ file
+# (`printf "GMT" > .../TZ`) because the fr24feed binary demands GMT+0 -- but that
+# clobbers the user's tz for tar1090, graphs, logs and the MQTT publisher, and (as
+# a global write racing sibling longruns) does it nondeterministically. We give
+# GMT to fr24's OWN processes instead (see s6-rc.d/fr24feed/run and
+# s6-rc.d/fr24uat-feed/run: `env TZ=GMT bash ...`), so this global write is removed
+# here. Anchored + verified: the build FAILS if the line is absent (upstream moved
+# or removed it) rather than silently letting the clobber return.
+RUN F=/etc/s6-overlay/scripts/01-fr24feed-real \
+  && grep -q 'printf "GMT" >/var/run/s6/container_environment/TZ' "$F" \
+  && sed -i '/printf "GMT" >\/var\/run\/s6\/container_environment\/TZ/d' "$F" \
+  && ! grep -q 'container_environment/TZ' "$F"
