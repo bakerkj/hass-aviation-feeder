@@ -356,10 +356,11 @@ the Dockerfile for live values).
 - **MLAT.** Handled internally by fr24feed.
 - **How it's built.** Stage
   `FROM ghcr.io/sdr-enthusiasts/docker-flightradar24@sha256:f32968…0630f1 AS fr24`.
-  `COPY --from=fr24` brings `/usr/bin/fr24feed` (re-symlinked to
-  `/usr/local/bin/fr24feed`), the `fr24feed`/`fr24uat-feed` services + scripts,
-  and `01-fr24feed` → `01-fr24feed-real` (shadowed by our gated wrapper). No
-  extra apt.
+  `COPY --from=fr24` brings `/usr/bin/fr24feed` (fronted by a
+  `/usr/local/bin/fr24feed` wrapper that flips `TZ=GMT` for the binary alone, so
+  the run scripts and their s6wrap logger stay on the user's tz), the
+  `fr24feed`/`fr24uat-feed` services + scripts, and `01-fr24feed` →
+  `01-fr24feed-real` (shadowed by our gated wrapper). No extra apt.
 
 #### PlaneFinder (pfclient)
 

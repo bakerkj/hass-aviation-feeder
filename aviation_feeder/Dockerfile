@@ -186,9 +186,18 @@ RUN mkdir -p /etc/s6-overlay/s6-rc.d/01-piaware/dependencies.d \
 
 # --- flightradar24 (fr24feed: 1090 + UAT) ---------------------------------
 # Single native binary serves both 1090 (fr24feed) and 978 (fr24uat-feed).
-# The run scripts exec the /usr/local/bin symlink, so recreate it.
+# Upstream's scripts always launch the binary as /usr/local/bin/fr24feed -- both the
+# native-vs-qemu `--version` probe and the real `exec s6wrap ... fr24feed`. Install a
+# thin wrapper there (not the stock symlink) that flips TZ=GMT for the binary ALONE.
+# The binary demands GMT+0; pinning that at this single chokepoint lets the s6 run
+# scripts -- and the s6wrap logger that timestamps fr24's output -- stay on the
+# user's timezone, so fr24's log lines read in LOCAL time instead of 4h-ahead GMT.
+# The binary gets GMT no matter who launches it; the `--version` probe still succeeds
+# natively through the wrapper, so the qemu branch is never taken on our native arch.
 COPY --from=fr24 /usr/bin/fr24feed /usr/bin/fr24feed
-RUN ln -sf /usr/bin/fr24feed /usr/local/bin/fr24feed
+RUN printf '#!/bin/sh\nexec env TZ=GMT /usr/bin/fr24feed "$@"\n' > /usr/local/bin/fr24feed \
+  && chmod +x /usr/local/bin/fr24feed \
+  && grep -q 'TZ=GMT' /usr/local/bin/fr24feed
 # s6 longruns (fr24feed, fr24uat-feed) + their shared oneshots + scripts.
 COPY --from=fr24 /etc/s6-overlay/s6-rc.d/fr24feed /etc/s6-overlay/s6-rc.d/fr24feed
 COPY --from=fr24 /etc/s6-overlay/s6-rc.d/fr24uat-feed /etc/s6-overlay/s6-rc.d/fr24uat-feed
@@ -379,20 +388,27 @@ RUN python3 /tmp/patch-mlat-client.py \
 # TZ file (`printf "GMT" > .../TZ`) because the fr24feed binary demands GMT+0, and
 # (2) logs a WARNING that setting TZ "is ignored ... because fr24feed requires the
 # container to use timezone GMT". Both are wrong for us: we keep the container on
-# the user's tz and scope GMT to fr24's OWN processes instead (see
-# s6-rc.d/fr24feed/run and s6-rc.d/fr24uat-feed/run: `env TZ=GMT bash ...`). So the
-# global write -- which would clobber tar1090/graphs/logs/MQTT, nondeterministically
-# racing sibling longruns -- is removed, AND the now-false warning (its own 3-line
-# `if [ -n "$TZ" ]` block, a separate statement from the printf) is stripped so the
-# log stops claiming the tz was ignored when it was honoured. Anchored + verified:
-# the build FAILS if either line is absent (upstream moved/renamed it) rather than
-# silently letting the clobber or the false warning return.
+# the user's tz and scope GMT to the fr24feed BINARY alone via the
+# /usr/local/bin/fr24feed wrapper (above). So the global write -- which would clobber
+# tar1090/graphs/logs/MQTT, nondeterministically racing sibling longruns -- is
+# removed, AND the now-false warning is stripped so the log stops claiming the tz was
+# ignored when it was honoured.
+#
+# Anchored + bounded + verified: both anchor strings must be present before the sed
+# and both absent after, so the build FAILS loudly if upstream moves/renames either.
+# The warning is its own fixed 3-line `if [ -n "$TZ" ]` block (a separate statement
+# from the printf), deleted with a BOUNDED `addr,+2d` range rather than an open
+# `addr,/^fi$/d`: were a future base to reshape the block so its closing `fi` no
+# longer matched, an open range would delete to EOF -- and because both target
+# strings would vanish as a side effect, the post-asserts could not catch it. The
+# bounded delete can only ever remove 3 lines; a reshaped block then trips the
+# post-assert instead.
 # SC2016: the ${TZ} in the sed address is a LITERAL match against the script text,
 # not a shell expansion -- single quotes are deliberate.
 # hadolint ignore=SC2016
 RUN F=/etc/s6-overlay/scripts/01-fr24feed-real \
   && grep -q 'printf "GMT" >/var/run/s6/container_environment/TZ' "$F" \
   && grep -q 'Setting timezone via TZ is ignored' "$F" \
-  && sed -i -e '/printf "GMT" >\/var\/run\/s6\/container_environment\/TZ/d' -e '/^if \[ -n "${TZ}" \]; then$/,/^fi$/d' "$F" \
+  && sed -i -e '/printf "GMT" >\/var\/run\/s6\/container_environment\/TZ/d' -e '/^if \[ -n "${TZ}" \]; then$/,+2d' "$F" \
   && ! grep -q 'container_environment/TZ' "$F" \
   && ! grep -q 'Setting timezone via TZ is ignored' "$F"
