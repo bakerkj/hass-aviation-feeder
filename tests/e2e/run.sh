@@ -132,6 +132,10 @@ assert_env_not_contains() {
   if _env_has "$1" "$2"; then bad "env $1 unexpectedly contains '$2'"; else ok "env $1 excludes '$2'"; fi
 }
 assert_log() { if wait_for _log_has "$1"; then ok "log matches /$1/"; else bad "log missing /$1/"; fi; }
+# Single-shot negative log check. Unlike assert_log it does NOT poll: use it only
+# AFTER a positive assertion has confirmed the relevant startup phase is already in
+# the logs, so an absence means "never printed", not merely "not printed yet".
+assert_log_not() { if _log_has "$1"; then bad "log unexpectedly matches /$1/"; else ok "log excludes /$1/"; fi; }
 # Like assert_log but with an explicit longer timeout, for the qemu-emulated
 # feeder: rbfeeder is an armhf binary run under qemu-arm-static, so it can take
 # well over the default poll to reach "started" on a loaded CI host.
@@ -460,6 +464,12 @@ case_allfeeders() {
   # service reads.)
   assert_env_contains TZ 'America/Detroit'
   assert_env_not_contains TZ 'GMT'
+  # We also strip the upstream oneshot's now-false warning that TZ "is ignored ...
+  # because fr24feed requires ... GMT" -- we honour the container tz and scope GMT
+  # to fr24's own processes. fr24feed has already started above, so had the warning
+  # been going to print (its own if-block in 01-fr24feed-real), it would be logged
+  # by now; a single-shot negative is therefore sound here.
+  assert_log_not 'Setting timezone via TZ is ignored'
   assert_log_within 90 'service opensky-feeder successfully started'
   assert_log_within 90 'service adsbhubclient successfully started'
   assert_log_within 90 'service rbfeeder successfully started'
