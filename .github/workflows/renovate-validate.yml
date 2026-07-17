@@ -34,7 +34,14 @@ jobs:
 
       - name: Dry-run lookup test
         env:
-          LOG_LEVEL: debug
+          # Trace level (not debug) is required so Renovate's HTTP client
+          # emits the outgoing request URLs. Debug-level logging only
+          # records error/skip cases, so a successful helper query would
+          # be invisible to grep. Renovate's getEnv() looks up
+          # RENOVATE_LOG_LEVEL first, then LOG_LEVEL -- use the prefixed
+          # form so unrelated LOG_LEVEL settings in a broader scope
+          # cannot silently downgrade this.
+          RENOVATE_LOG_LEVEL: trace
           GITHUB_COM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # The dry-run runs vanilla ``npx renovate`` on a GH Actions
           # runner, without the Host Rules that our production Renovate
@@ -56,20 +63,41 @@ jobs:
             exit 1
           fi
 
-          # 2. Silent-fallback check. python3-requests is pinned to a
-          # trixie-security build (aviation_feeder/Dockerfile). If the
-          # matchDatasources:[deb] packageRule with the helper URLs ever
-          # stops applying (a typo, precedence conflict, auth failure, or
-          # helper-service outage), Renovate falls back to deb.debian.org
-          # main-only. That fetch still succeeds -- it just never returns
-          # a +deb13uN release, so the check above stays green while the
-          # regression this workaround exists to prevent silently returns.
-          # Guard against that by requiring evidence that the helper host
-          # was actually reached during the dry-run.
-          if ! grep -qE "github-apt-helper\.keneli\.org" renovate-dry-run.log; then
-            echo "::error::Renovate never contacted github-apt-helper.keneli.org during the dry-run. The matchDatasources:[deb] packageRule may not be applying, or auth to the helper failed. Last 30 lines of Renovate's log:"
-            tail -30 renovate-dry-run.log
+          # 2. Positive assertion: prove that the *deb datasource* itself
+          # queried the helper for a trixie sub-suite. Renovate's HttpBase
+          # logs "HTTP request: GET <url>" at trace level for every
+          # outbound request (lib/util/http/http.ts, `logger.trace`).
+          # Anchoring on the `/debian?suite=trixie-` query-string prefix
+          # (not just the hostname) means the assertion can only pass if
+          # the deb datasource walked componentUrls -- an unrelated auth
+          # probe or cache metadata GET to the helper root would not
+          # match.
+          if ! grep -qE "HTTP request:\s+GET\s+https?://github-apt-helper\.keneli\.org/debian\?suite=trixie-" renovate-dry-run.log; then
+            echo "::error::Renovate never made a deb-datasource HTTP request to github-apt-helper.keneli.org for a trixie sub-suite. The matchDatasources:[deb] packageRule is likely not applying (typo, precedence conflict, or the helper URL is filtered out somewhere). Last 50 lines of Renovate's log:"
+            tail -50 renovate-dry-run.log
             exit 1
           fi
 
-          echo "All datasource lookups succeeded (and the helper host was queried)"
+          # 3. Rule out silent per-URL failures. The `deb` datasource's
+          # registryStrategy: 'merge' tolerates partial URL failures --
+          # if the helper 401s or 5xxs, that component gets skipped and
+          # Renovate carries on with whatever succeeded (i.e. main only).
+          # The datasource logs those skips at debug level as
+          # "Skipping component due to an error" with the componentUrl
+          # (lib/modules/datasource/deb/index.ts).
+          skipped=$(grep -E "Skipping component due to an error.*github-apt-helper" renovate-dry-run.log || true)
+          if [ -n "$skipped" ]; then
+            echo "::error::Renovate reached the helper but the response was rejected (auth failure, 5xx, TLS, or similar). Skipped component lines:"
+            echo "$skipped"
+            exit 1
+          fi
+
+          echo "All datasource lookups succeeded, helper was queried, no components were skipped"
+
+      - name: Upload dry-run log for debugging
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: renovate-dry-run-log
+          path: renovate-dry-run.log
+          retention-days: 7
