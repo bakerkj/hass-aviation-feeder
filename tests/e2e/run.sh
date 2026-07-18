@@ -999,6 +999,25 @@ wait-readsb"
   teardown_case
 }
 
+case_adsbitalia_nomlat() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names adsbitalia_nomlat
+  section "CASE ADSBItalia name with MLAT off — name still reaches registration, no false 'no effect' warning"
+  start_container "${HERE}/fixtures/adsbitalia-nomlat.json"
+  assert_running
+  assert_log 'container environment prepared'
+  # adsbitalia_mlat=false drops the MLAT connector, so the name can't ride it...
+  assert_env_not_contains ULTRAFEEDER_CONFIG 'mlat,mlat.adsbitalia.it,41113'
+  # ...but registration is still on and the name still applies via ADSBITALIA_NAME.
+  assert_env_contains ADSBITALIA_REGISTRATION 'true'
+  assert_env_contains ADSBITALIA_NAME 'NoMlatItalia'
+  # So the generic add_aggregator "name has no effect" warning must NOT fire for
+  # ADSBItalia here (the name works through the registration record).
+  assert_log_not 'adsbitalia_name is set, but feed_adsbitalia has no active MLAT connector'
+
+  teardown_case
+}
+
 # --- Runner: launch every case in a bounded worker pool ---------------------
 # Each case runs in its own backgrounded subshell (unique container/sidecar
 # names via setup_case_names) writing to a per-case log. Concurrency is capped
@@ -1023,6 +1042,7 @@ CASES=(
   case_autoloc
   case_tmpfs
   case_units
+  case_adsbitalia_nomlat
 )
 RESULTS_DIR="$(mktemp -d)"
 JOBS="${E2E_JOBS:-$(nproc 2>/dev/null || echo 4)}"
