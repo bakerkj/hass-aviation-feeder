@@ -413,6 +413,23 @@ RUN F=/etc/s6-overlay/scripts/01-fr24feed-real \
   && ! grep -q 'container_environment/TZ' "$F" \
   && ! grep -q 'Setting timezone via TZ is ignored' "$F"
 
+# ADSBItalia registration name. The base's 52-adsbitalia-register startup hook
+# derives the registered station name from MLAT_USER alone. Patch it to prefer
+# ADSBITALIA_NAME (set by 00-haos-options from the adsbitalia_name option) so the
+# per-aggregator name override reaches the registration record too -- matching how
+# adsbitalia_name already names the MLAT connector. Blank => ADSBITALIA_NAME unset
+# => falls back to MLAT_USER, exactly as before.
+#
+# Anchored + verified: the exact upstream line must be present before, and the
+# patched form after, so a base bump that moves/renames it FAILS THE BUILD instead
+# of silently reverting to the MLAT_USER-only name.
+# hadolint ignore=SC2016
+RUN F=/etc/s6-overlay/startup.d/52-adsbitalia-register \
+  && grep -q 'FEEDER_NAME="${MLAT_USER:-$FEEDER_ID}"' "$F" \
+  && sed -i 's/FEEDER_NAME="${MLAT_USER:-$FEEDER_ID}"/FEEDER_NAME="${ADSBITALIA_NAME:-${MLAT_USER:-$FEEDER_ID}}"/' "$F" \
+  && grep -q 'FEEDER_NAME="${ADSBITALIA_NAME:-${MLAT_USER:-$FEEDER_ID}}"' "$F" \
+  && ! grep -q 'FEEDER_NAME="${MLAT_USER:-$FEEDER_ID}"' "$F"
+
 # Assert the two ENROLLED s6 boot surfaces match our explicit allowlist, so a base
 # bump can't quietly enroll something new without our approval. The script prunes
 # the two dead upstream wrappers we reject (telegraf, timelapse1090) and FAILS THE

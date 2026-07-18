@@ -346,6 +346,17 @@ to the shared `UUID`. The MLAT column becomes a base `mlat-client` (returning
 into mlathub). ADS-B Exchange additionally shares receiver stats unless
 `ADSBX_STATS=disabled` is set via `extra_env`.
 
+**ADSBItalia registration.** When `feed_adsbitalia` is on, `00-haos-options`
+sets `ADSBITALIA_REGISTRATION=true`, which activates the base's
+`52-adsbitalia-register` startup hook (otherwise a self-noop): it detects the
+public IP and POSTs the station to adsbitalia.it, persisting a token under
+`/data/globe_history/adsbitalia`. Upstream names the registration from
+`MLAT_USER` only; the `Dockerfile` patches the hook (anchored + build-verified,
+like the fr24/mlat patches) to prefer `ADSBITALIA_NAME` — which the bridge sets
+from `adsbitalia_name` (same `uf_safe`) — so the per-aggregator name override
+reaches the registration record just as it already names the MLAT connector,
+falling back to `MLAT_USER` when blank.
+
 ### 3b. Client-binary feeders
 
 Every one is an s6 longrun gated via `feeder-gate`; when disabled/unconfigured

@@ -14,6 +14,7 @@
   "feed_avdelphi": true,
   "feed_flyitaly": true,
   "feed_adsbitalia": true,
+  "adsbitalia_name": "Motown_ADSB",
   "feed_adsbexchange": true,
   "feed_adsbone": true,
   "adsbone_mlat": false,

@@ -180,6 +180,12 @@ only.
 > default when enabled. Add `ADSBX_STATS=disabled` via **Extra env**
 > (`extra_env`) to opt out.
 
+> **ADSBItalia** auto-registers your station when `feed_adsbitalia` is on: at
+> startup it detects your public IP and POSTs your station details to
+> adsbitalia.it's registration API (a token is stored under `/data`). The
+> registered name follows `adsbitalia_name` if set, otherwise your site name
+> (`mlat_user` / `site_name`) — the same name your MLAT connector uses.
+
 ## Home Assistant sensors
 
 Turn on **Home Assistant sensors** (`ha_sensors`) to publish Aviation Feeder

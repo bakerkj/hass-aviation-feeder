@@ -442,12 +442,17 @@ add_aggregator() {
   [[ -n "${nm}" ]] && name_suffix=",name=${nm}"
   if [[ -n "${mhost}" && "$(opt_bool "${mlat_opt}" true)" != "false" ]]; then
     UF+=("mlat,${mhost},${mport}${uuid_suffix}${name_suffix}")
-  elif [[ -n "${nm}" ]]; then
+  elif [[ -n "${nm}" && "${key}" != "feed_adsbitalia" ]]; then
     # The name rides on the MLAT connector -- it IS the mlat --user. So if this
     # aggregator has no MLAT (mhost empty, e.g. an ADS-B-only network) or its MLAT
     # was switched off, the name cannot take effect anywhere. Say so, loudly:
     # a name that is silently ignored is exactly the failure this option exists to
     # remove, and the user would otherwise believe their station was renamed.
+    #
+    # ADSBItalia is exempt: adsbitalia_name ALSO names the registration record via
+    # ADSBITALIA_NAME + the 52-adsbitalia-register hook (see below), so it still
+    # takes effect with MLAT off -- warning "no effect" there would wrongly tell the
+    # user to drop a name that works.
     log "WARNING: ${name_opt} is set, but ${key} has no active MLAT connector (the name IS the MLAT user), so it has no effect. Remove it, or enable ${mlat_opt}."
   fi
   # Explicit success: without this the trailing test returns 1 for aggregators
@@ -482,6 +487,20 @@ if [[ ${#UF[@]} -gt 0 ]]; then
     IFS=';'
     echo "${UF[*]}"
   )"
+fi
+
+# ADSBItalia auto-registration. When feeding ADSBItalia, enable the base's
+# 52-adsbitalia-register startup hook (it self-noops unless ADSBITALIA_REGISTRATION
+# is set): it registers/updates the station with adsbitalia.it, detecting the
+# public IP and POSTing to their API, persisting a token under /data (globe_history).
+# The upstream hook names the station from MLAT_USER; the Dockerfile patches it to
+# prefer ADSBITALIA_NAME, so the per-aggregator adsbitalia_name override reaches the
+# registration record too -- exactly as it already names the MLAT connector (via
+# add_aggregator, same uf_safe). Blank adsbitalia_name => ADSBITALIA_NAME empty =>
+# the hook falls back to MLAT_USER, matching the connector's own fallback.
+if [[ "$(opt feed_adsbitalia)" == "true" ]]; then
+  setenv ADSBITALIA_REGISTRATION "true"
+  setenv ADSBITALIA_NAME "$(uf_safe "$(opt adsbitalia_name)")"
 fi
 
 # --- Escape hatch: extra KEY=value lines, one per line ---
