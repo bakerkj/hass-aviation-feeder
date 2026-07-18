@@ -15,6 +15,7 @@ from .metadata import (
     DEVICE_MANUFACTURER,
     DEVICE_MODEL,
     DEVICE_NAME,
+    EMERGENCY_SQUAWK_KEY,
     FEEDERS_DEVICE_ID,
     METRICS,
     REPORT_BINARY_SENSORS,
@@ -224,6 +225,37 @@ def build_broker_discovery(
         )
         out[f"{discovery_prefix}/sensor/{DEVICE_ID}/{m.key}/config"] = cfg
     return out
+
+
+def build_emergency_discovery(
+    discovery_prefix: str,
+    base_topic: str,
+    availability_topic: str,
+    expire_after_s: int,
+) -> dict[str, dict[str, Any]]:
+    """Emergency-squawk safety binary_sensor on the main device: ON when any
+    tracked aircraft squawks 7500/7600/7700, with the offenders as JSON
+    attributes. A primary entity (not diagnostic) so the alert is prominent and
+    easy to automate on."""
+    device = _device(DEVICE_ID, DEVICE_NAME)
+    key = EMERGENCY_SQUAWK_KEY
+    return {
+        f"{discovery_prefix}/binary_sensor/{DEVICE_ID}/{key}/config": {
+            "name": "Emergency Squawk",
+            "unique_id": f"{DEVICE_ID}_{key}",
+            "state_topic": f"{base_topic}/{key}/state",
+            "json_attributes_topic": f"{base_topic}/{key}/attributes",
+            "payload_on": "on",
+            "payload_off": "off",
+            "device_class": "safety",
+            "icon": "mdi:alert",
+            "device": device,
+            "availability_topic": availability_topic,
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "expire_after": expire_after_s,
+        }
+    }
 
 
 def build_sdr_discovery(

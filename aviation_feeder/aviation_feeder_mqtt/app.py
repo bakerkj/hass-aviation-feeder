@@ -26,6 +26,7 @@ from .feeders import (
     running_cmdlines_by_pid,
 )
 from .metadata import (
+    EMERGENCY_SQUAWK_KEY,
     FEEDERS_DEVICE_ID,
     MESSAGES_METRICS,
     MESSAGES_RATE_METRICS,
@@ -46,6 +47,7 @@ from .mqtt import (
     MqttHealth,
     build_broker_discovery,
     build_discovery_payloads,
+    build_emergency_discovery,
     build_feeder_metrics_discovery,
     build_feeders_discovery,
     build_nearby_discovery,
@@ -54,6 +56,7 @@ from .mqtt import (
     connect_mqtt_with_retry,
     mqtt_publish,
 )
+from .emergency import compute_emergency
 from .nearby import compute_nearby, read_aircraft
 from .stats import read_stats
 from .throughput import ThroughputAccumulator
@@ -256,6 +259,7 @@ def main() -> int:
     feeder_health = bool(opts.get("ha_feeder_health", True))
     planes_near_me = bool(opts.get("ha_planes_near_me", True))
     feeder_status = bool(opts.get("ha_feeder_status", True))
+    emergency_on = bool(opts.get("ha_emergency_squawk", True))
     near_me_radius = max(1.0, float(opts.get("ha_near_me_radius", 50)))
     feeders_topic = f"{base_topic}/feeders"
     # Local-SDR health only makes sense with a local dongle; in remote/net-only
@@ -494,6 +498,26 @@ def main() -> int:
                         health=health,
                     )
                     published += 1 if sdr_on else 0
+                # Emergency-squawk safety binary_sensor (main device): publish its
+                # config only when ha_emergency_squawk is on, else retained-empty
+                # so toggling it off removes the entity from HA.
+                emergency_disc = build_emergency_discovery(
+                    discovery_prefix, base_topic, availability_topic, expire_after_s
+                )
+                for topic, cfg in emergency_disc.items():
+                    body = (
+                        json.dumps(cfg, separators=(",", ":")) if emergency_on else ""
+                    )
+                    mqtt_publish(
+                        client,
+                        topic,
+                        body,
+                        qos=1,
+                        retain=True,
+                        log_level=log_level,
+                        health=health,
+                    )
+                    published += 1 if emergency_on else 0
                 # MQTT broker-link diagnostics (main device), under feeder_health.
                 broker_disc = build_broker_discovery(
                     discovery_prefix, base_topic, availability_topic, expire_after_s
@@ -529,7 +553,9 @@ def main() -> int:
                     log_level,
                 )
 
-            if health.connected and (feeder_health or planes_near_me or feeder_status):
+            if health.connected and (
+                feeder_health or planes_near_me or feeder_status or emergency_on
+            ):
                 if feeder_health and stats is not None:
                     metrics = compute_metrics(stats)
                     n = 0
@@ -591,60 +617,101 @@ def main() -> int:
                         mark_state=True,
                     )
 
-                if (
+                # aircraft.json feeds both planes-near-me and the emergency-squawk
+                # sensor; read it once per cycle when either is enabled.
+                want_nearby = (
                     planes_near_me
                     and station_lat is not None
                     and station_lon is not None
+                )
+                acj = (
+                    read_aircraft(args.aircraft)
+                    if (want_nearby or emergency_on)
+                    else None
+                )
+                if (want_nearby or emergency_on) and acj is None:
+                    log(
+                        "WARNING",
+                        f"aircraft.json not readable at {args.aircraft}",
+                        log_level,
+                    )
+
+                if (
+                    want_nearby
+                    and acj is not None
+                    and station_lat is not None
+                    and station_lon is not None
                 ):
-                    acj = read_aircraft(args.aircraft)
-                    if acj is None:
-                        log(
-                            "WARNING",
-                            f"aircraft.json not readable at {args.aircraft}",
-                            log_level,
+                    nb = compute_nearby(acj, station_lat, station_lon, near_me_radius)
+                    for m in NEARBY_METRICS:
+                        v = nb.get(m.key)
+                        if v is None:
+                            continue
+                        mqtt_publish(
+                            client,
+                            f"{nearby_topic}/{m.key}/state",
+                            str(v),
+                            qos=0,
+                            retain=False,
+                            log_level=log_level,
+                            health=health,
+                            mark_state=True,
                         )
-                    else:
-                        nb = compute_nearby(
-                            acj, station_lat, station_lon, near_me_radius
+                    nearest = nb.get("nearest")
+                    if nearest:
+                        mqtt_publish(
+                            client,
+                            f"{nearby_topic}/{NEARBY_STATE_KEY}/state",
+                            str(nearest.get("flight") or ""),
+                            qos=0,
+                            retain=False,
+                            log_level=log_level,
+                            health=health,
+                            mark_state=True,
                         )
-                        for m in NEARBY_METRICS:
-                            v = nb.get(m.key)
-                            if v is None:
-                                continue
-                            mqtt_publish(
-                                client,
-                                f"{nearby_topic}/{m.key}/state",
-                                str(v),
-                                qos=0,
-                                retain=False,
-                                log_level=log_level,
-                                health=health,
-                                mark_state=True,
-                            )
-                        nearest = nb.get("nearest")
-                        if nearest:
-                            mqtt_publish(
-                                client,
-                                f"{nearby_topic}/{NEARBY_STATE_KEY}/state",
-                                str(nearest.get("flight") or ""),
-                                qos=0,
-                                retain=False,
-                                log_level=log_level,
-                                health=health,
-                                mark_state=True,
-                            )
-                            mqtt_publish(
-                                client,
-                                f"{nearby_topic}/{NEARBY_STATE_KEY}/attributes",
-                                json.dumps(nearest, separators=(",", ":")),
-                                qos=0,
-                                retain=False,
-                                log_level=log_level,
-                                health=health,
-                            )
+                        mqtt_publish(
+                            client,
+                            f"{nearby_topic}/{NEARBY_STATE_KEY}/attributes",
+                            json.dumps(nearest, separators=(",", ":")),
+                            qos=0,
+                            retain=False,
+                            log_level=log_level,
+                            health=health,
+                        )
+                    log(
+                        "DEBUG",
+                        f"nearby: in_range={nb.get('aircraft_in_range')}",
+                        log_level,
+                    )
+
+                if emergency_on and acj is not None:
+                    em = compute_emergency(acj)
+                    mqtt_publish(
+                        client,
+                        f"{base_topic}/{EMERGENCY_SQUAWK_KEY}/state",
+                        "on" if em["active"] else "off",
+                        qos=0,
+                        retain=False,
+                        log_level=log_level,
+                        health=health,
+                        mark_state=True,
+                    )
+                    mqtt_publish(
+                        client,
+                        f"{base_topic}/{EMERGENCY_SQUAWK_KEY}/attributes",
+                        json.dumps(
+                            {"count": em["count"], "aircraft": em["aircraft"]},
+                            separators=(",", ":"),
+                        ),
+                        qos=0,
+                        retain=False,
+                        log_level=log_level,
+                        health=health,
+                    )
+                    if em["active"]:
                         log(
-                            "DEBUG",
-                            f"nearby: in_range={nb.get('aircraft_in_range')}",
+                            "INFO",
+                            f"emergency squawk active: {em['count']} aircraft",
                             log_level,
                         )
 

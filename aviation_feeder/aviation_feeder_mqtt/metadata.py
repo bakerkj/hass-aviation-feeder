@@ -20,6 +20,11 @@ DEVICE_NAME = "Aviation Feeder"
 DEVICE_MODEL = "readsb / ultrafeeder"
 DEVICE_MANUFACTURER = "hass-aviation-feeder"
 
+# Emergency-squawk safety binary_sensor on the main device (see emergency.py);
+# state is a plain on/off topic with the offenders as JSON attributes, so it
+# isn't a METRIC — just the topic key, shared by the publisher and discovery.
+EMERGENCY_SQUAWK_KEY = "emergency_squawk"
+
 
 @dataclass(frozen=True)
 class Metric:

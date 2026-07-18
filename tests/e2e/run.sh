@@ -734,6 +734,17 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
       *"aviation_feeder/nearby/aircraft_in_range/state"*) ok "mqtt nearby state published" ;;
       *) bad "mqtt nearby state missing" ;;
     esac
+    # Emergency-squawk safety binary_sensor (main device): discovered with a real
+    # payload, and state published. The test feed has no 7500/7600/7700, so it
+    # must be "off" (proves the whole read->compute->publish path end to end).
+    case "${CAP}" in
+      *"homeassistant/binary_sensor/aviation_feeder/emergency_squawk/config {"*) ok "mqtt emergency-squawk discovery published" ;;
+      *) bad "mqtt emergency-squawk discovery missing" ;;
+    esac
+    case "${CAP}" in
+      *"aviation_feeder/emergency_squawk/state off"*) ok "mqtt emergency-squawk state published (off)" ;;
+      *) bad "mqtt emergency-squawk state missing" ;;
+    esac
     # Per-feeder status: piaware is enabled (needs no key) so its process runs.
     case "${CAP}" in
       *"homeassistant/binary_sensor/aviation_feeder_feeders/piaware/config"*) ok "mqtt feeder-status discovery published" ;;
