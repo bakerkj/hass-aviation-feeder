@@ -412,3 +412,14 @@ RUN F=/etc/s6-overlay/scripts/01-fr24feed-real \
   && sed -i -e '/printf "GMT" >\/var\/run\/s6\/container_environment\/TZ/d' -e '/^if \[ -n "${TZ}" \]; then$/,+2d' "$F" \
   && ! grep -q 'container_environment/TZ' "$F" \
   && ! grep -q 'Setting timezone via TZ is ignored' "$F"
+
+# Assert the two ENROLLED s6 boot surfaces match our explicit allowlist, so a base
+# bump can't quietly enroll something new without our approval. The script prunes
+# the two dead upstream wrappers we reject (telegraf, timelapse1090) and FAILS THE
+# BUILD if a base-image bump enrolls a new service (user/contents.d) or adds a new
+# startup hook (startup.d, e.g. an aggregator auto-register) we have not
+# classified. (It polices enrollment, not transitive dependencies.d pulls -- see
+# the script header.) Runs LAST so it validates the final tree, after
+# `COPY rootfs/ /` and every s6 edit above.
+COPY assert-units.py /tmp/assert-units.py
+RUN python3 /tmp/assert-units.py && rm -f /tmp/assert-units.py
