@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.0.10](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.9...aviation_feeder-v0.0.10) (2026-07-18)
+
+
+### Features
+
+* **ha-sensors:** add "unique aircraft today" counter ([#62](https://github.com/bakerkj/hass-aviation-feeder/issues/62)) ([aa25360](https://github.com/bakerkj/hass-aviation-feeder/commit/aa25360823c21a023c5ae7d6cc82a37fa1b38e61))
+* **ha-sensors:** add emergency-squawk safety binary_sensor ([#61](https://github.com/bakerkj/hass-aviation-feeder/issues/61)) ([95c7617](https://github.com/bakerkj/hass-aviation-feeder/commit/95c7617f65da9517102cb6a88774a65a0c7668f5))
+* **ha-sensors:** add UAT/978 receiver-stats device ([#63](https://github.com/bakerkj/hass-aviation-feeder/issues/63)) ([d4d5c4a](https://github.com/bakerkj/hass-aviation-feeder/commit/d4d5c4acfad0faa1ce91415ee92329b8d93ffbd4))
+
 ## [0.0.9](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.8...aviation_feeder-v0.0.9) (2026-07-18)
 
 
