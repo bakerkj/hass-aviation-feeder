@@ -29,6 +29,7 @@ from .metadata import (
     EMERGENCY_SQUAWK_KEY,
     FEEDERS_DEVICE_ID,
     MESSAGES_METRICS,
+    UNIQUE_TODAY_KEY,
     MESSAGES_RATE_METRICS,
     MLAT_RESULT_METRICS,
     MLAT_SYNC_METRICS,
@@ -55,11 +56,13 @@ from .mqtt import (
     build_report_binary_discovery,
     build_sdr_discovery,
     build_uat_discovery,
+    build_unique_discovery,
     connect_mqtt_with_retry,
     mqtt_publish,
 )
 from .emergency import compute_emergency
 from .nearby import compute_nearby, read_aircraft
+from .unique_daily import UniqueDailyTracker
 from .stats import read_stats
 from .uat_stats import UAT_STATS_PATH, read_uat_stats
 from .throughput import ThroughputAccumulator
@@ -264,6 +267,7 @@ def main() -> int:
     planes_near_me = bool(opts.get("ha_planes_near_me", True))
     feeder_status = bool(opts.get("ha_feeder_status", True))
     emergency_on = bool(opts.get("ha_emergency_squawk", True))
+    unique_on = bool(opts.get("ha_unique_today", True))
     near_me_radius = max(1.0, float(opts.get("ha_near_me_radius", 50)))
     feeders_topic = f"{base_topic}/feeders"
     # Local-SDR health only makes sense with a local dongle; in remote/net-only
@@ -320,6 +324,7 @@ def main() -> int:
     throughput = ThroughputAccumulator()
     rates = RateTracker()
     pf_state = PlanefinderFeedState()
+    unique_tracker = UniqueDailyTracker()
 
     client = mqtt.Client(
         mqtt.CallbackAPIVersion.VERSION2,
@@ -510,6 +515,23 @@ def main() -> int:
                         health=health,
                     )
                     published += 1 if sdr_on else 0
+                # "Unique aircraft today" sensor (main device): config only when
+                # ha_unique_today is on, else retained-empty to remove it.
+                unique_disc = build_unique_discovery(
+                    discovery_prefix, base_topic, availability_topic, expire_after_s
+                )
+                for topic, cfg in unique_disc.items():
+                    body = json.dumps(cfg, separators=(",", ":")) if unique_on else ""
+                    mqtt_publish(
+                        client,
+                        topic,
+                        body,
+                        qos=1,
+                        retain=True,
+                        log_level=log_level,
+                        health=health,
+                    )
+                    published += 1 if unique_on else 0
                 # Emergency-squawk safety binary_sensor (main device): publish its
                 # config only when ha_emergency_squawk is on, else retained-empty
                 # so toggling it off removes the entity from HA.
@@ -584,7 +606,11 @@ def main() -> int:
                 )
 
             if health.connected and (
-                feeder_health or planes_near_me or feeder_status or emergency_on
+                feeder_health
+                or planes_near_me
+                or feeder_status
+                or emergency_on
+                or unique_on
             ):
                 if feeder_health and stats is not None:
                     metrics = compute_metrics(stats)
@@ -666,19 +692,17 @@ def main() -> int:
                         mark_state=True,
                     )
 
-                # aircraft.json feeds both planes-near-me and the emergency-squawk
-                # sensor; read it once per cycle when either is enabled.
+                # aircraft.json feeds planes-near-me, the emergency-squawk sensor,
+                # and the unique-aircraft-today counter; read it once per cycle
+                # when any of them is enabled.
                 want_nearby = (
                     planes_near_me
                     and station_lat is not None
                     and station_lon is not None
                 )
-                acj = (
-                    read_aircraft(args.aircraft)
-                    if (want_nearby or emergency_on)
-                    else None
-                )
-                if (want_nearby or emergency_on) and acj is None:
+                want_acj = want_nearby or emergency_on or unique_on
+                acj = read_aircraft(args.aircraft) if want_acj else None
+                if want_acj and acj is None:
                     log(
                         "WARNING",
                         f"aircraft.json not readable at {args.aircraft}",
@@ -763,6 +787,19 @@ def main() -> int:
                             f"emergency squawk active: {em['count']} aircraft",
                             log_level,
                         )
+
+                if unique_on and acj is not None:
+                    count = unique_tracker.update(acj, time.localtime()[:3])
+                    mqtt_publish(
+                        client,
+                        f"{base_topic}/{UNIQUE_TODAY_KEY}/state",
+                        str(count),
+                        qos=0,
+                        retain=False,
+                        log_level=log_level,
+                        health=health,
+                        mark_state=True,
+                    )
 
                 if feeder_status:
                     # Gather the app self-reports once: authoritative feeding-state

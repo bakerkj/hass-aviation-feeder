@@ -216,6 +216,10 @@ These categories are published, toggled independently:
   emergency), with the offending aircraft (hex, callsign, code, altitude) as
   attributes. Position is not required, so it catches an emergency anywhere in
   your coverage — a natural trigger for a notification automation.
+- **Unique aircraft today** (`ha_unique_today`) → a **Unique Aircraft Today**
+  counter on the **Aviation Feeder** device: how many distinct aircraft you have
+  seen since local midnight. It resets each day (and on an add-on restart, which
+  Home Assistant treats as a normal counter reset).
 - **Per-feeder status** (`ha_feeder_status`) → **one device per enabled feeder**
   (each grouped under the main Aviation Feeder device). Every feeder device has
   a **Connection** sensor showing whether it is actually feeding, plus an

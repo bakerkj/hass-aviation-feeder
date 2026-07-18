@@ -745,6 +745,16 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
       *"aviation_feeder/emergency_squawk/state off"*) ok "mqtt emergency-squawk state published (off)" ;;
       *) bad "mqtt emergency-squawk state missing" ;;
     esac
+    # Unique-aircraft-today counter (main device): discovered with a real payload
+    # and its state published (0 or more, whatever the test feed has seen today).
+    case "${CAP}" in
+      *"homeassistant/sensor/aviation_feeder/unique_today/config {"*) ok "mqtt unique-today discovery published" ;;
+      *) bad "mqtt unique-today discovery missing" ;;
+    esac
+    case "${CAP}" in
+      *"aviation_feeder/unique_today/state"*) ok "mqtt unique-today state published" ;;
+      *) bad "mqtt unique-today state missing" ;;
+    esac
     # Per-feeder status: piaware is enabled (needs no key) so its process runs.
     case "${CAP}" in
       *"homeassistant/binary_sensor/aviation_feeder_feeders/piaware/config"*) ok "mqtt feeder-status discovery published" ;;
