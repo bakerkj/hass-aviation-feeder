@@ -4,11 +4,13 @@ name: image-diff
 #
 # Two jobs, one shared resolve step:
 #
-#   image-diff  resolves each changed digest to its upstream commit and posts a
-#               real `compare/<old>...<new>` link with the commit list.
+#   image-diff  resolves each changed digest to its upstream commit and builds a
+#               real `compare/<old>...<new>` link with the commit list, staged for
+#               the review job (it is no longer posted as its own comment).
 #   review      hands Claude that commit range and asks the question the compare
-#               link cannot answer: does anything in it change behaviour we
-#               depend on?
+#               link cannot answer: does anything in it change behaviour we depend
+#               on? Claude posts the review as a claude[bot] comment (the compare
+#               summary + verdict) via track_progress.
 #
 # They live in ONE workflow, sharing a single run of renovate_image_diff.py,
 # because they fire on the identical event and need byte-identical output.
@@ -89,14 +91,10 @@ jobs:
             echo "No image digest changed (retag-only or no image pins touched)."
           fi
 
-      # Sticky so a re-run/force-push updates the same comment instead of piling
-      # new ones up.
-      - name: Post upstream diff comment
-        if: steps.diff.outputs.has_diff == 'true'
-        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
-        with:
-          header: image-diff
-          path: /tmp/image-diff.md
+      # The compare-link summary is NOT posted as its own comment any more -- it is
+      # staged into upstream/ (below) and the review job's single claude[bot]
+      # comment leads with it. /tmp/image-diff.md is still produced and consumed by
+      # the briefing step.
 
       # Mechanize the evidence the reviewer would otherwise have to go dig up.
       # Both of these are pure set arithmetic and must NOT be an LLM's job:
@@ -227,8 +225,9 @@ jobs:
                                                   hunk's 3 lines of context are often
                                                   too little to judge a script
 
-            `upstream/image-diff.md` is the compare-link summary already posted on
-            the PR.
+            `upstream/image-diff.md` is the compare-link summary (the resolved
+            `compare/<old>...<new>` links + commit lists). LEAD your review comment
+            with it so the compare links are visible on the PR.
 
             `briefing.md`    -- the MECHANICAL analysis, computed deterministically.
                                 It already contains:
@@ -361,11 +360,13 @@ jobs:
 
             ## Output
 
-            Write your verdict to a file named `verdict.md` in the repo root
-            (use the Write tool). A later step posts it as a sticky PR comment,
-            so it REPLACES the previous verdict on a re-push instead of piling up
-            -- do not try to comment on the PR yourself; you hold no tool to do
-            so, by design.
+            PRESENT your verdict as your response here: the action posts your
+            response as the review comment on the PR (as claude[bot]). LEAD the
+            response with the `upstream/image-diff.md` compare-link summary, then
+            the verdict. ALSO write the same verdict to a file named `verdict.md` in
+            the repo root (Write tool) -- it is the run-log record and its presence
+            is how CI knows the review completed. Do not try to comment on the PR
+            yourself; you hold no tool to do so, by design.
 
             Start the file with exactly one verdict line:
 
@@ -413,9 +414,11 @@ jobs:
           #     commit message could have closed this PR, rewritten its body or
           #     dismissed reviews using our own token. Restricted to the two
           #     read-only endpoints the prompt actually needs.
-          #   * NOT `gh pr comment` -- the verdict is WRITTEN TO A FILE and posted
-          #     by the next step instead. That removes the last write-capable tool
-          #     from the agent AND makes the comment sticky (see below).
+          #   * NOT `gh pr comment` -- the agent NEVER posts the comment itself. It
+          #     writes verdict.md and presents its response; the action's own
+          #     progress tracker (track_progress) posts that response as claude[bot].
+          #     The agent thus holds no PR-write tool at all, so injected upstream
+          #     text cannot make it comment on, close, or edit the PR.
           #
           # NB: a `Bash(gh api ...)` glob does NOT restrict the HTTP METHOD. It was
           # wrong of an earlier version of this comment to claim otherwise. So each
@@ -428,8 +431,9 @@ jobs:
           #                            holds `contents: read`, so a mutating call 403s.
           #
           # `pulls/*` was REMOVED for exactly this reason: it has no such backstop.
-          # The job holds `pull-requests: write` (needed by the sticky-comment step),
-          # so `gh api repos/O/R/pulls/N -X PATCH -f state=closed` would have matched
+          # The job holds `pull-requests: write` (needed by track_progress to post
+          # the review comment), so `gh api repos/O/R/pulls/N -X PATCH -f
+          # state=closed` -- were it in the allowlist -- would have matched
           # the glob AND succeeded -- an injected instruction in an upstream commit
           # message could have closed this PR with our own token. The prompt never
           # calls the pulls endpoint; nothing is lost.
@@ -440,36 +444,21 @@ jobs:
           claude_args: |
             --allowedTools "Read,Write,Grep,Glob,Bash(gh api repos/*/*/compare/*),Bash(gh api repos/*/*/commits/*),Bash(gh api repos/*/*/contents/*),Bash(git log:*),Bash(git show:*)"
 
-      # Sticky, with its own header so it is independent of the compare-link
-      # comment: a re-push REPLACES the previous verdict instead of stacking a
-      # second one. This is also what lets the agent hold no PR-write tool at all.
-      - name: Post verdict
-        if: hashFiles('verdict.md') != ''
-        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
-        with:
-          header: image-review
-          path: verdict.md
-
-      # Observability. The review step is continue-on-error (a Claude failure must
-      # never block a dependency bump), so if it dies before writing verdict.md the
-      # job is still green and NO comment appears -- which is indistinguishable from
-      # a clean run. That is exactly how the allowed_bots misconfig hid for a whole
-      # release: a green check, no verdict, no signal. When verdict.md is absent,
-      # post a sticky note saying the review did not complete, so a future
-      # regression surfaces instead of passing silently.
-      - name: Note that the review did not run
+      # The verdict is posted by the review step's track_progress as a SINGLE
+      # claude[bot] comment -- there is no separate post step and no
+      # github-actions[bot] comment any more.
+      #
+      # Observability WITHOUT a bot comment: the review step is continue-on-error (a
+      # Claude failure must never block a dependency bump), so if it dies before
+      # writing verdict.md the job stays green with no verdict -- indistinguishable
+      # from a clean run, which is exactly how the allowed_bots misconfig hid for a
+      # whole release. When verdict.md is absent, emit a CI WARNING ANNOTATION (it
+      # shows on the workflow run, not as a PR comment) so a future regression still
+      # surfaces instead of passing silently.
+      - name: Flag a missing verdict
         if: hashFiles('verdict.md') == ''
-        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
-        with:
-          header: image-review
-          message: |
-            :warning: **Upstream behaviour review did not complete** — no verdict was produced.
-
-            The mechanical briefing still ran (see the "Upstream changes" comment
-            above and the `upstream-pr${{ github.event.pull_request.number }}`
-            artifact). Only the Claude review step failed to write a verdict; check
-            its logs. This bump is NOT auto-blocked — the merge gate is the build +
-            e2e checks.
+        run: |
+          echo "::warning title=Upstream review incomplete::The Claude review produced no verdict (verdict.md absent). This bump is NOT auto-blocked -- the merge gate is the build + e2e checks. Check the review step logs and the claude-image-review-pr${{ github.event.pull_request.number }} artifact."
 
       # The action redacts its tool-use transcript from the public CI log; keep
       # the raw record as a collaborator-only artifact so a bad review (or a
