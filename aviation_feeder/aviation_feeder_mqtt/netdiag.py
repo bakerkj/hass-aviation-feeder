@@ -115,14 +115,17 @@ def _dump_family(family: int) -> bytes:
     s.settimeout(2.0)
     try:
         # struct inet_diag_req_v2: family, protocol, ext, pad, states(u32) + id(48)
-        req = struct.pack(
-            "=BBBBI",
-            family,
-            socket.IPPROTO_TCP,
-            1 << (_INET_DIAG_INFO - 1),
-            0,
-            _TCPF_ESTABLISHED,
-        ) + b"\x00" * 48
+        req = (
+            struct.pack(
+                "=BBBBI",
+                family,
+                socket.IPPROTO_TCP,
+                1 << (_INET_DIAG_INFO - 1),
+                0,
+                _TCPF_ESTABLISHED,
+            )
+            + b"\x00" * 48
+        )
         hdr = struct.pack(
             "=IHHII",
             16 + len(req),

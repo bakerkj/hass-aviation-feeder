@@ -75,13 +75,9 @@ DOCKERFILE = "aviation_feeder/Dockerfile"
 OUR_TREE = ["aviation_feeder/Dockerfile", "aviation_feeder/rootfs"]
 
 # FROM <image>:<tag>@<digest> AS <stage>
-FROM_RE = re.compile(
-    r"^FROM\s+(?P<ref>\S+)\s+AS\s+(?P<stage>[\w.-]+)", re.M | re.I
-)
+FROM_RE = re.compile(r"^FROM\s+(?P<ref>\S+)\s+AS\s+(?P<stage>[\w.-]+)", re.M | re.I)
 # COPY --from=<stage> <src> [<src> ...] <dst>   (we want the srcs)
-COPY_RE = re.compile(
-    r"^COPY\s+--from=(?P<stage>[\w.-]+)\s+(?P<rest>.+)$", re.M | re.I
-)
+COPY_RE = re.compile(r"^COPY\s+--from=(?P<stage>[\w.-]+)\s+(?P<rest>.+)$", re.M | re.I)
 # ENV KEY=VALUE  /  ENV KEY VALUE
 ENV_RE = re.compile(r"^\s*ENV\s+(?P<key>[A-Z_][A-Z0-9_]*)[=\s]+(?P<val>.*)$", re.M)
 
@@ -121,7 +117,11 @@ def go_buildinfo(image, digest, candidate_paths):
         rev = mod = None
         for line in info.splitlines():
             parts = line.split()
-            if len(parts) >= 2 and parts[0] == "build" and parts[1].startswith("vcs.revision="):
+            if (
+                len(parts) >= 2
+                and parts[0] == "build"
+                and parts[1].startswith("vcs.revision=")
+            ):
                 rev = parts[1].split("=", 1)[1]
             elif len(parts) >= 2 and parts[0] == "mod":
                 mod = parts[1]
@@ -148,7 +148,7 @@ def resolve_repo(image, module, rev, token):
 
     candidates = []
     if module and module.startswith("github.com/"):
-        candidates.append("/".join(module[len("github.com/"):].split("/")[:2]))
+        candidates.append("/".join(module[len("github.com/") :].split("/")[:2]))
     if org and base_mod:
         candidates.append(f"{org}/{base_mod}")
     if org:
@@ -206,12 +206,13 @@ def compare(repo_path, old, new, token):
     if data is None:
         return None, []
     patches = {
-        f["filename"]: {"patch": f.get("patch") or "", "status": f.get("status") or "modified"}
+        f["filename"]: {
+            "patch": f.get("patch") or "",
+            "status": f.get("status") or "modified",
+        }
         for f in data.get("files", [])
     }
-    subjects = [
-        c["commit"]["message"].splitlines()[0] for c in data.get("commits", [])
-    ]
+    subjects = [c["commit"]["message"].splitlines()[0] for c in data.get("commits", [])]
     return patches, subjects
 
 
@@ -283,9 +284,7 @@ def we_set(key):
         (rf"^[^#]*(^|[^A-Z_]){k}\s*=", "assignment"),
     )
     for pattern, how in forms:
-        proc = subprocess.run(
-            ["grep", "-rqE", pattern, *OUR_TREE], capture_output=True
-        )
+        proc = subprocess.run(["grep", "-rqE", pattern, *OUR_TREE], capture_output=True)
         if proc.returncode == 0:
             return how
     return None
@@ -316,7 +315,7 @@ def inherited_hits(upstream_files, statuses=None):
     for f in upstream_files:
         if not f.startswith("rootfs/"):
             continue
-        container_path = f[len("rootfs"):]          # rootfs/etc/... -> /etc/...
+        container_path = f[len("rootfs") :]  # rootfs/etc/... -> /etc/...
         ours = OUR_ROOTFS / container_path.lstrip("/")
         hits.append((container_path, f, ours.exists(), statuses.get(f, "modified")))
     return hits
@@ -355,7 +354,9 @@ def main():
     if rj and Path(rj).exists():
         resolved = json.loads(Path(rj).read_text())
 
-    diff = run("git", "diff", f"{base}...{head}", "--", dockerfile, fatal=True).splitlines()
+    diff = run(
+        "git", "diff", f"{base}...{head}", "--", dockerfile, fatal=True
+    ).splitlines()
     old, new = refs_in(diff, "-"), refs_in(diff, "+")
 
     head_df = run("git", "show", f"{head}:{dockerfile}", fatal=True)
@@ -388,8 +389,9 @@ def main():
             old_rev = old_lab.get("org.opencontainers.image.revision")
             new_rev = new_lab.get("org.opencontainers.image.revision")
         repo_path = (
-            source[len("https://github.com/"):].rstrip("/")
-            if source.startswith("https://github.com/") else None
+            source[len("https://github.com/") :].rstrip("/")
+            if source.startswith("https://github.com/")
+            else None
         )
         provenance = "OCI `revision` label"
         go_provenance = False
@@ -401,7 +403,9 @@ def main():
             old_rev, _, _ = go_buildinfo(image, old_digest, extracted)
             if new_rev and old_rev:
                 repo_path = resolve_repo(image, module, new_rev, token)
-                provenance = "Go build info (`vcs.revision`) -- image ships no OCI labels"
+                provenance = (
+                    "Go build info (`vcs.revision`) -- image ships no OCI labels"
+                )
                 go_provenance = True
 
         if not (repo_path and old_rev and new_rev):
@@ -426,20 +430,23 @@ def main():
         compare_url = f"{repo_url}/compare/{old_rev}...{new_rev}"
 
         # ---- stage the bulk on disk (the agent reads only what it needs) ----
-        write(d / "range.txt",
-              f"image:      {image}\n"
-              f"repo:       {repo_path}\n"
-              f"old_rev:    {old_rev}\n"
-              f"new_rev:    {new_rev}\n"
-              f"compare:    {compare_url}\n"
-              f"provenance: {provenance}\n")
-        write(d / "commits.md",
-              "\n".join(f"- {s}" for s in subjects) or "(none)")
+        write(
+            d / "range.txt",
+            f"image:      {image}\n"
+            f"repo:       {repo_path}\n"
+            f"old_rev:    {old_rev}\n"
+            f"new_rev:    {new_rev}\n"
+            f"compare:    {compare_url}\n"
+            f"provenance: {provenance}\n",
+        )
+        write(d / "commits.md", "\n".join(f"- {s}" for s in subjects) or "(none)")
         write(d / "changed-files.txt", "\n".join(patches) or "(none)")
         for f, meta in patches.items():
             if meta["patch"]:
-                write(d / "patches" / f"{flat(f)}.diff",
-                      f"# status: {meta['status']}\n{meta['patch']}")
+                write(
+                    d / "patches" / f"{flat(f)}.diff",
+                    f"# status: {meta['status']}\n{meta['patch']}",
+                )
 
         statuses = {f: m["status"] for f, m in patches.items()}
         hits = suffix_hits(extracted, list(patches), statuses)
@@ -453,7 +460,9 @@ def main():
             before = file_at(repo_path, f, old_rev, token)
             # A removed file has no `after` -- do not silently write nothing and
             # leave the table pointing at a file that was never created.
-            after = None if status == "removed" else file_at(repo_path, f, new_rev, token)
+            after = (
+                None if status == "removed" else file_at(repo_path, f, new_rev, token)
+            )
             if before is not None:
                 write(d / "extracted" / f"{flat(path)}.before", before)
             if after is not None:
@@ -550,7 +559,10 @@ def main():
                 "",
             ]
         else:
-            env_old, env_new = env_at(repo_path, old_rev, token), env_at(repo_path, new_rev, token)
+            env_old, env_new = (
+                env_at(repo_path, old_rev, token),
+                env_at(repo_path, new_rev, token),
+            )
             if env_old is None or env_new is None:
                 body += [
                     ":grey_question: Could not read the upstream Dockerfile at both "

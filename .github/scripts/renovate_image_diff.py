@@ -85,15 +85,22 @@ def labels_for(image, digest):
     "this image has no revision label".
     """
     raw = run(
-        "docker", "buildx", "imagetools", "inspect",
-        f"{image}@{digest}", "--format", "{{json .Image}}",
+        "docker",
+        "buildx",
+        "imagetools",
+        "inspect",
+        f"{image}@{digest}",
+        "--format",
+        "{{json .Image}}",
     )
     if raw is None:
         return None
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
-        print(f"warning: {image}@{digest[:19]} inspect returned non-JSON", file=sys.stderr)
+        print(
+            f"warning: {image}@{digest[:19]} inspect returned non-JSON", file=sys.stderr
+        )
         return None
     if isinstance(data, dict) and "config" in data:
         return (data.get("config") or {}).get("Labels") or {}
@@ -117,10 +124,7 @@ def gh_compare(repo_path, old, new, token):
             data = json.load(r)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
         return None, [], {}
-    subjects = [
-        c["commit"]["message"].splitlines()[0]
-        for c in data.get("commits", [])
-    ]
+    subjects = [c["commit"]["message"].splitlines()[0] for c in data.get("commits", [])]
     # The SAME response already carries every changed file and its patch. Return
     # them so the briefing step does not have to make this call a second time.
     # Keep the STATUS too (added / modified / removed / renamed). Discarding it made
@@ -128,7 +132,10 @@ def gh_compare(repo_path, old, new, token):
     # that removes a rootfs script we do not override would still have been reported
     # as ":rotating_light: theirs runs", for a file that no longer exists.
     files = {
-        f["filename"]: {"patch": f.get("patch") or "", "status": f.get("status") or "modified"}
+        f["filename"]: {
+            "patch": f.get("patch") or "",
+            "status": f.get("status") or "modified",
+        }
         for f in data.get("files", [])
     }
     return data.get("total_commits"), subjects, files
@@ -147,7 +154,9 @@ def main():
 
     # fatal: if the diff itself fails we know nothing, and an empty report would
     # be read as "no upstream changes" -- exactly the lie we must not tell.
-    diff = run("git", "diff", f"{base}...{head}", "--", dockerfile, fatal=True).splitlines()
+    diff = run(
+        "git", "diff", f"{base}...{head}", "--", dockerfile, fatal=True
+    ).splitlines()
     old, new = refs_in(diff, "-"), refs_in(diff, "+")
 
     rows, details = [], []
@@ -159,10 +168,15 @@ def main():
         name = image.rsplit("/", 1)[-1]
         change = f"`{old_tag}` → `{new_tag}`" if old_tag != new_tag else f"`{new_tag}`"
 
-        entry = resolved.setdefault(image, {
-            "old_tag": old_tag, "new_tag": new_tag,
-            "old_digest": old_digest, "new_digest": new_digest,
-        })
+        entry = resolved.setdefault(
+            image,
+            {
+                "old_tag": old_tag,
+                "new_tag": new_tag,
+                "old_digest": old_digest,
+                "new_digest": new_digest,
+            },
+        )
         old_lab, new_lab = labels_for(image, old_digest), labels_for(image, new_digest)
         if old_lab is None or new_lab is None:
             # Inspect failed -- say so. Do NOT fall through to the "no revision
@@ -179,7 +193,7 @@ def main():
         entry.update(source=source, old_rev=old_rev, new_rev=new_rev)
 
         if source.startswith("https://github.com/") and old_rev and new_rev:
-            repo_path = source[len("https://github.com/"):].rstrip("/")
+            repo_path = source[len("https://github.com/") :].rstrip("/")
             count, subjects, files = gh_compare(repo_path, old_rev, new_rev, token)
             entry.update(repo_path=repo_path, subjects=subjects, files=files)
             link = f"{source}/compare/{old_rev}...{new_rev}"

@@ -72,27 +72,86 @@ def _max_range_nm(s: dict[str, Any]) -> float | None:
 
 
 METRICS: list[Metric] = [
-    Metric("aircraft_total", "Aircraft Tracked", "aircraft", None,
-           "measurement", "mdi:airplane", 0, _aircraft_total),
-    Metric("aircraft_adsb", "Aircraft ADS-B", "aircraft", None,
-           "measurement", "mdi:airplane", 0,
-           lambda s: _num(_get(s, "aircraft_count_by_type", "adsb_icao"))),
-    Metric("aircraft_mode_s", "Aircraft Mode-S", "aircraft", None,
-           "measurement", "mdi:airplane", 0,
-           lambda s: _num(_get(s, "aircraft_count_by_type", "mode_s"))),
-    Metric("aircraft_mlat", "Aircraft MLAT", "aircraft", None,
-           "measurement", "mdi:airplane-marker", 0,
-           lambda s: _num(_get(s, "aircraft_count_by_type", "mlat"))),
-    Metric("aircraft_positions", "Aircraft with Position", "aircraft", None,
-           "measurement", "mdi:map-marker", 0,
-           lambda s: _num(s.get("aircraft_with_pos"))),
-    Metric("messages_per_sec", "Message Rate", "msg/s", None,
-           "measurement", "mdi:message-processing", 1, _messages_per_sec),
-    Metric("max_range_nm", "Max Range", "nmi", None,
-           "measurement", "mdi:map-marker-distance", 1, _max_range_nm),
-    Metric("tracks_total", "Tracks (session)", "tracks", None,
-           "total_increasing", "mdi:chart-line", 0,
-           lambda s: _num(_get(s, "total", "tracks", "all"))),
+    Metric(
+        "aircraft_total",
+        "Aircraft Tracked",
+        "aircraft",
+        None,
+        "measurement",
+        "mdi:airplane",
+        0,
+        _aircraft_total,
+    ),
+    Metric(
+        "aircraft_adsb",
+        "Aircraft ADS-B",
+        "aircraft",
+        None,
+        "measurement",
+        "mdi:airplane",
+        0,
+        lambda s: _num(_get(s, "aircraft_count_by_type", "adsb_icao")),
+    ),
+    Metric(
+        "aircraft_mode_s",
+        "Aircraft Mode-S",
+        "aircraft",
+        None,
+        "measurement",
+        "mdi:airplane",
+        0,
+        lambda s: _num(_get(s, "aircraft_count_by_type", "mode_s")),
+    ),
+    Metric(
+        "aircraft_mlat",
+        "Aircraft MLAT",
+        "aircraft",
+        None,
+        "measurement",
+        "mdi:airplane-marker",
+        0,
+        lambda s: _num(_get(s, "aircraft_count_by_type", "mlat")),
+    ),
+    Metric(
+        "aircraft_positions",
+        "Aircraft with Position",
+        "aircraft",
+        None,
+        "measurement",
+        "mdi:map-marker",
+        0,
+        lambda s: _num(s.get("aircraft_with_pos")),
+    ),
+    Metric(
+        "messages_per_sec",
+        "Message Rate",
+        "msg/s",
+        None,
+        "measurement",
+        "mdi:message-processing",
+        1,
+        _messages_per_sec,
+    ),
+    Metric(
+        "max_range_nm",
+        "Max Range",
+        "nmi",
+        None,
+        "measurement",
+        "mdi:map-marker-distance",
+        1,
+        _max_range_nm,
+    ),
+    Metric(
+        "tracks_total",
+        "Tracks (session)",
+        "tracks",
+        None,
+        "total_increasing",
+        "mdi:chart-line",
+        0,
+        lambda s: _num(_get(s, "total", "tracks", "all")),
+    ),
 ]
 
 
@@ -108,10 +167,26 @@ def compute_metrics(stats: dict[str, Any]) -> dict[str, float | int | None]:
 # the whole device unavailable when the link is down; these surface *how* the
 # link has behaved (uptime since the last connect, reconnect count = flapping).
 BROKER_METRICS: list[Metric] = [
-    Metric("mqtt_uptime", "MQTT Link Uptime", "s", "duration",
-           "measurement", "mdi:lan-connect", 0, lambda s: None),
-    Metric("mqtt_reconnects", "MQTT Reconnects", None, None,
-           "total_increasing", "mdi:lan-disconnect", 0, lambda s: None),
+    Metric(
+        "mqtt_uptime",
+        "MQTT Link Uptime",
+        "s",
+        "duration",
+        "measurement",
+        "mdi:lan-connect",
+        0,
+        lambda s: None,
+    ),
+    Metric(
+        "mqtt_reconnects",
+        "MQTT Reconnects",
+        None,
+        None,
+        "total_increasing",
+        "mdi:lan-disconnect",
+        0,
+        lambda s: None,
+    ),
 ]
 
 
@@ -134,6 +209,7 @@ class FeederMetric:
     """A numeric metric attached to every enabled feeder under the Feeders
     device (e.g. throughput). Values are computed per-feeder at publish time.
     enabled_default=False hides the entity by default in HA (user can enable it)."""
+
     suffix: str
     name_suffix: str
     unit: str | None
@@ -149,29 +225,74 @@ class FeederMetric:
 # the cumulative Data Sent/Received + Messages counters are still published but
 # disabled by default (available for anyone who wants totals).
 THROUGHPUT_METRICS: list[FeederMetric] = [
-    FeederMetric("bytes_sent", "Data Sent", "B", "data_size",
-                 "total_increasing", "mdi:upload", 0, enabled_default=False),
-    FeederMetric("bytes_received", "Data Received", "B", "data_size",
-                 "total_increasing", "mdi:download", 0, enabled_default=False),
+    FeederMetric(
+        "bytes_sent",
+        "Data Sent",
+        "B",
+        "data_size",
+        "total_increasing",
+        "mdi:upload",
+        0,
+        enabled_default=False,
+    ),
+    FeederMetric(
+        "bytes_received",
+        "Data Received",
+        "B",
+        "data_size",
+        "total_increasing",
+        "mdi:download",
+        0,
+        enabled_default=False,
+    ),
 ]
 THROUGHPUT_RATE_METRICS: list[FeederMetric] = [
-    FeederMetric("bytes_sent_rate", "Send Rate", "B/s", "data_rate",
-                 "measurement", "mdi:upload-network", 0),
-    FeederMetric("bytes_received_rate", "Receive Rate", "B/s", "data_rate",
-                 "measurement", "mdi:download-network", 0),
+    FeederMetric(
+        "bytes_sent_rate",
+        "Send Rate",
+        "B/s",
+        "data_rate",
+        "measurement",
+        "mdi:upload-network",
+        0,
+    ),
+    FeederMetric(
+        "bytes_received_rate",
+        "Receive Rate",
+        "B/s",
+        "data_rate",
+        "measurement",
+        "mdi:download-network",
+        0,
+    ),
 ]
 MESSAGES_METRICS: list[FeederMetric] = [
-    FeederMetric("messages", "Messages", None, None,
-                 "total_increasing", "mdi:message-badge-outline", 0,
-                 enabled_default=False),
+    FeederMetric(
+        "messages",
+        "Messages",
+        None,
+        None,
+        "total_increasing",
+        "mdi:message-badge-outline",
+        0,
+        enabled_default=False,
+    ),
 ]
 MESSAGES_RATE_METRICS: list[FeederMetric] = [
-    FeederMetric("messages_rate", "Message Rate", "msg/s", None,
-                 "measurement", "mdi:message-fast-outline", 1),
+    FeederMetric(
+        "messages_rate",
+        "Message Rate",
+        "msg/s",
+        None,
+        "measurement",
+        "mdi:message-fast-outline",
+        1,
+    ),
 ]
 UPTIME_METRICS: list[FeederMetric] = [
-    FeederMetric("uptime", "Uptime", "s", "duration",
-                 "measurement", "mdi:timer-outline", 0),
+    FeederMetric(
+        "uptime", "Uptime", "s", "duration", "measurement", "mdi:timer-outline", 0
+    ),
 ]
 
 # Feeder-specific health binary_sensors derived from an app self-report — currently
@@ -192,28 +313,69 @@ REPORT_BINARY_SENSORS: list[tuple[str, str, str, str, str]] = [
 #          mlat-client patch (patch-mlat-client.py) -- present for EVERY MLAT
 #          feeder incl. RadarBox. Enabled by default like the sync metrics.
 MLAT_SYNC_METRICS: list[FeederMetric] = [
-    FeederMetric("mlat_peers", "MLAT Peers", None, None,
-                 "measurement", "mdi:account-group-outline", 0),
-    FeederMetric("mlat_sync", "MLAT Sync", "%", None,
-                 "measurement", "mdi:sync", 0),
+    FeederMetric(
+        "mlat_peers",
+        "MLAT Peers",
+        None,
+        None,
+        "measurement",
+        "mdi:account-group-outline",
+        0,
+    ),
+    FeederMetric("mlat_sync", "MLAT Sync", "%", None, "measurement", "mdi:sync", 0),
 ]
 MLAT_RESULT_METRICS: list[FeederMetric] = [
-    FeederMetric("mlat_positions_rate", "MLAT Positions", "/min", None,
-                 "measurement", "mdi:map-marker-radius", 1),
-    FeederMetric("mlat_aircraft", "MLAT Aircraft Used", "aircraft", None,
-                 "measurement", "mdi:airplane-marker", 0),
+    FeederMetric(
+        "mlat_positions_rate",
+        "MLAT Positions",
+        "/min",
+        None,
+        "measurement",
+        "mdi:map-marker-radius",
+        1,
+    ),
+    FeederMetric(
+        "mlat_aircraft",
+        "MLAT Aircraft Used",
+        "aircraft",
+        None,
+        "measurement",
+        "mdi:airplane-marker",
+        0,
+    ),
 ]
 
 NEARBY_METRICS: list[Metric] = [
-    Metric("aircraft_in_range", "Aircraft in Range", "aircraft", None,
-           "measurement", "mdi:airplane", 0,
-           lambda n: _num(n.get("aircraft_in_range"))),
-    Metric("nearest_distance_nm", "Nearest Aircraft Distance", "nmi", None,
-           "measurement", "mdi:map-marker-distance", 1,
-           lambda n: _num(n.get("nearest_distance_nm"))),
-    Metric("nearest_altitude_ft", "Nearest Aircraft Altitude", "ft", None,
-           "measurement", "mdi:altimeter", 0,
-           lambda n: _num(n.get("nearest_altitude_ft"))),
+    Metric(
+        "aircraft_in_range",
+        "Aircraft in Range",
+        "aircraft",
+        None,
+        "measurement",
+        "mdi:airplane",
+        0,
+        lambda n: _num(n.get("aircraft_in_range")),
+    ),
+    Metric(
+        "nearest_distance_nm",
+        "Nearest Aircraft Distance",
+        "nmi",
+        None,
+        "measurement",
+        "mdi:map-marker-distance",
+        1,
+        lambda n: _num(n.get("nearest_distance_nm")),
+    ),
+    Metric(
+        "nearest_altitude_ft",
+        "Nearest Aircraft Altitude",
+        "ft",
+        None,
+        "measurement",
+        "mdi:altimeter",
+        0,
+        lambda n: _num(n.get("nearest_altitude_ft")),
+    ),
 ]
 
 
@@ -227,21 +389,56 @@ SDR_DEVICE_ID = "aviation_feeder_sdr"
 SDR_DEVICE_NAME = "Aviation Feeder — SDR"
 
 SDR_METRICS: list[Metric] = [
-    Metric("sdr_gain_db", "SDR Gain", "dB", None,
-           "measurement", "mdi:antenna", 1,
-           lambda s: _num(s.get("gain_db"))),
-    Metric("sdr_ppm", "SDR Frequency Error", "ppm", None,
-           "measurement", "mdi:sine-wave", 1,
-           lambda s: _num(s.get("estimated_ppm"))),
-    Metric("sdr_signal_dbfs", "SDR Signal Level", "dBFS", None,
-           "measurement", "mdi:signal", 1,
-           lambda s: _num(_get(s, "last1min", "local", "signal"))),
-    Metric("sdr_noise_dbfs", "SDR Noise Floor", "dBFS", None,
-           "measurement", "mdi:volume-mute", 1,
-           lambda s: _num(_get(s, "last1min", "local", "noise"))),
-    Metric("sdr_samples_dropped", "SDR Samples Dropped", None, None,
-           "total_increasing", "mdi:alert-circle-outline", 0,
-           lambda s: _num(_get(s, "total", "local", "samples_dropped"))),
+    Metric(
+        "sdr_gain_db",
+        "SDR Gain",
+        "dB",
+        None,
+        "measurement",
+        "mdi:antenna",
+        1,
+        lambda s: _num(s.get("gain_db")),
+    ),
+    Metric(
+        "sdr_ppm",
+        "SDR Frequency Error",
+        "ppm",
+        None,
+        "measurement",
+        "mdi:sine-wave",
+        1,
+        lambda s: _num(s.get("estimated_ppm")),
+    ),
+    Metric(
+        "sdr_signal_dbfs",
+        "SDR Signal Level",
+        "dBFS",
+        None,
+        "measurement",
+        "mdi:signal",
+        1,
+        lambda s: _num(_get(s, "last1min", "local", "signal")),
+    ),
+    Metric(
+        "sdr_noise_dbfs",
+        "SDR Noise Floor",
+        "dBFS",
+        None,
+        "measurement",
+        "mdi:volume-mute",
+        1,
+        lambda s: _num(_get(s, "last1min", "local", "noise")),
+    ),
+    Metric(
+        "sdr_samples_dropped",
+        "SDR Samples Dropped",
+        None,
+        None,
+        "total_increasing",
+        "mdi:alert-circle-outline",
+        0,
+        lambda s: _num(_get(s, "total", "local", "samples_dropped")),
+    ),
 ]
 
 

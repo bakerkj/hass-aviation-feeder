@@ -71,19 +71,18 @@ class ComputeFeederStatus(unittest.TestCase):
         kw.setdefault("cmd_by_pid", {})
         kw.setdefault("established", set())
         kw.setdefault("inode_provider", lambda pids: set())
-        return {k: connected for k, _n, connected in feeders.compute_feeder_status(options, **kw)}
+        return {
+            k: connected
+            for k, _n, connected in feeders.compute_feeder_status(options, **kw)
+        }
 
     # --- community aggregators (readsb connector status) ---
     def test_community_up(self):
-        s = self._status(
-            {"feed_adsblol": True}, connectors={"in.adsb.lol:30004": 1}
-        )
+        s = self._status({"feed_adsblol": True}, connectors={"in.adsb.lol:30004": 1})
         self.assertTrue(s["adsblol"])
 
     def test_community_down(self):
-        s = self._status(
-            {"feed_adsblol": True}, connectors={"in.adsb.lol:30004": 0}
-        )
+        s = self._status({"feed_adsblol": True}, connectors={"in.adsb.lol:30004": 0})
         self.assertFalse(s["adsblol"])
 
     def test_community_down_negative(self):
@@ -151,7 +150,9 @@ class ComputeFeederStatus(unittest.TestCase):
 
     def test_report_endpoint_down_falls_back_to_process(self):
         # No report (endpoint unreachable) -> fall back to process-running.
-        s = self._status({"enable_fr24": True}, cmd_by_pid={100: "fr24feed"}, reports={})
+        s = self._status(
+            {"enable_fr24": True}, cmd_by_pid={100: "fr24feed"}, reports={}
+        )
         self.assertTrue(s["fr24"])
 
     def test_report_endpoint_down_not_running(self):
@@ -218,6 +219,7 @@ class ReadConnectorStatus(unittest.TestCase):
     def _parse(self, text):
         import os
         import tempfile
+
         fd, path = tempfile.mkstemp(suffix=".prom")
         with os.fdopen(fd, "w") as f:
             f.write(text)
@@ -227,15 +229,20 @@ class ReadConnectorStatus(unittest.TestCase):
             os.unlink(path)
 
     def test_label_order_independent(self):
-        host_first = 'readsb_net_connector_status{host="feed.adsb.fi",port="30004"} 42\n'
-        port_first = 'readsb_net_connector_status{port="30004",host="feed.adsb.fi"} 42\n'
+        host_first = (
+            'readsb_net_connector_status{host="feed.adsb.fi",port="30004"} 42\n'
+        )
+        port_first = (
+            'readsb_net_connector_status{port="30004",host="feed.adsb.fi"} 42\n'
+        )
         self.assertEqual(self._parse(host_first), {"feed.adsb.fi:30004": 42})
         self.assertEqual(self._parse(port_first), {"feed.adsb.fi:30004": 42})
 
     def test_negative_value_parsed(self):
         self.assertEqual(
             self._parse('readsb_net_connector_status{host="h",port="1"} -30\n'),
-            {"h:1": -30})
+            {"h:1": -30},
+        )
 
 
 if __name__ == "__main__":

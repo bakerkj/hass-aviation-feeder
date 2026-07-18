@@ -12,7 +12,6 @@ that the patched output still compiles."""
 
 import importlib.util
 import os
-import sys
 import unittest
 
 _SCRIPT = os.path.join(
@@ -25,7 +24,7 @@ _spec.loader.exec_module(pmc)
 
 # Faithful copies of the upstream blocks the patch anchors on (indentation is
 # load-bearing -- it must match the vendored source exactly).
-STATS_SRC = '''\
+STATS_SRC = """\
 from mlat.client.util import monotonic_time, log
 
 
@@ -39,9 +38,9 @@ class Stats:
 
 
 global_stats = Stats()
-'''
+"""
 
-JSONCLIENT_SRC = '''\
+JSONCLIENT_SRC = """\
 import json
 import os
 
@@ -60,7 +59,7 @@ class JsonServerConnection:
                         os.rename(tmp, self.stats_path)
             except Exception as exc:
                 raise
-'''
+"""
 
 
 class PatchStatsPy(unittest.TestCase):
@@ -86,7 +85,9 @@ class PatchStatsPy(unittest.TestCase):
         with self.assertRaises(pmc.PatchError):
             pmc.apply_patch(
                 "def unrelated():\n    pass\n",
-                pmc.STATS_ANCHOR, pmc.STATS_FULL_REPLACEMENT, pmc.STATS_SENTINEL,
+                pmc.STATS_ANCHOR,
+                pmc.STATS_FULL_REPLACEMENT,
+                pmc.STATS_SENTINEL,
             )
 
 
@@ -131,29 +132,34 @@ class WriteClientStats(unittest.TestCase):
 
         class AC:
             def __init__(self, messages, adsb_good, requested):
-                self.messages, self.adsb_good, self.requested = messages, adsb_good, requested
+                self.messages, self.adsb_good, self.requested = (
+                    messages,
+                    adsb_good,
+                    requested,
+                )
 
         return types.SimpleNamespace(
             server=types.SimpleNamespace(stats_path=path, state="ready"),
             receiver=types.SimpleNamespace(state="connected"),
             aircraft={
-                "a": AC(5, True, True),    # counted + used
-                "b": AC(5, True, False),   # counted, not used
-                "c": AC(1, True, True),    # messages < 2 -> skipped
-                "d": AC(9, False, True),   # not adsb_good -> not counted as ADS-B
+                "a": AC(5, True, True),  # counted + used
+                "b": AC(5, True, False),  # counted, not used
+                "c": AC(1, True, True),  # messages < 2 -> skipped
+                "d": AC(9, False, True),  # not adsb_good -> not counted as ADS-B
             },
         )
 
     def test_writes_and_counts(self):
         import json
         import tempfile
+
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "radarbox.json")
             self._fn()(self._coord(path), 4.5, 1000, 10.0)  # 1000 msgs / 10s = 100/s
             data = json.load(open(path, encoding="utf-8"))
             self.assertEqual(data["positions_per_minute"], 4.5)
             self.assertEqual(data["msg_rate"], 100.0)
-            self.assertEqual(data["aircraft_adsb_used"], 1)   # only 'a'
+            self.assertEqual(data["aircraft_adsb_used"], 1)  # only 'a'
             self.assertEqual(data["aircraft_adsb_total"], 2)  # 'a' + 'b'
             self.assertEqual(data["server_state"], "ready")
             self.assertEqual(data["receiver_state"], "connected")
@@ -161,18 +167,20 @@ class WriteClientStats(unittest.TestCase):
     def test_merges_with_server_pushed_fields(self):
         import json
         import tempfile
+
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "x.json")
             with open(path, "w", encoding="utf-8") as f:
                 json.dump({"peer_count": 42, "good_sync_percentage_last_hour": 99}, f)
             self._fn()(self._coord(path), 1.0, 60, 60.0)
             data = json.load(open(path, encoding="utf-8"))
-            self.assertEqual(data["peer_count"], 42)               # server field kept
+            self.assertEqual(data["peer_count"], 42)  # server field kept
             self.assertEqual(data["good_sync_percentage_last_hour"], 99)
-            self.assertEqual(data["positions_per_minute"], 1.0)    # client field added
+            self.assertEqual(data["positions_per_minute"], 1.0)  # client field added
 
     def test_no_stats_path_is_noop(self):
         import types
+
         coord = types.SimpleNamespace(server=types.SimpleNamespace(stats_path=None))
         self._fn()(coord, 1.0, 1, 1.0)  # must not raise
 

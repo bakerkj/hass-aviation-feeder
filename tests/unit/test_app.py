@@ -48,11 +48,11 @@ class PlanefinderFeedState(unittest.TestCase):
 
     def test_rising_flat_falling(self):
         s = app.PlanefinderFeedState()
-        s.connected(100)                       # first cycle (optimistic)
-        self.assertTrue(s.connected(150))      # +50 -> feeding
-        self.assertFalse(s.connected(150))     # flat -> not feeding
-        self.assertFalse(s.connected(120))     # fell -> not feeding
-        self.assertTrue(s.connected(200))      # rose again -> feeding
+        s.connected(100)  # first cycle (optimistic)
+        self.assertTrue(s.connected(150))  # +50 -> feeding
+        self.assertFalse(s.connected(150))  # flat -> not feeding
+        self.assertFalse(s.connected(120))  # fell -> not feeding
+        self.assertTrue(s.connected(200))  # rose again -> feeding
 
 
 class AssembleFeederDiscovery(unittest.TestCase):
@@ -60,11 +60,19 @@ class AssembleFeederDiscovery(unittest.TestCase):
         return f"homeassistant/sensor/{FEEDERS_DEVICE_ID}/{key}_{suffix}/config"
 
     def setUp(self):
-        fstat = [("radarbox", "RadarBox", True),
-                 ("fr24", "FlightRadar24", True),
-                 ("adsblol", "adsb.lol", True)]
+        fstat = [
+            ("radarbox", "RadarBox", True),
+            ("fr24", "FlightRadar24", True),
+            ("adsblol", "adsb.lol", True),
+        ]
         self.cfg = app.assemble_feeder_discovery(
-            "homeassistant", "hafeed/feeders", "hafeed/status", 90, fstat, via_parent=True)
+            "homeassistant",
+            "hafeed/feeders",
+            "hafeed/status",
+            90,
+            fstat,
+            via_parent=True,
+        )
 
     def test_applicability(self):
         c = self.cfg
@@ -85,7 +93,13 @@ class AssembleFeederDiscovery(unittest.TestCase):
     def test_via_parent_false_drops_via_device(self):
         fstat = [("radarbox", "RadarBox", True)]
         c = app.assemble_feeder_discovery(
-            "homeassistant", "hafeed/feeders", "hafeed/status", 90, fstat, via_parent=False)
+            "homeassistant",
+            "hafeed/feeders",
+            "hafeed/status",
+            90,
+            fstat,
+            via_parent=False,
+        )
         p = c[self._topic("radarbox", "uptime")]
         self.assertNotIn("via_device", p["device"])
 

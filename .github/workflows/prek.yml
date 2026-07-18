@@ -15,4 +15,7 @@ jobs:
         with:
           extra-args: --all-files
         env:
+          # mypy runs via `uv run mypy`, but this job has no uv/dev-deps set up;
+          # it is enforced in the tests.yaml "Unit tests" job instead (which does).
+          # addon-lint has its own dedicated job (addon-lint.yml).
           SKIP: no-commit-to-branch,mypy,addon-lint

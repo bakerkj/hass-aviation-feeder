@@ -62,7 +62,11 @@ def piaware_report(path: str = PIAWARE_STATUS) -> dict[str, Any] | None:
         return s.get("status") if isinstance(s, dict) else None
 
     out: dict[str, Any] = {}
-    for section, key in (("adept", "flightaware"), ("mlat", "mlat"), ("radio", "radio")):
+    for section, key in (
+        ("adept", "flightaware"),
+        ("mlat", "mlat"),
+        ("radio", "radio"),
+    ):
         v = _status(section)
         if v is not None:
             out[key] = v  # "green" | "yellow" | "red"

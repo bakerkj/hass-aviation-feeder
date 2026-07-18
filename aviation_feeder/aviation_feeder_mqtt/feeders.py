@@ -52,13 +52,37 @@ _LABEL_PORT = re.compile(r'port="([^"]+)"')
 COMMUNITY_FEEDERS: list[tuple[str, str, str, str, int]] = [
     ("adsblol", "adsb.lol", "feed_adsblol", "in.adsb.lol", 30004),
     ("adsbfi", "adsb.fi", "feed_adsbfi", "feed.adsb.fi", 30004),
-    ("airplaneslive", "airplanes.live", "feed_airplaneslive", "feed.airplanes.live", 30004),
-    ("planespotters", "Planespotters", "feed_planespotters", "feed.planespotters.net", 30004),
-    ("theairtraffic", "TheAirTraffic", "feed_theairtraffic", "feed.theairtraffic.com", 30004),
+    (
+        "airplaneslive",
+        "airplanes.live",
+        "feed_airplaneslive",
+        "feed.airplanes.live",
+        30004,
+    ),
+    (
+        "planespotters",
+        "Planespotters",
+        "feed_planespotters",
+        "feed.planespotters.net",
+        30004,
+    ),
+    (
+        "theairtraffic",
+        "TheAirTraffic",
+        "feed_theairtraffic",
+        "feed.theairtraffic.com",
+        30004,
+    ),
     ("avdelphi", "AVDelphi", "feed_avdelphi", "data.avdelphi.com", 24999),
     ("flyitaly", "Fly Italy ADSB", "feed_flyitaly", "dati.flyitalyadsb.com", 4905),
     ("adsbitalia", "ADSBItalia", "feed_adsbitalia", "feed.adsbitalia.it", 31108),
-    ("adsbexchange", "ADS-B Exchange", "feed_adsbexchange", "feed1.adsbexchange.com", 30004),
+    (
+        "adsbexchange",
+        "ADS-B Exchange",
+        "feed_adsbexchange",
+        "feed1.adsbexchange.com",
+        30004,
+    ),
     ("adsbone", "adsb.one", "feed_adsbone", "feed.adsb.one", 64004),
     ("hpradar", "HpRadar", "feed_hpradar", "skyfeed.hpradar.com", 30004),
 ]
@@ -81,7 +105,13 @@ PROPRIETARY_FEEDERS: list[tuple[str, str, str, str, str]] = [
     ("radarbox", "AirNav RadarBox", "enable_radarbox", "rbfeeder", "conn"),
     ("adsbhub", "ADSBHub", "enable_adsbhub", "adsbhub", "conn"),
     ("planewatch", "plane.watch", "enable_planewatch", "pw-feeder", "conn"),
-    ("radarvirtuel", "RadarVirtuel", "enable_radarvirtuel", "docker-entrypoint.py", "proc"),
+    (
+        "radarvirtuel",
+        "RadarVirtuel",
+        "enable_radarvirtuel",
+        "docker-entrypoint.py",
+        "proc",
+    ),
     ("sdrmap", "sdrmap", "enable_sdrmap", "sdrmapfeeder", "proc"),
     # radar1090: persistent Beast client to 1090MHz UK; token "sbin/radar" is
     # specific (won't collide with radarvirtuel/radarbox cmdlines). ADS-B only.
@@ -93,7 +123,9 @@ PROPRIETARY_FEEDERS: list[tuple[str, str, str, str, str]] = [
 # and pfclient report their own throughput (app_reports); radarvirtuel/sdrmap
 # POST over short-lived connections and community aggregators aren't split
 # per-connector by readsb, so neither gets a byte sensor.
-THROUGHPUT_KERNEL = frozenset({"piaware", "planewatch", "opensky", "adsbhub", "radarbox", "uk1090"})
+THROUGHPUT_KERNEL = frozenset(
+    {"piaware", "planewatch", "opensky", "adsbhub", "radarbox", "uk1090"}
+)
 
 
 def read_connector_status(path: str = STATS_PROM) -> dict[str, int]:
@@ -325,7 +357,11 @@ def compute_feeder_uptime(
         if not _truthy(options.get(flag)):
             continue
         pids = [pid for pid, cmd in cmd_by_pid.items() if token in cmd]
-        ups = [u for u in (uptime_provider(pid) for pid in pids) if u is not None and u >= 0]
+        ups = [
+            u
+            for u in (uptime_provider(pid) for pid in pids)
+            if u is not None and u >= 0
+        ]
         if ups:
             out[key] = int(max(ups))
     return out

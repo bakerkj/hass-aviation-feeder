@@ -33,6 +33,10 @@ jobs:
         run: uv sync --group dev --frozen
       - name: Run pytest
         run: uv run pytest --junit-xml=test-results/junit.xml
+      # Enforce the mypy hook in CI: prek.yml skips it (that job has no uv),
+      # so type-check here where uv + the dev deps (incl. mypy) are set up.
+      - name: Type-check with mypy
+        run: uv run mypy aviation_feeder
       - name: Upload unit-test results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ !cancelled() }}
