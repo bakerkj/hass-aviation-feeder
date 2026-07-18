@@ -22,8 +22,24 @@ package = false
 
 [dependency-groups]
 dev = [
+    "mypy>=2.1.0",
     "pytest>=9.0.3",
 ]
+
+[tool.mypy]
+# aviation_feeder_mqtt is imported from source (mirrors tool.pytest pythonpath),
+# so put its parent on the mypy path too.
+mypy_path = ["aviation_feeder"]
+
+# paho-mqtt is the only third-party import the package reaches under test;
+# requests is imported lazily by the RadarVirtuel path. Silence import noise
+# from modules without bundled stubs without weakening checks on our own code.
+[[tool.mypy.overrides]]
+module = [
+    "paho.*",
+    "requests.*",
+]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 # The add-on's Python lives under aviation_feeder/; put it on sys.path so the

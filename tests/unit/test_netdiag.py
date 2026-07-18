@@ -30,10 +30,10 @@ def _one_ipv4_dump(ip="1.2.3.4", dport=12345, inode=99999, acked=1000, recv=2000
     rtattr += b"\x00" * ((-len(rtattr)) % 4)
 
     body = bytearray(netdiag._INET_DIAG_MSG_LEN)  # 72
-    body[0] = socket.AF_INET                       # family
-    struct.pack_into("!H", body, 6, dport)         # id.dport (network order)
+    body[0] = socket.AF_INET  # family
+    struct.pack_into("!H", body, 6, dport)  # id.dport (network order)
     body[24:28] = socket.inet_pton(socket.AF_INET, ip)  # id.dst
-    struct.pack_into("=I", body, 68, inode)        # inode
+    struct.pack_into("=I", body, 68, inode)  # inode
     body = bytes(body) + rtattr
 
     mlen = 16 + len(body)
@@ -52,7 +52,13 @@ class ParseDump(unittest.TestCase):
         self.assertEqual(s.bytes_received, 2000)
 
     def test_truncated_and_garbage_do_not_raise(self):
-        for buf in (b"", b"\x10\x00", b"\xff" * 20, b"\x00" * 40, _one_ipv4_dump()[:50]):
+        for buf in (
+            b"",
+            b"\x10\x00",
+            b"\xff" * 20,
+            b"\x00" * 40,
+            _one_ipv4_dump()[:50],
+        ):
             self.assertIsInstance(netdiag._parse_dump(buf, socket.AF_INET), list)
 
 
@@ -60,8 +66,10 @@ class EstablishedSockets(unittest.TestCase):
     def test_degrades_on_struct_error(self):
         # A malformed dump makes _parse_dump raise struct.error; established_sockets
         # must catch it and return [] (not crash the monitoring cycle).
-        with mock.patch.object(netdiag, "_dump_family", return_value=b""), \
-             mock.patch.object(netdiag, "_parse_dump", side_effect=struct.error("boom")):
+        with (
+            mock.patch.object(netdiag, "_dump_family", return_value=b""),
+            mock.patch.object(netdiag, "_parse_dump", side_effect=struct.error("boom")),
+        ):
             self.assertEqual(netdiag.established_sockets(), [])
 
     def test_degrades_on_oserror(self):

@@ -38,11 +38,17 @@ class ResolveMqtt(unittest.TestCase):
             self.assertIsNone(supervisor.resolve_mqtt_service("ERROR"))
 
     def test_returns_data_dict(self):
-        body = json.dumps({"result": "ok", "data": {"host": "h", "port": 1883, "ssl": False}}).encode()
-        with mock.patch.dict(os.environ, {"SUPERVISOR_TOKEN": "tok"}, clear=True), \
-             mock.patch("urllib.request.urlopen", return_value=_Resp(body)):
-            self.assertEqual(supervisor.resolve_mqtt_service("ERROR"),
-                             {"host": "h", "port": 1883, "ssl": False})
+        body = json.dumps(
+            {"result": "ok", "data": {"host": "h", "port": 1883, "ssl": False}}
+        ).encode()
+        with (
+            mock.patch.dict(os.environ, {"SUPERVISOR_TOKEN": "tok"}, clear=True),
+            mock.patch("urllib.request.urlopen", return_value=_Resp(body)),
+        ):
+            self.assertEqual(
+                supervisor.resolve_mqtt_service("ERROR"),
+                {"host": "h", "port": 1883, "ssl": False},
+            )
 
     def test_url_override_is_used(self):
         seen = {}
@@ -51,23 +57,34 @@ class ResolveMqtt(unittest.TestCase):
             seen["url"] = req.full_url
             return _Resp(b'{"data":{}}')
 
-        with mock.patch.dict(os.environ,
-                             {"SUPERVISOR_TOKEN": "tok",
-                              "SUPERVISOR_MQTT_SERVICE_URL": "http://custom/mqtt"}, clear=True), \
-             mock.patch("urllib.request.urlopen", side_effect=fake):
+        with (
+            mock.patch.dict(
+                os.environ,
+                {
+                    "SUPERVISOR_TOKEN": "tok",
+                    "SUPERVISOR_MQTT_SERVICE_URL": "http://custom/mqtt",
+                },
+                clear=True,
+            ),
+            mock.patch("urllib.request.urlopen", side_effect=fake),
+        ):
             supervisor.resolve_mqtt_service("ERROR")
         self.assertEqual(seen["url"], "http://custom/mqtt")
 
     def test_transport_errors_return_none(self):
         for exc in (urllib.error.URLError("x"), ValueError("x"), OSError("x")):
-            with mock.patch.dict(os.environ, {"SUPERVISOR_TOKEN": "tok"}, clear=True), \
-                 mock.patch("urllib.request.urlopen", side_effect=exc):
+            with (
+                mock.patch.dict(os.environ, {"SUPERVISOR_TOKEN": "tok"}, clear=True),
+                mock.patch("urllib.request.urlopen", side_effect=exc),
+            ):
                 self.assertIsNone(supervisor.resolve_mqtt_service("ERROR"))
 
     def test_missing_or_nondict_data_returns_none(self):
-        for body in (b'{"result":"ok"}', b'{"data":"nope"}', b'"nope"', b'[]'):
-            with mock.patch.dict(os.environ, {"SUPERVISOR_TOKEN": "tok"}, clear=True), \
-                 mock.patch("urllib.request.urlopen", return_value=_Resp(body)):
+        for body in (b'{"result":"ok"}', b'{"data":"nope"}', b'"nope"', b"[]"):
+            with (
+                mock.patch.dict(os.environ, {"SUPERVISOR_TOKEN": "tok"}, clear=True),
+                mock.patch("urllib.request.urlopen", return_value=_Resp(body)),
+            ):
                 self.assertIsNone(supervisor.resolve_mqtt_service("ERROR"))
 
 

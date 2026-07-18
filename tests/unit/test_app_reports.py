@@ -26,12 +26,15 @@ class PiawareReport(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "status.json")
             with open(p, "w") as f:
-                json.dump({
-                    "adept": {"status": "green", "message": "Connected"},
-                    "mlat": {"status": "green", "message": "Synchronized"},
-                    "radio": {"status": "yellow"},
-                    "cpu_temp_celcius": 51.2,
-                }, f)
+                json.dump(
+                    {
+                        "adept": {"status": "green", "message": "Connected"},
+                        "mlat": {"status": "green", "message": "Synchronized"},
+                        "radio": {"status": "yellow"},
+                        "cpu_temp_celcius": 51.2,
+                    },
+                    f,
+                )
             r = app_reports.piaware_report(p)
             self.assertEqual(r["flightaware"], "green")
             self.assertEqual(r["mlat"], "green")
@@ -67,7 +70,10 @@ class Fr24Report(unittest.TestCase):
 class PfclientReport(unittest.TestCase):
     def test_bytes_no_connected(self):
         r = app_reports.pfclient_report(
-            fetch=lambda url: {"master_server_bytes_out": 295563, "master_server_bytes_in": 29291}
+            fetch=lambda url: {
+                "master_server_bytes_out": 295563,
+                "master_server_bytes_in": 29291,
+            }
         )
         self.assertEqual(r["bytes_sent"], 295563)
         self.assertEqual(r["bytes_received"], 29291)
