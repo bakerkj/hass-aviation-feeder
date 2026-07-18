@@ -55,16 +55,28 @@ class Throughput(unittest.TestCase):
         opts = {"enable_planewatch": True}
         cmd = {100: "pw-feeder"}
         # poll 1: socket inode 5 has shipped 100 bytes
-        acc.update(opts, socks=[SockStat("1.2.3.4", 12345, 5, 100, 0)],
-                   cmd_by_pid=cmd, inode_provider=lambda p: {5})
+        acc.update(
+            opts,
+            socks=[SockStat("1.2.3.4", 12345, 5, 100, 0)],
+            cmd_by_pid=cmd,
+            inode_provider=lambda p: {5},
+        )
         # poll 2: same socket now 250 -> +150 -> total 250
-        out = acc.update(opts, socks=[SockStat("1.2.3.4", 12345, 5, 250, 0)],
-                         cmd_by_pid=cmd, inode_provider=lambda p: {5})
+        out = acc.update(
+            opts,
+            socks=[SockStat("1.2.3.4", 12345, 5, 250, 0)],
+            cmd_by_pid=cmd,
+            inode_provider=lambda p: {5},
+        )
         self.assertEqual(out["planewatch"][0], 250)
         # poll 3: reconnect -> new inode 6, counter restarts at 50. Must ADD 50,
         # never go negative.
-        out = acc.update(opts, socks=[SockStat("1.2.3.4", 12345, 6, 50, 0)],
-                         cmd_by_pid=cmd, inode_provider=lambda p: {6})
+        out = acc.update(
+            opts,
+            socks=[SockStat("1.2.3.4", 12345, 6, 50, 0)],
+            cmd_by_pid=cmd,
+            inode_provider=lambda p: {6},
+        )
         self.assertEqual(out["planewatch"][0], 300)
 
     def test_transient_gap_does_not_double_count(self):
@@ -73,12 +85,20 @@ class Throughput(unittest.TestCase):
         acc = ThroughputAccumulator()
         opts = {"enable_planewatch": True}
         cmd = {100: "pw-feeder"}
-        acc.update(opts, socks=[SockStat("1.2.3.4", 12345, 5, 1000, 0)],
-                   cmd_by_pid=cmd, inode_provider=lambda p: {5})
+        acc.update(
+            opts,
+            socks=[SockStat("1.2.3.4", 12345, 5, 1000, 0)],
+            cmd_by_pid=cmd,
+            inode_provider=lambda p: {5},
+        )
         # empty dump (netlink hiccup) — must not prune the still-alive inode 5
         acc.update(opts, socks=[], cmd_by_pid=cmd, inode_provider=lambda p: {5})
-        out = acc.update(opts, socks=[SockStat("1.2.3.4", 12345, 5, 1500, 0)],
-                         cmd_by_pid=cmd, inode_provider=lambda p: {5})
+        out = acc.update(
+            opts,
+            socks=[SockStat("1.2.3.4", 12345, 5, 1500, 0)],
+            cmd_by_pid=cmd,
+            inode_provider=lambda p: {5},
+        )
         self.assertEqual(out["planewatch"][0], 1500)  # not 2500
 
     def test_ipv4_mapped_loopback_excluded(self):
@@ -118,10 +138,18 @@ class Throughput(unittest.TestCase):
         # defensive) folds a 0 delta, never a negative one.
         acc = ThroughputAccumulator()
         opts, cmd = {"enable_planewatch": True}, {100: "pw-feeder"}
-        acc.update(opts, socks=[SockStat("1.2.3.4", 1, 5, 1000, 500)],
-                   cmd_by_pid=cmd, inode_provider=lambda p: {5})
-        out = acc.update(opts, socks=[SockStat("1.2.3.4", 1, 5, 800, 400)],
-                         cmd_by_pid=cmd, inode_provider=lambda p: {5})
+        acc.update(
+            opts,
+            socks=[SockStat("1.2.3.4", 1, 5, 1000, 500)],
+            cmd_by_pid=cmd,
+            inode_provider=lambda p: {5},
+        )
+        out = acc.update(
+            opts,
+            socks=[SockStat("1.2.3.4", 1, 5, 800, 400)],
+            cmd_by_pid=cmd,
+            inode_provider=lambda p: {5},
+        )
         self.assertEqual(out["planewatch"], (1000, 500))  # unchanged, not negative
 
     def test_multiple_inodes_one_feeder_accumulate(self):
@@ -129,8 +157,10 @@ class Throughput(unittest.TestCase):
         acc = ThroughputAccumulator()
         out = acc.update(
             {"enable_planewatch": True},
-            socks=[SockStat("1.2.3.4", 1, 5, 100, 10),
-                   SockStat("1.2.3.4", 2, 6, 50, 5)],
+            socks=[
+                SockStat("1.2.3.4", 1, 5, 100, 10),
+                SockStat("1.2.3.4", 2, 6, 50, 5),
+            ],
             cmd_by_pid={100: "pw-feeder"},
             inode_provider=lambda pids: {5, 6},
         )

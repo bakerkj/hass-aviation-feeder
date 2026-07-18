@@ -121,7 +121,12 @@ class PlanefinderFeedState:
 
 
 def assemble_feeder_discovery(
-    discovery_prefix, feeders_topic, availability_topic, expire_after_s, fstat, via_parent
+    discovery_prefix,
+    feeders_topic,
+    availability_topic,
+    expire_after_s,
+    fstat,
+    via_parent,
 ):
     """Full per-feeder discovery dict (connection binary_sensor + the applicable
     metric groups per feeder + report binary_sensors), keyed by config topic.
@@ -132,14 +137,25 @@ def assemble_feeder_discovery(
 
     def fm(feeders, metrics):
         return build_feeder_metrics_discovery(
-            discovery_prefix, feeders_topic, availability_topic,
-            expire_after_s, feeders, metrics, via_parent,
+            discovery_prefix,
+            feeders_topic,
+            availability_topic,
+            expire_after_s,
+            feeders,
+            metrics,
+            via_parent,
         )
 
     return {
         # connection binary_sensor + uptime for every enabled feeder
-        **build_feeders_discovery(discovery_prefix, feeders_topic, availability_topic,
-                                  expire_after_s, fstat, via_parent),
+        **build_feeders_discovery(
+            discovery_prefix,
+            feeders_topic,
+            availability_topic,
+            expire_after_s,
+            fstat,
+            via_parent,
+        ),
         **fm(fstat, UPTIME_METRICS),
         # byte throughput (kernel-TCP feeders + pfclient) + its rates; fr24 msgs + rate
         **fm(sub(lambda k: k in _BYTE_FEEDERS), THROUGHPUT_METRICS),
@@ -151,8 +167,12 @@ def assemble_feeder_discovery(
         **fm(sub(lambda k: k in MLAT_CAPABLE), MLAT_RESULT_METRICS),
         # feeder self-report binary_sensors (piaware MLAT / Radio)
         **build_report_binary_discovery(
-            discovery_prefix, feeders_topic, availability_topic, expire_after_s,
-            sub(lambda k: any(k == e[0] for e in REPORT_BINARY_SENSORS)), via_parent,
+            discovery_prefix,
+            feeders_topic,
+            availability_topic,
+            expire_after_s,
+            sub(lambda k: any(k == e[0] for e in REPORT_BINARY_SENSORS)),
+            via_parent,
         ),
     }
 
@@ -171,6 +191,7 @@ def _coord(opt_val: Any, env_val: str | None) -> float | None:
             except ValueError:
                 pass
     return None
+
 
 STATS_PATH = "/run/readsb/stats.json"
 AIRCRAFT_PATH = "/run/readsb/aircraft.json"
@@ -305,8 +326,13 @@ def main() -> int:
             _client.subscribe(f"{discovery_prefix}/status", qos=1)
             need_discovery["v"] = True
             mqtt_publish(
-                _client, availability_topic, "online",
-                qos=1, retain=True, log_level=log_level, health=health,
+                _client,
+                availability_topic,
+                "online",
+                qos=1,
+                retain=True,
+                log_level=log_level,
+                health=health,
             )
         else:
             health.connected = False
@@ -319,8 +345,11 @@ def main() -> int:
 
     def on_message(_client, _userdata, msg):
         if msg.payload.decode(errors="replace").strip() == "online":
-            log("INFO", "HA birth message received — will republish discovery",
-                log_level)
+            log(
+                "INFO",
+                "HA birth message received — will republish discovery",
+                log_level,
+            )
             need_discovery["v"] = True
 
     client.on_connect = on_connect
@@ -376,14 +405,32 @@ def main() -> int:
                 )
                 published = 0
                 for topic, cfg in feeder_disc.items():
-                    body = json.dumps(cfg, separators=(",", ":")) if feeder_health else ""
-                    mqtt_publish(client, topic, body, qos=1, retain=True,
-                                 log_level=log_level, health=health)
+                    body = (
+                        json.dumps(cfg, separators=(",", ":")) if feeder_health else ""
+                    )
+                    mqtt_publish(
+                        client,
+                        topic,
+                        body,
+                        qos=1,
+                        retain=True,
+                        log_level=log_level,
+                        health=health,
+                    )
                     published += 1 if feeder_health else 0
                 for topic, cfg in nearby_disc.items():
-                    body = json.dumps(cfg, separators=(",", ":")) if planes_near_me else ""
-                    mqtt_publish(client, topic, body, qos=1, retain=True,
-                                 log_level=log_level, health=health)
+                    body = (
+                        json.dumps(cfg, separators=(",", ":")) if planes_near_me else ""
+                    )
+                    mqtt_publish(
+                        client,
+                        topic,
+                        body,
+                        qos=1,
+                        retain=True,
+                        log_level=log_level,
+                        health=health,
+                    )
                     published += 1 if planes_near_me else 0
                 if feeder_status:
                     fstat = compute_feeder_status(opts)  # enumeration only here
@@ -391,12 +438,23 @@ def main() -> int:
                     # via_parent: only nest feeder devices under the main device
                     # when it's actually registered (ha_feeder_health on).
                     feeders_disc = assemble_feeder_discovery(
-                        discovery_prefix, feeders_topic, availability_topic,
-                        expire_after_s, fstat, feeder_health,
+                        discovery_prefix,
+                        feeders_topic,
+                        availability_topic,
+                        expire_after_s,
+                        fstat,
+                        feeder_health,
                     )
                     for topic, cfg in feeders_disc.items():
-                        mqtt_publish(client, topic, json.dumps(cfg, separators=(",", ":")),
-                                     qos=1, retain=True, log_level=log_level, health=health)
+                        mqtt_publish(
+                            client,
+                            topic,
+                            json.dumps(cfg, separators=(",", ":")),
+                            qos=1,
+                            retain=True,
+                            log_level=log_level,
+                            health=health,
+                        )
                         published += 1
                     # Remove any per-feeder metric entity that no longer applies
                     # (e.g. the dropped aggregator/fr24 byte sensors from an older
@@ -404,11 +462,20 @@ def main() -> int:
                     # instead of leaving it "unavailable".
                     for key, _n, _c in fstat:
                         for suf in _ALL_FEEDER_METRIC_SUFFIXES:
-                            topic = (f"{discovery_prefix}/sensor/{FEEDERS_DEVICE_ID}"
-                                     f"/{key}_{suf}/config")
+                            topic = (
+                                f"{discovery_prefix}/sensor/{FEEDERS_DEVICE_ID}"
+                                f"/{key}_{suf}/config"
+                            )
                             if topic not in feeders_disc:
-                                mqtt_publish(client, topic, "", qos=1, retain=True,
-                                             log_level=log_level, health=health)
+                                mqtt_publish(
+                                    client,
+                                    topic,
+                                    "",
+                                    qos=1,
+                                    retain=True,
+                                    log_level=log_level,
+                                    health=health,
+                                )
                 # SDR device: publish its configs only with a local dongle and
                 # feeder_health on; otherwise retained-empty to remove the entities.
                 sdr_on = feeder_health and sdr_present
@@ -417,21 +484,42 @@ def main() -> int:
                 )
                 for topic, cfg in sdr_disc.items():
                     body = json.dumps(cfg, separators=(",", ":")) if sdr_on else ""
-                    mqtt_publish(client, topic, body, qos=1, retain=True,
-                                 log_level=log_level, health=health)
+                    mqtt_publish(
+                        client,
+                        topic,
+                        body,
+                        qos=1,
+                        retain=True,
+                        log_level=log_level,
+                        health=health,
+                    )
                     published += 1 if sdr_on else 0
                 # MQTT broker-link diagnostics (main device), under feeder_health.
                 broker_disc = build_broker_discovery(
                     discovery_prefix, base_topic, availability_topic, expire_after_s
                 )
                 for topic, cfg in broker_disc.items():
-                    body = json.dumps(cfg, separators=(",", ":")) if feeder_health else ""
-                    mqtt_publish(client, topic, body, qos=1, retain=True,
-                                 log_level=log_level, health=health)
+                    body = (
+                        json.dumps(cfg, separators=(",", ":")) if feeder_health else ""
+                    )
+                    mqtt_publish(
+                        client,
+                        topic,
+                        body,
+                        qos=1,
+                        retain=True,
+                        log_level=log_level,
+                        health=health,
+                    )
                     published += 1 if feeder_health else 0
                 mqtt_publish(
-                    client, availability_topic, "online",
-                    qos=1, retain=True, log_level=log_level, health=health,
+                    client,
+                    availability_topic,
+                    "online",
+                    qos=1,
+                    retain=True,
+                    log_level=log_level,
+                    health=health,
                 )
                 need_discovery["v"] = False
                 log(
@@ -449,9 +537,14 @@ def main() -> int:
                         if val is None:
                             continue
                         mqtt_publish(
-                            client, f"{base_topic}/{key}/state", str(val),
-                            qos=0, retain=False, log_level=log_level,
-                            health=health, mark_state=True,
+                            client,
+                            f"{base_topic}/{key}/state",
+                            str(val),
+                            qos=0,
+                            retain=False,
+                            log_level=log_level,
+                            health=health,
+                            mark_state=True,
                         )
                         n += 1
                     log("DEBUG", f"Published {n} feeder-health states", log_level)
@@ -461,61 +554,99 @@ def main() -> int:
                         if val is None:
                             continue
                         mqtt_publish(
-                            client, f"{sdr_topic}/{key}/state", str(val),
-                            qos=0, retain=False, log_level=log_level,
-                            health=health, mark_state=True,
+                            client,
+                            f"{sdr_topic}/{key}/state",
+                            str(val),
+                            qos=0,
+                            retain=False,
+                            log_level=log_level,
+                            health=health,
+                            mark_state=True,
                         )
 
                 if feeder_health:
                     uptime_s = (
                         int(now - health.last_connect_ok)
-                        if health.last_connect_ok else 0
+                        if health.last_connect_ok
+                        else 0
                     )
                     mqtt_publish(
-                        client, f"{base_topic}/mqtt_uptime/state", str(uptime_s),
-                        qos=0, retain=False, log_level=log_level,
-                        health=health, mark_state=True,
+                        client,
+                        f"{base_topic}/mqtt_uptime/state",
+                        str(uptime_s),
+                        qos=0,
+                        retain=False,
+                        log_level=log_level,
+                        health=health,
+                        mark_state=True,
                     )
                     mqtt_publish(
-                        client, f"{base_topic}/mqtt_reconnects/state",
+                        client,
+                        f"{base_topic}/mqtt_reconnects/state",
                         str(max(0, health.connect_count - 1)),
-                        qos=0, retain=False, log_level=log_level,
-                        health=health, mark_state=True,
+                        qos=0,
+                        retain=False,
+                        log_level=log_level,
+                        health=health,
+                        mark_state=True,
                     )
 
-                if planes_near_me and station_ok:
+                if (
+                    planes_near_me
+                    and station_lat is not None
+                    and station_lon is not None
+                ):
                     acj = read_aircraft(args.aircraft)
                     if acj is None:
-                        log("WARNING",
-                            f"aircraft.json not readable at {args.aircraft}", log_level)
+                        log(
+                            "WARNING",
+                            f"aircraft.json not readable at {args.aircraft}",
+                            log_level,
+                        )
                     else:
                         nb = compute_nearby(
-                            acj, float(station_lat), float(station_lon), near_me_radius
+                            acj, station_lat, station_lon, near_me_radius
                         )
                         for m in NEARBY_METRICS:
                             v = nb.get(m.key)
                             if v is None:
                                 continue
                             mqtt_publish(
-                                client, f"{nearby_topic}/{m.key}/state", str(v),
-                                qos=0, retain=False, log_level=log_level,
-                                health=health, mark_state=True,
+                                client,
+                                f"{nearby_topic}/{m.key}/state",
+                                str(v),
+                                qos=0,
+                                retain=False,
+                                log_level=log_level,
+                                health=health,
+                                mark_state=True,
                             )
                         nearest = nb.get("nearest")
                         if nearest:
                             mqtt_publish(
-                                client, f"{nearby_topic}/{NEARBY_STATE_KEY}/state",
+                                client,
+                                f"{nearby_topic}/{NEARBY_STATE_KEY}/state",
                                 str(nearest.get("flight") or ""),
-                                qos=0, retain=False, log_level=log_level,
-                                health=health, mark_state=True,
+                                qos=0,
+                                retain=False,
+                                log_level=log_level,
+                                health=health,
+                                mark_state=True,
                             )
                             mqtt_publish(
-                                client, f"{nearby_topic}/{NEARBY_STATE_KEY}/attributes",
+                                client,
+                                f"{nearby_topic}/{NEARBY_STATE_KEY}/attributes",
                                 json.dumps(nearest, separators=(",", ":")),
-                                qos=0, retain=False, log_level=log_level, health=health,
+                                qos=0,
+                                retain=False,
+                                log_level=log_level,
+                                health=health,
                             )
-                        log("DEBUG",
-                            f"nearby: in_range={nb.get('aircraft_in_range')}", log_level)
+                        log(
+                            "DEBUG",
+                            f"nearby: in_range={nb.get('aircraft_in_range')}",
+                            log_level,
+                        )
 
                 if feeder_status:
                     # Gather the app self-reports once: authoritative feeding-state
@@ -527,13 +658,20 @@ def main() -> int:
                     # ever sent; self-corrects next cycle if the feed is actually dead.
                     pf_rep = reports.get("planefinder")
                     if pf_rep is not None:
-                        pf_rep["connected"] = pf_state.connected(pf_rep.get("bytes_sent"))
+                        pf_rep["connected"] = pf_state.connected(
+                            pf_rep.get("bytes_sent")
+                        )
 
                     def _pub(suffix, key, val):
                         mqtt_publish(
-                            client, f"{feeders_topic}/{key}/{suffix}/state", str(val),
-                            qos=0, retain=False, log_level=log_level,
-                            health=health, mark_state=True,
+                            client,
+                            f"{feeders_topic}/{key}/{suffix}/state",
+                            str(val),
+                            qos=0,
+                            retain=False,
+                            log_level=log_level,
+                            health=health,
+                            mark_state=True,
                         )
 
                     # Scan /proc + stats.prom ONCE this cycle and thread the
@@ -544,15 +682,23 @@ def main() -> int:
                     connectors = read_connector_status()
                     enabled_keys = set()
                     for key, _name, connected in compute_feeder_status(
-                        opts, connectors=connectors, cmd_by_pid=cmd_by_pid, reports=reports
+                        opts,
+                        connectors=connectors,
+                        cmd_by_pid=cmd_by_pid,
+                        reports=reports,
                     ):
                         enabled_keys.add(key)
                         mqtt_publish(
-                            client, f"{feeders_topic}/{key}/state",
+                            client,
+                            f"{feeders_topic}/{key}/state",
                             "on" if connected else "off",
-                            qos=0, retain=False, log_level=log_level,
-                            health=health, mark_state=True,
+                            qos=0,
+                            retain=False,
+                            log_level=log_level,
+                            health=health,
+                            mark_state=True,
                         )
+
                     def _bytes(key, sent, recv):
                         # cumulative counters (disabled-by-default entities) + the
                         # primary per-second rates.
@@ -566,12 +712,16 @@ def main() -> int:
                             _pub("bytes_received_rate", key, round(rr, 1))
 
                     # Byte throughput: kernel per-socket counters (TCP feeders)...
-                    for key, (sent, recv) in throughput.update(opts, cmd_by_pid=cmd_by_pid).items():
+                    for key, (sent, recv) in throughput.update(
+                        opts, cmd_by_pid=cmd_by_pid
+                    ).items():
                         _bytes(key, sent, recv)
                     # ...plus pfclient's own byte counters (feeds off-TCP).
                     pf = reports.get("planefinder")
                     if pf and "planefinder" in enabled_keys and "bytes_sent" in pf:
-                        _bytes("planefinder", pf["bytes_sent"], pf.get("bytes_received", 0))
+                        _bytes(
+                            "planefinder", pf["bytes_sent"], pf.get("bytes_received", 0)
+                        )
                     # fr24 message count (UDP feed has no byte counter) + msg/s.
                     fr = reports.get("fr24")
                     if fr and "fr24" in enabled_keys and "messages" in fr:
@@ -598,9 +748,13 @@ def main() -> int:
                         if key not in enabled_keys:
                             continue
                         mqtt_publish(
-                            client, f"{feeders_topic}/{key}/attributes",
+                            client,
+                            f"{feeders_topic}/{key}/attributes",
                             json.dumps(attrs, separators=(",", ":")),
-                            qos=0, retain=False, log_level=log_level, health=health,
+                            qos=0,
+                            retain=False,
+                            log_level=log_level,
+                            health=health,
                         )
                     # feeder self-report binary_sensors (piaware MLAT/Radio: on=green)
                     for key, suffix, _n, field, _icon in REPORT_BINARY_SENSORS:
@@ -615,8 +769,13 @@ def main() -> int:
                 "stats_age_s": round(now - last_stats_ok, 1) if last_stats_ok else None,
             }
             mqtt_publish(
-                client, heartbeat_topic, json.dumps(hb, separators=(",", ":")),
-                qos=0, retain=False, log_level=log_level, health=health,
+                client,
+                heartbeat_topic,
+                json.dumps(hb, separators=(",", ":")),
+                qos=0,
+                retain=False,
+                log_level=log_level,
+                health=health,
             )
 
             # Publish-stall watchdog: only fire once we WERE publishing and then
@@ -648,8 +807,13 @@ def main() -> int:
         stop["v"] = True
         try:
             mqtt_publish(
-                client, availability_topic, "offline",
-                qos=1, retain=True, log_level=log_level, health=health,
+                client,
+                availability_topic,
+                "offline",
+                qos=1,
+                retain=True,
+                log_level=log_level,
+                health=health,
             )
             time.sleep(0.2)
         except Exception:

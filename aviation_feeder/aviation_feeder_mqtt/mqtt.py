@@ -22,8 +22,6 @@ from .metadata import (
     NEARBY_DEVICE_NAME,
     NEARBY_METRICS,
     NEARBY_STATE_KEY,
-    SDR_DEVICE_ID,
-    SDR_DEVICE_NAME,
     SDR_METRICS,
     Metric,
 )
@@ -166,10 +164,18 @@ def _metric_config(
     diagnostic: bool,
 ) -> dict[str, Any]:
     return _sensor_payload(
-        name=m.name, unique_id=f"{device_id}_{m.key}", state_topic=state_topic,
-        icon=m.icon, device=device, state_class=m.state_class, precision=m.precision,
-        availability_topic=availability_topic, expire_after_s=expire_after_s,
-        unit=m.unit, device_class=m.device_class, diagnostic=diagnostic,
+        name=m.name,
+        unique_id=f"{device_id}_{m.key}",
+        state_topic=state_topic,
+        icon=m.icon,
+        device=device,
+        state_class=m.state_class,
+        precision=m.precision,
+        availability_topic=availability_topic,
+        expire_after_s=expire_after_s,
+        unit=m.unit,
+        device_class=m.device_class,
+        diagnostic=diagnostic,
     )
 
 
@@ -184,8 +190,13 @@ def build_discovery_payloads(
     device = _device(DEVICE_ID, DEVICE_NAME)
     for m in METRICS:
         cfg = _metric_config(
-            m, device, DEVICE_ID, f"{base_topic}/{m.key}/state",
-            availability_topic, expire_after_s, diagnostic=True,
+            m,
+            device,
+            DEVICE_ID,
+            f"{base_topic}/{m.key}/state",
+            availability_topic,
+            expire_after_s,
+            diagnostic=True,
         )
         out[f"{discovery_prefix}/sensor/{DEVICE_ID}/{m.key}/config"] = cfg
     return out
@@ -203,8 +214,13 @@ def build_broker_discovery(
     device = _device(DEVICE_ID, DEVICE_NAME)
     for m in BROKER_METRICS:
         cfg = _metric_config(
-            m, device, DEVICE_ID, f"{base_topic}/{m.key}/state",
-            availability_topic, expire_after_s, diagnostic=True,
+            m,
+            device,
+            DEVICE_ID,
+            f"{base_topic}/{m.key}/state",
+            availability_topic,
+            expire_after_s,
+            diagnostic=True,
         )
         out[f"{discovery_prefix}/sensor/{DEVICE_ID}/{m.key}/config"] = cfg
     return out
@@ -223,8 +239,13 @@ def build_sdr_discovery(
     device = _device(DEVICE_ID, DEVICE_NAME)
     for m in SDR_METRICS:
         cfg = _metric_config(
-            m, device, DEVICE_ID, f"{sdr_topic}/{m.key}/state",
-            availability_topic, expire_after_s, diagnostic=True,
+            m,
+            device,
+            DEVICE_ID,
+            f"{sdr_topic}/{m.key}/state",
+            availability_topic,
+            expire_after_s,
+            diagnostic=True,
         )
         out[f"{discovery_prefix}/sensor/{DEVICE_ID}/{m.key}/config"] = cfg
     return out
@@ -243,8 +264,13 @@ def build_nearby_discovery(
 
     for m in NEARBY_METRICS:
         cfg = _metric_config(
-            m, device, NEARBY_DEVICE_ID, f"{nearby_topic}/{m.key}/state",
-            availability_topic, expire_after_s, diagnostic=False,
+            m,
+            device,
+            NEARBY_DEVICE_ID,
+            f"{nearby_topic}/{m.key}/state",
+            availability_topic,
+            expire_after_s,
+            diagnostic=False,
         )
         out[f"{discovery_prefix}/sensor/{NEARBY_DEVICE_ID}/{m.key}/config"] = cfg
 
@@ -315,7 +341,9 @@ def build_report_binary_discovery(
     for key, suffix, ename, _field, icon in REPORT_BINARY_SENSORS:
         if key not in names:
             continue
-        out[f"{discovery_prefix}/binary_sensor/{FEEDERS_DEVICE_ID}/{key}_{suffix}/config"] = {
+        out[
+            f"{discovery_prefix}/binary_sensor/{FEEDERS_DEVICE_ID}/{key}_{suffix}/config"
+        ] = {
             "name": ename,
             "has_entity_name": True,
             "unique_id": f"{FEEDERS_DEVICE_ID}_{key}_{suffix}",
@@ -355,11 +383,19 @@ def build_feeder_metrics_discovery(
                 name=m.name_suffix,
                 unique_id=f"{FEEDERS_DEVICE_ID}_{key}_{m.suffix}",
                 state_topic=f"{feeders_topic}/{key}/{m.suffix}/state",
-                icon=m.icon, device=device, state_class=m.state_class,
-                precision=m.precision, availability_topic=availability_topic,
-                expire_after_s=expire_after_s, unit=m.unit,
-                device_class=m.device_class, diagnostic=True,
-                has_entity_name=True, enabled_by_default=m.enabled_default,
+                icon=m.icon,
+                device=device,
+                state_class=m.state_class,
+                precision=m.precision,
+                availability_topic=availability_topic,
+                expire_after_s=expire_after_s,
+                unit=m.unit,
+                device_class=m.device_class,
+                diagnostic=True,
+                has_entity_name=True,
+                enabled_by_default=m.enabled_default,
             )
-            out[f"{discovery_prefix}/sensor/{FEEDERS_DEVICE_ID}/{key}_{m.suffix}/config"] = payload
+            out[
+                f"{discovery_prefix}/sensor/{FEEDERS_DEVICE_ID}/{key}_{m.suffix}/config"
+            ] = payload
     return out
