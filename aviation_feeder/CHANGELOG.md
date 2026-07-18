@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.8](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.7...aviation_feeder-v0.0.8) (2026-07-17)
+
+
+### Bug Fixes
+
+* **fr24:** strip the stale "TZ ignored" warning from fr24's config oneshot ([#51](https://github.com/bakerkj/hass-aviation-feeder/issues/51)) ([70999dd](https://github.com/bakerkj/hass-aviation-feeder/commit/70999dd7b70cd2ec61f704e1c867356483cb77b7))
+
 ## [0.0.7](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.6...aviation_feeder-v0.0.7) (2026-07-17)
 
 
