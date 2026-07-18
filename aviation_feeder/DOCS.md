@@ -197,7 +197,7 @@ MQTT service), falling back to anonymous `core-mosquitto`. Set `mqtt_host` /
 broker; `mqtt_discovery_prefix` (default `homeassistant`) and `mqtt_base_topic`
 (default `aviation_feeder`) control the topic namespaces.
 
-Three categories are published, toggled independently:
+These categories are published, toggled independently:
 
 - **Feeder health** (`ha_feeder_health`) → the **Aviation Feeder** device:
   aircraft tracked, ADS-B / Mode-S / MLAT counts, aircraft with position,
@@ -210,6 +210,12 @@ Three categories are published, toggled independently:
   (`ha_near_me_radius`, default 50 nmi), and the nearest aircraft (callsign,
   with distance / altitude / bearing / speed as attributes). Requires your
   station latitude/longitude to be set (inherited HA location counts).
+- **Emergency squawk** (`ha_emergency_squawk`) → an **Emergency Squawk** safety
+  binary sensor on the **Aviation Feeder** device: on whenever any tracked
+  aircraft is squawking 7500 (hijack), 7600 (radio failure) or 7700 (general
+  emergency), with the offending aircraft (hex, callsign, code, altitude) as
+  attributes. Position is not required, so it catches an emergency anywhere in
+  your coverage — a natural trigger for a notification automation.
 - **Per-feeder status** (`ha_feeder_status`) → **one device per enabled feeder**
   (each grouped under the main Aviation Feeder device). Every feeder device has
   a **Connection** sensor showing whether it is actually feeding, plus an

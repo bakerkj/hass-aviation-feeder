@@ -448,6 +448,13 @@ configuration:
       Publish a connectivity sensor for each enabled feeder/aggregator (e.g. is
       FlightRadar24 running, is adsb.fi connected) as an "Aviation Feeder —
       Feeders" device.
+  ha_emergency_squawk:
+    name: Publish emergency-squawk sensor
+    description: >-
+      Publish a safety binary sensor on the "Aviation Feeder" device that turns
+      on whenever any tracked aircraft squawks an emergency code (7500 hijack,
+      7600 radio failure, 7700 general emergency), with the offending aircraft
+      as attributes. Catches emergencies anywhere in coverage, not just nearby.
   ha_near_me_radius:
     name: Nearby radius (nmi)
     description: >-
