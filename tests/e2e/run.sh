@@ -893,7 +893,9 @@ case_tmpfs() {
 assert_ls_equals() { # $1 label, $2 dir, $3 = newline-separated expected names
   local want got
   want="$(printf '%s\n' "$3" | sed '/^[[:space:]]*$/d' | sort)"
-  got="$(docker exec "${CONTAINER}" sh -c "ls -1 '$2' 2>/dev/null" | sort)"
+  # -A (not plain -1) so hidden entries are listed too: the build-time guard uses
+  # Python os.listdir() which includes dotfiles, so this runtime mirror must as well.
+  got="$(docker exec "${CONTAINER}" sh -c "ls -1A '$2' 2>/dev/null" | sort)"
   if [ "${got}" = "${want}" ]; then
     ok "$1 matches allowlist"
   else
