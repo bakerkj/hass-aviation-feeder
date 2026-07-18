@@ -42,7 +42,7 @@ CONTENTS = f"{S6}/user/contents.d"
 STARTUP = "/etc/s6-overlay/startup.d"
 
 # --- Approved ENROLLED services (user/contents.d) --------------------------
-# 15 base-provided units we consciously keep + our 27 add-on units (42 total).
+# 15 base-provided units we consciously keep + our 29 add-on units (44 total).
 BASE_SERVICES = {
     "adsbx-stats",
     "aggregator-urls",
@@ -86,7 +86,9 @@ OUR_SERVICES = {
     "sdrmap",
     "sdrmap-mlat",
     "sdrmap-stunnel",
+    "uat-stats",
     "uk1090",
+    "wait-dump978",
     "wait-readsb",
 }
 APPROVED_SERVICES = BASE_SERVICES | OUR_SERVICES

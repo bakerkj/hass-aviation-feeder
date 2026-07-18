@@ -24,6 +24,9 @@ from .metadata import (
     NEARBY_METRICS,
     NEARBY_STATE_KEY,
     SDR_METRICS,
+    UAT_DEVICE_ID,
+    UAT_DEVICE_NAME,
+    UAT_METRICS,
     Metric,
 )
 from .util import log
@@ -280,6 +283,31 @@ def build_sdr_discovery(
             diagnostic=True,
         )
         out[f"{discovery_prefix}/sensor/{DEVICE_ID}/{m.key}/config"] = cfg
+    return out
+
+
+def build_uat_discovery(
+    discovery_prefix: str,
+    uat_topic: str,
+    availability_topic: str,
+    expire_after_s: int,
+) -> dict[str, dict[str, Any]]:
+    """978/UAT receiver stats (aircraft, message rate, max range, signal) on their
+    OWN "Aviation Feeder — UAT" device, so they group together and appear only
+    when 978 is decoded locally. Fed from dump978's stats.json (uat-stats svc)."""
+    out: dict[str, dict[str, Any]] = {}
+    device = _device(UAT_DEVICE_ID, UAT_DEVICE_NAME)
+    for m in UAT_METRICS:
+        cfg = _metric_config(
+            m,
+            device,
+            UAT_DEVICE_ID,
+            f"{uat_topic}/{m.key}/state",
+            availability_topic,
+            expire_after_s,
+            diagnostic=False,
+        )
+        out[f"{discovery_prefix}/sensor/{UAT_DEVICE_ID}/{m.key}/config"] = cfg
     return out
 
 

@@ -1,0 +1,23 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+# UAT stats aggregator. Runs dump978's stats.py (COPY'd from the dump978 image to
+# /scripts/stats.py in the Dockerfile) whenever we decode 978 locally -- the same
+# gate as the dump978 service. It reads dump978's decoded-UAT stream on
+# 127.0.0.1:30979 (plus raw :30978) and writes /run/stats/stats.json, which the
+# ha-mqtt publisher turns into the Home Assistant "UAT" sensor device. In remote
+# mode (no local dump978) it idles so the s6 service slot stays without work.
+#
+# The dependencies.d/wait-dump978 oneshot actively probes :30979 before this
+# starts (mirroring wait-readsb), so stats.py connects to a listening port at
+# boot instead of racing dump978. stats.py also retries internally, so this is
+# belt-and-suspenders, but it keeps the boot clean and matches the house pattern.
+if [ "${ENABLE_UAT:-false}" != "true" ] || [ "${RECEIVER_MODE:-rtlsdr}" = "remote" ]; then
+  echo "[uat-stats] UAT decode off (enable_uat off or remote mode); idling"
+  exec sleep infinity
+fi
+mkdir -p /run/stats
+# stats.py reads environ["LAT"]/["LON"] for its polar-range origin (a graceful
+# KeyError -> skip if unset). We export LAT and LONG elsewhere; alias LON=LONG so
+# the UAT max-range stat is computed too.
+export LON="${LON:-${LONG:-}}"
+exec python3 -u /scripts/stats.py

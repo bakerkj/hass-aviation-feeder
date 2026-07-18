@@ -40,6 +40,7 @@ from .metadata import (
     UPTIME_METRICS,
     compute_metrics,
     compute_sdr_metrics,
+    compute_uat_metrics,
 )
 from .app_reports import gather_reports
 from .mlat_stats import MLAT_CAPABLE, MLAT_SYNC_CAPABLE, read_mlat_stats
@@ -53,12 +54,14 @@ from .mqtt import (
     build_nearby_discovery,
     build_report_binary_discovery,
     build_sdr_discovery,
+    build_uat_discovery,
     connect_mqtt_with_retry,
     mqtt_publish,
 )
 from .emergency import compute_emergency
 from .nearby import compute_nearby, read_aircraft
 from .stats import read_stats
+from .uat_stats import UAT_STATS_PATH, read_uat_stats
 from .throughput import ThroughputAccumulator
 from .supervisor import resolve_mqtt_service
 from .util import log
@@ -215,6 +218,7 @@ def main() -> int:
     ap.add_argument("--options", required=True)
     ap.add_argument("--stats", default=STATS_PATH)
     ap.add_argument("--aircraft", default=AIRCRAFT_PATH)
+    ap.add_argument("--uat-stats", default=UAT_STATS_PATH)
     args = ap.parse_args()
 
     with open(args.options, "r", encoding="utf-8") as f:
@@ -265,8 +269,16 @@ def main() -> int:
     # Local-SDR health only makes sense with a local dongle; in remote/net-only
     # mode readsb owns no SDR, so skip the SDR device entirely. Decided from
     # config (deterministic at startup), not from stats timing.
-    sdr_present = (opts.get("receiver_mode") or "rtlsdr").strip().lower() != "remote"
+    receiver_mode = (opts.get("receiver_mode") or "rtlsdr").strip().lower()
+    sdr_present = receiver_mode != "remote"
     sdr_topic = f"{base_topic}/sdr"
+    # UAT device: only when 978 is decoded locally — uat-only mode, or rtlsdr mode
+    # with enable_uat on (the same gate as the uat-stats service). In remote mode
+    # there is no local dump978, so no UAT stats device.
+    uat_present = receiver_mode == "uat" or (
+        receiver_mode == "rtlsdr" and bool(opts.get("enable_uat"))
+    )
+    uat_topic = f"{base_topic}/uat"
     # Fall back to the LAT/LONG the bridge resolved (incl. HA-inherited location)
     # so blank lat/long options don't disable planes-near-me.
     station_lat = _coord(opts.get("lat"), os.environ.get("LAT"))
@@ -518,6 +530,24 @@ def main() -> int:
                         health=health,
                     )
                     published += 1 if emergency_on else 0
+                # UAT device: publish its configs only when 978 is decoded locally
+                # and feeder_health on; otherwise retained-empty to remove them.
+                uat_on = feeder_health and uat_present
+                uat_disc = build_uat_discovery(
+                    discovery_prefix, uat_topic, availability_topic, expire_after_s
+                )
+                for topic, cfg in uat_disc.items():
+                    body = json.dumps(cfg, separators=(",", ":")) if uat_on else ""
+                    mqtt_publish(
+                        client,
+                        topic,
+                        body,
+                        qos=1,
+                        retain=True,
+                        log_level=log_level,
+                        health=health,
+                    )
+                    published += 1 if uat_on else 0
                 # MQTT broker-link diagnostics (main device), under feeder_health.
                 broker_disc = build_broker_discovery(
                     discovery_prefix, base_topic, availability_topic, expire_after_s
@@ -589,6 +619,25 @@ def main() -> int:
                             health=health,
                             mark_state=True,
                         )
+
+                # UAT stats.json is written by the uat-stats service ~once/minute;
+                # absent until then (or in remote mode) -> read returns None, skip.
+                if feeder_health and uat_present:
+                    ustats = read_uat_stats(args.uat_stats)
+                    if ustats is not None:
+                        for key, val in compute_uat_metrics(ustats).items():
+                            if val is None:
+                                continue
+                            mqtt_publish(
+                                client,
+                                f"{uat_topic}/{key}/state",
+                                str(val),
+                                qos=0,
+                                retain=False,
+                                log_level=log_level,
+                                health=health,
+                                mark_state=True,
+                            )
 
                 if feeder_health:
                     uptime_s = (

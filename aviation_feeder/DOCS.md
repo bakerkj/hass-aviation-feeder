@@ -242,6 +242,12 @@ If you decode from a local RTL-SDR (receiver mode `rtlsdr` or `uat`), the main
 error (ppm), signal / noise levels, and dropped-sample count. In `remote` mode
 there is no local dongle, so these are omitted.
 
+If you decode **978 MHz UAT** locally (receiver mode `uat`, or `rtlsdr` with
+**Enable 978 MHz UAT** on), a separate **Aviation Feeder — UAT** device appears
+with the 978-band equivalents of the 1090 stats: **UAT Aircraft**, **UAT Message
+Rate**, **UAT Max Range**, and **UAT Signal Level** (from dump978's own
+decoder). The device is absent when 978 is not decoded locally.
+
 Every device carries an availability (online/offline) state via MQTT Last-Will,
 and its entities are registry-managed (grouped into devices, restored across HA
 restarts). Publisher settings: **MQTT publish interval**

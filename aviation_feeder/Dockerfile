@@ -120,6 +120,12 @@ COPY --from=dump978 /usr/local/bin/dump978-fa /usr/local/bin/dump978-fa
 # The dump978 longrun service + its wrapper script (run execs this).
 COPY --from=dump978 /etc/s6-overlay/s6-rc.d/dump978 /etc/s6-overlay/s6-rc.d/dump978
 COPY --from=dump978 /etc/s6-overlay/scripts/dump978 /etc/s6-overlay/scripts/dump978
+# dump978's stats aggregator: reads dump978's decoded-UAT stream on :30979 (+ raw
+# :30978) and writes /run/stats/stats.json, which our ha-mqtt publisher turns into
+# the HA "UAT" sensor device. Stdlib-only, so the single file is all we need; we
+# run it from our OWN uat-stats s6 service (rootfs) rather than the upstream
+# telegraf-gated launcher, which drags in services this base lacks.
+COPY --from=dump978 /scripts/stats.py /scripts/stats.py
 # The upstream dump978 service depends on optional oneshots (01-timezone,
 # 02-sanity-check, 04-telegraf, 05-rtlsdr-biastee) that the ultrafeeder base
 # does NOT provide. Replace those deps with `legacy-cont-init` so the service

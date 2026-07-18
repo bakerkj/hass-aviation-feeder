@@ -450,3 +450,78 @@ SDR_METRICS: list[Metric] = [
 def compute_sdr_metrics(stats: dict[str, Any]) -> dict[str, float | int | None]:
     """Map a parsed stats.json into {sdr_metric_key: value} (None when absent)."""
     return {m.key: m.extract(stats) for m in SDR_METRICS}
+
+
+# --- "UAT" device (978 MHz decode health; only when 978 is decoded locally) ---
+# Fed from dump978's own aggregator (stats.py -> /run/stats/stats.json; see the
+# uat-stats s6 service). Its schema is period-bucketed (total / last_1min /
+# last_5min / last_15min), each a {stat_name: value} dict. We surface the 978
+# equivalents of the 1090 receiver stats on a SEPARATE device so they group on
+# their own and appear/disappear with local UAT decode. max_distance_m is only
+# present when the receiver location (LAT/LON) is set.
+UAT_DEVICE_ID = "aviation_feeder_uat"
+UAT_DEVICE_NAME = "Aviation Feeder — UAT"
+
+
+def _uat_msg_rate(s: dict[str, Any]) -> float | None:
+    m = _num(_get(s, "last_1min", "total_accepted_messages"))
+    if m is None:
+        return None
+    return m / 60.0  # last_1min is a ~60s bucket -> messages/second
+
+
+def _uat_range_nm(s: dict[str, Any]) -> float | None:
+    m = _num(_get(s, "total", "max_distance_m"))
+    if m is None:
+        return None
+    return m / _METERS_PER_NM
+
+
+UAT_METRICS: list[Metric] = [
+    Metric(
+        "uat_aircraft",
+        "UAT Aircraft",
+        "aircraft",
+        None,
+        "measurement",
+        "mdi:airplane",
+        0,
+        lambda s: _num(_get(s, "last_1min", "total_tracks")),
+    ),
+    Metric(
+        "uat_message_rate",
+        "UAT Message Rate",
+        "msg/s",
+        None,
+        "measurement",
+        "mdi:message-processing",
+        1,
+        _uat_msg_rate,
+    ),
+    Metric(
+        "uat_max_range_nm",
+        "UAT Max Range",
+        "nmi",
+        None,
+        "measurement",
+        "mdi:map-marker-distance",
+        1,
+        _uat_range_nm,
+    ),
+    Metric(
+        "uat_signal_dbfs",
+        "UAT Signal Level",
+        "dBFS",
+        None,
+        "measurement",
+        "mdi:signal",
+        1,
+        lambda s: _num(_get(s, "last_1min", "avg_accepted_rssi")),
+    ),
+]
+
+
+def compute_uat_metrics(stats: dict[str, Any]) -> dict[str, float | int | None]:
+    """Map a parsed /run/stats/stats.json into {uat_metric_key: value} (None when
+    a source field is absent, e.g. max range before the location is known)."""
+    return {m.key: m.extract(stats) for m in UAT_METRICS}
