@@ -210,6 +210,40 @@ scripts `exec` into (some copied from upstream images, some ours — e.g.
 `link-tmpfs-dir`), and `rootfs/usr/local/bin/` holds the shared helpers
 (`feeder-gate`, `wait-for-readsb`, `rbfeeder-mlat`, `s6wrap-color`).
 
+### The boot-surface allowlist guard (`assert-units.py`)
+
+We build `FROM docker-adsb-ultrafeeder`, which enrolls its **own** services and
+startup hooks on top of ours. To keep that inherited surface explicit — so a
+base bump can't quietly enroll something new without our approval —
+`aviation_feeder/assert-units.py` runs as the **last** Dockerfile step (`COPY`'d
+to `/tmp`, run with `python3`, `rm`'d, like `patch-mlat-client.py`) and
+validates the final image against two allowlists:
+
+- **Enrolled services** — `ls /etc/s6-overlay/s6-rc.d/user/contents.d` must
+  equal the 15 base units we keep + our 27 (42 total).
+- **Startup hooks** — `ls /etc/s6-overlay/startup.d` must equal the 9 base hooks
+  we keep. These are iterated by the approved `startup` oneshot at boot; the
+  aggregator auto-registration hooks (e.g. `52-adsbitalia-register`) live
+  _here_, not in `user/contents.d`, so a services-only guard would miss them.
+
+The script also **prunes** the two dead upstream wrappers we reject — `telegraf`
+(exporter whose binary isn't in the base) and `timelapse1090` (whose program
+isn't shipped; its startup hook `wget`-clones it from GitHub at boot) — removing
+their marker, unit dir, and startup hook.
+
+On a base bump the guard **fails the build loudly**, naming any unit that was
+added (classify it: add to the allowlist to KEEP, or to the prune list to
+REJECT) or that went missing (a rename/removal we relied on). `case_units` in
+`tests/e2e/run.sh` mirrors the same allowlists at runtime. When you change the
+approved set, update **both** files.
+
+**Known limitation:** the guard polices _enrollment_ (the `user` bundle +
+`startup.d`), not transitive `dependencies.d` pulls. A unit named only in a kept
+unit's `dependencies.d` still runs at boot but is invisible to the guard — e.g.
+the base's `09-rtlsdr-biastee`, pulled via `readsb/dependencies.d`, runs
+unenrolled (a harmless no-op unless `BIASTEE` is set). Auditing `dependencies.d`
+of kept units is a possible future extension.
+
 ### Startup ordering: `wait-readsb`
 
 `wait-readsb` is a oneshot whose `up` runs `wait-for-readsb`: it blocks (bash

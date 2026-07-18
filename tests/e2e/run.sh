@@ -885,6 +885,103 @@ case_tmpfs() {
   teardown_case
 }
 
+# Runtime mirror of the build-time allowlist guard (aviation_feeder/assert-units.py):
+# assert the shipped image exposes exactly the approved s6 boot surface -- the
+# enrolled services AND the startup.d hooks -- and that the two pruned upstream
+# wrappers (telegraf, timelapse1090) are fully gone. Catches a broken prune or an
+# out-of-sync allowlist at runtime, in addition to the build-time check.
+assert_ls_equals() { # $1 label, $2 dir, $3 = newline-separated expected names
+  local want got
+  want="$(printf '%s\n' "$3" | sed '/^[[:space:]]*$/d' | sort)"
+  got="$(docker exec "${CONTAINER}" sh -c "ls -1 '$2' 2>/dev/null" | sort)"
+  if [ "${got}" = "${want}" ]; then
+    ok "$1 matches allowlist"
+  else
+    bad "$1 drift in $2:"
+    diff <(printf '%s\n' "${want}") <(printf '%s\n' "${got}") | sed 's/^/      /' || true
+  fi
+}
+case_units() {
+  local CONTAINER MQTT_BROKER API_MOCK MQTT_NET
+  setup_case_names units
+  section "CASE s6 unit allowlist — only approved services + startup hooks ship"
+  start_container "${HERE}/fixtures/default.json"
+  assert_running
+
+  assert_ls_equals "enrolled services" /etc/s6-overlay/s6-rc.d/user/contents.d "\
+adsbx-stats
+aggregator-urls
+autogain
+cleanup_globe_history
+collectd
+graphs1090
+graphs1090-writeback
+libseccomp2
+mlat-client
+mlathub
+nginx
+readsb
+startup
+tar1090
+tar1090-update
+01-adsbhubclient
+01-fr24feed
+01-opensky-network
+01-pfclient
+01-piaware
+01-show-rbfeeder-changelog
+02-rbfeeder
+02-show-architecture
+03-show-architecture
+adsbhubclient
+dump978
+fr24feed
+fr24uat-feed
+ha-mqtt
+opensky-feeder
+pfclient
+piaware
+planewatch-mlat
+pw-feeder
+radarvirtuel
+radarvirtuel-mlat
+rbfeeder
+sdrmap
+sdrmap-mlat
+sdrmap-stunnel
+uk1090
+wait-readsb"
+
+  assert_ls_equals "startup hooks" /etc/s6-overlay/startup.d "\
+01-print-container-version
+01-sanity-check
+04-tar1090-configure
+06-range-outline
+07-nginx-configure
+08-graphs1090-init
+50-store-uuid
+52-adsbitalia-register
+99-prometheus-conf"
+
+  # Pruned units must be gone entirely: marker, unit dir, and startup hook.
+  local p
+  for p in \
+    /etc/s6-overlay/s6-rc.d/user/contents.d/telegraf \
+    /etc/s6-overlay/s6-rc.d/telegraf \
+    /etc/s6-overlay/s6-rc.d/user/contents.d/timelapse1090 \
+    /etc/s6-overlay/s6-rc.d/timelapse1090 \
+    /etc/s6-overlay/startup.d/10-telegraf-conf \
+    /etc/s6-overlay/startup.d/11-timelapse1090; do
+    if docker exec "${CONTAINER}" sh -c "test -e '${p}'" 2>/dev/null; then
+      bad "pruned path still present: ${p}"
+    else
+      ok "pruned: ${p}"
+    fi
+  done
+
+  teardown_case
+}
+
 # --- Runner: launch every case in a bounded worker pool ---------------------
 # Each case runs in its own backgrounded subshell (unique container/sidecar
 # names via setup_case_names) writing to a per-case log. Concurrency is capped
@@ -908,6 +1005,7 @@ CASES=(
   case_hasensors
   case_autoloc
   case_tmpfs
+  case_units
 )
 RESULTS_DIR="$(mktemp -d)"
 JOBS="${E2E_JOBS:-$(nproc 2>/dev/null || echo 4)}"
