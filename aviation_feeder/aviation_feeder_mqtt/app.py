@@ -202,6 +202,33 @@ def _coord(opt_val: Any, env_val: str | None) -> float | None:
     return None
 
 
+def _publish_toggleable_discovery(
+    client: mqtt.Client,
+    disc: dict[str, dict[str, Any]],
+    enabled: bool,
+    *,
+    log_level: str,
+    health: MqttHealth,
+) -> int:
+    """Publish a main-device discovery dict retained: the real config when
+    `enabled`, else an empty payload so HA removes the entity when the feature is
+    toggled off. Returns the number of live configs published (0 when disabled)
+    for the discovery-count log. Shared by the toggleable main-device sensors
+    (SDR, UAT, unique-today, emergency-squawk)."""
+    for topic, cfg in disc.items():
+        body = json.dumps(cfg, separators=(",", ":")) if enabled else ""
+        mqtt_publish(
+            client,
+            topic,
+            body,
+            qos=1,
+            retain=True,
+            log_level=log_level,
+            health=health,
+        )
+    return len(disc) if enabled else 0
+
+
 STATS_PATH = "/run/readsb/stats.json"
 AIRCRAFT_PATH = "/run/readsb/aircraft.json"
 
@@ -497,79 +524,49 @@ def main() -> int:
                                     log_level=log_level,
                                     health=health,
                                 )
-                # SDR device: publish its configs only with a local dongle and
-                # feeder_health on; otherwise retained-empty to remove the entities.
+                # Toggleable main-device discovery. Each publishes its real config
+                # when its feature is on, else retained-empty to remove the entity.
+                # SDR + UAT are hardware-gated (local dongle / local 978 decode);
+                # unique-today + emergency-squawk are option-gated. All share
+                # _publish_toggleable_discovery (returns the live-config count).
                 sdr_on = feeder_health and sdr_present
-                sdr_disc = build_sdr_discovery(
-                    discovery_prefix, sdr_topic, availability_topic, expire_after_s
-                )
-                for topic, cfg in sdr_disc.items():
-                    body = json.dumps(cfg, separators=(",", ":")) if sdr_on else ""
-                    mqtt_publish(
-                        client,
-                        topic,
-                        body,
-                        qos=1,
-                        retain=True,
-                        log_level=log_level,
-                        health=health,
-                    )
-                    published += 1 if sdr_on else 0
-                # "Unique aircraft today" sensor (main device): config only when
-                # ha_unique_today is on, else retained-empty to remove it.
-                unique_disc = build_unique_discovery(
-                    discovery_prefix, base_topic, availability_topic, expire_after_s
-                )
-                for topic, cfg in unique_disc.items():
-                    body = json.dumps(cfg, separators=(",", ":")) if unique_on else ""
-                    mqtt_publish(
-                        client,
-                        topic,
-                        body,
-                        qos=1,
-                        retain=True,
-                        log_level=log_level,
-                        health=health,
-                    )
-                    published += 1 if unique_on else 0
-                # Emergency-squawk safety binary_sensor (main device): publish its
-                # config only when ha_emergency_squawk is on, else retained-empty
-                # so toggling it off removes the entity from HA.
-                emergency_disc = build_emergency_discovery(
-                    discovery_prefix, base_topic, availability_topic, expire_after_s
-                )
-                for topic, cfg in emergency_disc.items():
-                    body = (
-                        json.dumps(cfg, separators=(",", ":")) if emergency_on else ""
-                    )
-                    mqtt_publish(
-                        client,
-                        topic,
-                        body,
-                        qos=1,
-                        retain=True,
-                        log_level=log_level,
-                        health=health,
-                    )
-                    published += 1 if emergency_on else 0
-                # UAT device: publish its configs only when 978 is decoded locally
-                # and feeder_health on; otherwise retained-empty to remove them.
                 uat_on = feeder_health and uat_present
-                uat_disc = build_uat_discovery(
-                    discovery_prefix, uat_topic, availability_topic, expire_after_s
+                published += _publish_toggleable_discovery(
+                    client,
+                    build_sdr_discovery(
+                        discovery_prefix, sdr_topic, availability_topic, expire_after_s
+                    ),
+                    sdr_on,
+                    log_level=log_level,
+                    health=health,
                 )
-                for topic, cfg in uat_disc.items():
-                    body = json.dumps(cfg, separators=(",", ":")) if uat_on else ""
-                    mqtt_publish(
-                        client,
-                        topic,
-                        body,
-                        qos=1,
-                        retain=True,
-                        log_level=log_level,
-                        health=health,
-                    )
-                    published += 1 if uat_on else 0
+                published += _publish_toggleable_discovery(
+                    client,
+                    build_unique_discovery(
+                        discovery_prefix, base_topic, availability_topic, expire_after_s
+                    ),
+                    unique_on,
+                    log_level=log_level,
+                    health=health,
+                )
+                published += _publish_toggleable_discovery(
+                    client,
+                    build_emergency_discovery(
+                        discovery_prefix, base_topic, availability_topic, expire_after_s
+                    ),
+                    emergency_on,
+                    log_level=log_level,
+                    health=health,
+                )
+                published += _publish_toggleable_discovery(
+                    client,
+                    build_uat_discovery(
+                        discovery_prefix, uat_topic, availability_topic, expire_after_s
+                    ),
+                    uat_on,
+                    log_level=log_level,
+                    health=health,
+                )
                 # MQTT broker-link diagnostics (main device), under feeder_health.
                 broker_disc = build_broker_discovery(
                     discovery_prefix, base_topic, availability_topic, expire_after_s
