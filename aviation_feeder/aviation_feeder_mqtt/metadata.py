@@ -195,6 +195,25 @@ BROKER_METRICS: list[Metric] = [
 ]
 
 
+# "Unique aircraft today" sensor on the main device: distinct ICAO hex ids seen
+# since local midnight (see unique_daily.py). Computed by the publisher, not from
+# stats.json, so its extract is unused (like the broker metrics above). A primary
+# entity (not diagnostic) — it's a dashboard number, not a diagnostic.
+UNIQUE_TODAY_KEY = "unique_today"
+UNIQUE_METRICS: list[Metric] = [
+    Metric(
+        UNIQUE_TODAY_KEY,
+        "Unique Aircraft Today",
+        "aircraft",
+        None,
+        "total_increasing",
+        "mdi:airplane-search",
+        0,
+        lambda s: None,
+    ),
+]
+
+
 # --- "Planes near me" device -----------------------------------------------
 # A second HA device fed from aircraft.json (see nearby.compute_nearby). Its
 # numeric sensors' extract functions read the compute_nearby() result dict; the

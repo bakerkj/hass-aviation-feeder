@@ -29,6 +29,7 @@ from .metadata import (
     EMERGENCY_SQUAWK_KEY,
     FEEDERS_DEVICE_ID,
     MESSAGES_METRICS,
+    UNIQUE_TODAY_KEY,
     MESSAGES_RATE_METRICS,
     MLAT_RESULT_METRICS,
     MLAT_SYNC_METRICS,
@@ -55,11 +56,13 @@ from .mqtt import (
     build_report_binary_discovery,
     build_sdr_discovery,
     build_uat_discovery,
+    build_unique_discovery,
     connect_mqtt_with_retry,
     mqtt_publish,
 )
 from .emergency import compute_emergency
 from .nearby import compute_nearby, read_aircraft
+from .unique_daily import UniqueDailyTracker
 from .stats import read_stats
 from .uat_stats import UAT_STATS_PATH, read_uat_stats
 from .throughput import ThroughputAccumulator
@@ -199,6 +202,33 @@ def _coord(opt_val: Any, env_val: str | None) -> float | None:
     return None
 
 
+def _publish_toggleable_discovery(
+    client: mqtt.Client,
+    disc: dict[str, dict[str, Any]],
+    enabled: bool,
+    *,
+    log_level: str,
+    health: MqttHealth,
+) -> int:
+    """Publish a main-device discovery dict retained: the real config when
+    `enabled`, else an empty payload so HA removes the entity when the feature is
+    toggled off. Returns the number of live configs published (0 when disabled)
+    for the discovery-count log. Shared by the toggleable main-device sensors
+    (SDR, UAT, unique-today, emergency-squawk)."""
+    for topic, cfg in disc.items():
+        body = json.dumps(cfg, separators=(",", ":")) if enabled else ""
+        mqtt_publish(
+            client,
+            topic,
+            body,
+            qos=1,
+            retain=True,
+            log_level=log_level,
+            health=health,
+        )
+    return len(disc) if enabled else 0
+
+
 STATS_PATH = "/run/readsb/stats.json"
 AIRCRAFT_PATH = "/run/readsb/aircraft.json"
 
@@ -264,6 +294,7 @@ def main() -> int:
     planes_near_me = bool(opts.get("ha_planes_near_me", True))
     feeder_status = bool(opts.get("ha_feeder_status", True))
     emergency_on = bool(opts.get("ha_emergency_squawk", True))
+    unique_on = bool(opts.get("ha_unique_today", True))
     near_me_radius = max(1.0, float(opts.get("ha_near_me_radius", 50)))
     feeders_topic = f"{base_topic}/feeders"
     # Local-SDR health only makes sense with a local dongle; in remote/net-only
@@ -320,6 +351,7 @@ def main() -> int:
     throughput = ThroughputAccumulator()
     rates = RateTracker()
     pf_state = PlanefinderFeedState()
+    unique_tracker = UniqueDailyTracker()
 
     client = mqtt.Client(
         mqtt.CallbackAPIVersion.VERSION2,
@@ -492,62 +524,49 @@ def main() -> int:
                                     log_level=log_level,
                                     health=health,
                                 )
-                # SDR device: publish its configs only with a local dongle and
-                # feeder_health on; otherwise retained-empty to remove the entities.
+                # Toggleable main-device discovery. Each publishes its real config
+                # when its feature is on, else retained-empty to remove the entity.
+                # SDR + UAT are hardware-gated (local dongle / local 978 decode);
+                # unique-today + emergency-squawk are option-gated. All share
+                # _publish_toggleable_discovery (returns the live-config count).
                 sdr_on = feeder_health and sdr_present
-                sdr_disc = build_sdr_discovery(
-                    discovery_prefix, sdr_topic, availability_topic, expire_after_s
-                )
-                for topic, cfg in sdr_disc.items():
-                    body = json.dumps(cfg, separators=(",", ":")) if sdr_on else ""
-                    mqtt_publish(
-                        client,
-                        topic,
-                        body,
-                        qos=1,
-                        retain=True,
-                        log_level=log_level,
-                        health=health,
-                    )
-                    published += 1 if sdr_on else 0
-                # Emergency-squawk safety binary_sensor (main device): publish its
-                # config only when ha_emergency_squawk is on, else retained-empty
-                # so toggling it off removes the entity from HA.
-                emergency_disc = build_emergency_discovery(
-                    discovery_prefix, base_topic, availability_topic, expire_after_s
-                )
-                for topic, cfg in emergency_disc.items():
-                    body = (
-                        json.dumps(cfg, separators=(",", ":")) if emergency_on else ""
-                    )
-                    mqtt_publish(
-                        client,
-                        topic,
-                        body,
-                        qos=1,
-                        retain=True,
-                        log_level=log_level,
-                        health=health,
-                    )
-                    published += 1 if emergency_on else 0
-                # UAT device: publish its configs only when 978 is decoded locally
-                # and feeder_health on; otherwise retained-empty to remove them.
                 uat_on = feeder_health and uat_present
-                uat_disc = build_uat_discovery(
-                    discovery_prefix, uat_topic, availability_topic, expire_after_s
+                published += _publish_toggleable_discovery(
+                    client,
+                    build_sdr_discovery(
+                        discovery_prefix, sdr_topic, availability_topic, expire_after_s
+                    ),
+                    sdr_on,
+                    log_level=log_level,
+                    health=health,
                 )
-                for topic, cfg in uat_disc.items():
-                    body = json.dumps(cfg, separators=(",", ":")) if uat_on else ""
-                    mqtt_publish(
-                        client,
-                        topic,
-                        body,
-                        qos=1,
-                        retain=True,
-                        log_level=log_level,
-                        health=health,
-                    )
-                    published += 1 if uat_on else 0
+                published += _publish_toggleable_discovery(
+                    client,
+                    build_unique_discovery(
+                        discovery_prefix, base_topic, availability_topic, expire_after_s
+                    ),
+                    unique_on,
+                    log_level=log_level,
+                    health=health,
+                )
+                published += _publish_toggleable_discovery(
+                    client,
+                    build_emergency_discovery(
+                        discovery_prefix, base_topic, availability_topic, expire_after_s
+                    ),
+                    emergency_on,
+                    log_level=log_level,
+                    health=health,
+                )
+                published += _publish_toggleable_discovery(
+                    client,
+                    build_uat_discovery(
+                        discovery_prefix, uat_topic, availability_topic, expire_after_s
+                    ),
+                    uat_on,
+                    log_level=log_level,
+                    health=health,
+                )
                 # MQTT broker-link diagnostics (main device), under feeder_health.
                 broker_disc = build_broker_discovery(
                     discovery_prefix, base_topic, availability_topic, expire_after_s
@@ -584,7 +603,11 @@ def main() -> int:
                 )
 
             if health.connected and (
-                feeder_health or planes_near_me or feeder_status or emergency_on
+                feeder_health
+                or planes_near_me
+                or feeder_status
+                or emergency_on
+                or unique_on
             ):
                 if feeder_health and stats is not None:
                     metrics = compute_metrics(stats)
@@ -666,19 +689,17 @@ def main() -> int:
                         mark_state=True,
                     )
 
-                # aircraft.json feeds both planes-near-me and the emergency-squawk
-                # sensor; read it once per cycle when either is enabled.
+                # aircraft.json feeds planes-near-me, the emergency-squawk sensor,
+                # and the unique-aircraft-today counter; read it once per cycle
+                # when any of them is enabled.
                 want_nearby = (
                     planes_near_me
                     and station_lat is not None
                     and station_lon is not None
                 )
-                acj = (
-                    read_aircraft(args.aircraft)
-                    if (want_nearby or emergency_on)
-                    else None
-                )
-                if (want_nearby or emergency_on) and acj is None:
+                want_acj = want_nearby or emergency_on or unique_on
+                acj = read_aircraft(args.aircraft) if want_acj else None
+                if want_acj and acj is None:
                     log(
                         "WARNING",
                         f"aircraft.json not readable at {args.aircraft}",
@@ -763,6 +784,19 @@ def main() -> int:
                             f"emergency squawk active: {em['count']} aircraft",
                             log_level,
                         )
+
+                if unique_on and acj is not None:
+                    count = unique_tracker.update(acj, time.localtime()[:3])
+                    mqtt_publish(
+                        client,
+                        f"{base_topic}/{UNIQUE_TODAY_KEY}/state",
+                        str(count),
+                        qos=0,
+                        retain=False,
+                        log_level=log_level,
+                        health=health,
+                        mark_state=True,
+                    )
 
                 if feeder_status:
                     # Gather the app self-reports once: authoritative feeding-state

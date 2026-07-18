@@ -27,6 +27,7 @@ from .metadata import (
     UAT_DEVICE_ID,
     UAT_DEVICE_NAME,
     UAT_METRICS,
+    UNIQUE_METRICS,
     Metric,
 )
 from .util import log
@@ -225,6 +226,30 @@ def build_broker_discovery(
             availability_topic,
             expire_after_s,
             diagnostic=True,
+        )
+        out[f"{discovery_prefix}/sensor/{DEVICE_ID}/{m.key}/config"] = cfg
+    return out
+
+
+def build_unique_discovery(
+    discovery_prefix: str,
+    base_topic: str,
+    availability_topic: str,
+    expire_after_s: int,
+) -> dict[str, dict[str, Any]]:
+    """ "Unique aircraft today" sensor on the main device — a primary (non-
+    diagnostic) daily count of distinct aircraft seen since local midnight."""
+    out: dict[str, dict[str, Any]] = {}
+    device = _device(DEVICE_ID, DEVICE_NAME)
+    for m in UNIQUE_METRICS:
+        cfg = _metric_config(
+            m,
+            device,
+            DEVICE_ID,
+            f"{base_topic}/{m.key}/state",
+            availability_topic,
+            expire_after_s,
+            diagnostic=False,
         )
         out[f"{discovery_prefix}/sensor/{DEVICE_ID}/{m.key}/config"] = cfg
     return out

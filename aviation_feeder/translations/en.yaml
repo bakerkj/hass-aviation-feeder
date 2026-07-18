@@ -455,6 +455,12 @@ configuration:
       on whenever any tracked aircraft squawks an emergency code (7500 hijack,
       7600 radio failure, 7700 general emergency), with the offending aircraft
       as attributes. Catches emergencies anywhere in coverage, not just nearby.
+  ha_unique_today:
+    name: Publish unique-aircraft-today sensor
+    description: >-
+      Publish a counter on the "Aviation Feeder" device of how many distinct
+      aircraft you have seen since local midnight. Resets each day; a restart of
+      the add-on also resets the running count.
   ha_near_me_radius:
     name: Nearby radius (nmi)
     description: >-
