@@ -977,6 +977,7 @@ rbfeeder
 sdrmap
 sdrmap-mlat
 sdrmap-stunnel
+uat-stats
 uk1090
 wait-readsb"
 

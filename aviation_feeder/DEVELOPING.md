@@ -61,6 +61,16 @@ Everything hangs off **readsb**, the one decoder and one data hub:
 - In `remote` mode readsb runs net-only (no SDR): it ingests Beast from a remote
   extractor via `adsb,<host>,<port>,beast_in`, and dump978 idles.
 
+Whenever 978 is decoded locally, the **`uat-stats`** longrun also runs dump978's
+own `stats.py` (COPY'd from the `dump978` build stage to `/scripts/stats.py`;
+the upstream launcher is telegraf-gated and pulls in services this base lacks,
+so we run the single stdlib-only file from our own service). It reads dump978's
+decoded stream on `:30979` (+ raw `:30978`) and writes `/run/stats/stats.json`,
+which the MQTT publisher turns into the **Aviation Feeder — UAT** HA device. It
+shares the same UAT gate as `dump978` and idles otherwise. `stats.py` reads
+`LAT`/`LON` for its polar-range origin, so the service aliases `LON=LONG`
+(readsb uses `LONG`).
+
 readsb then exposes that picture several ways; every consumer reads one:
 
 - **Beast** on `localhost:30005` — the primary feed source for almost every
@@ -220,7 +230,7 @@ to `/tmp`, run with `python3`, `rm`'d, like `patch-mlat-client.py`) and
 validates the final image against two allowlists:
 
 - **Enrolled services** — `ls /etc/s6-overlay/s6-rc.d/user/contents.d` must
-  equal the 15 base units we keep + our 27 (42 total).
+  equal the 15 base units we keep + our 28 (43 total).
 - **Startup hooks** — `ls /etc/s6-overlay/startup.d` must equal the 9 base hooks
   we keep. These are iterated by the approved `startup` oneshot at boot; the
   aggregator auto-registration hooks (e.g. `52-adsbitalia-register`) live
