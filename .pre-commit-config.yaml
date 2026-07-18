@@ -22,7 +22,7 @@ repos:
   # tracked .py: the aviation_feeder_mqtt package, the build-time helpers
   # (assert-units.py, patch-mlat-client.py), CI scripts, and the unit tests.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.16
+    rev: v0.15.22
     hooks:
       - id: ruff-check
         args: ["--fix"]
