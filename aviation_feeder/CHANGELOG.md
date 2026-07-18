@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.9](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.8...aviation_feeder-v0.0.9) (2026-07-18)
+
+
+### Features
+
+* **adsbitalia:** auto-register the station and honor adsbitalia_name ([#58](https://github.com/bakerkj/hass-aviation-feeder/issues/58)) ([c3465f2](https://github.com/bakerkj/hass-aviation-feeder/commit/c3465f2b7f062c2192f05bdd6c86d4de42c1f5e3))
+* **build:** guard the s6 boot surface with an allowlist ([#54](https://github.com/bakerkj/hass-aviation-feeder/issues/54)) ([41fc0ac](https://github.com/bakerkj/hass-aviation-feeder/commit/41fc0ac13f09d6a00123cf6391931b0b7f6dc756))
+
+
+### Miscellaneous Chores
+
+* **python:** adopt ruff + mypy pre-commit hooks ([#55](https://github.com/bakerkj/hass-aviation-feeder/issues/55)) ([6e3d100](https://github.com/bakerkj/hass-aviation-feeder/commit/6e3d10021c78880437f9b622420c87240f07c70c))
+
 ## [0.0.8](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.7...aviation_feeder-v0.0.8) (2026-07-17)
 
 
