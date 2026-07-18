@@ -979,6 +979,7 @@ sdrmap-mlat
 sdrmap-stunnel
 uat-stats
 uk1090
+wait-dump978
 wait-readsb"
 
   assert_ls_equals "startup hooks" /etc/s6-overlay/startup.d "\

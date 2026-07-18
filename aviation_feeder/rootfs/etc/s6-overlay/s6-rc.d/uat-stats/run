@@ -6,6 +6,11 @@
 # 127.0.0.1:30979 (plus raw :30978) and writes /run/stats/stats.json, which the
 # ha-mqtt publisher turns into the Home Assistant "UAT" sensor device. In remote
 # mode (no local dump978) it idles so the s6 service slot stays without work.
+#
+# The dependencies.d/wait-dump978 oneshot actively probes :30979 before this
+# starts (mirroring wait-readsb), so stats.py connects to a listening port at
+# boot instead of racing dump978. stats.py also retries internally, so this is
+# belt-and-suspenders, but it keeps the boot clean and matches the house pattern.
 if [ "${ENABLE_UAT:-false}" != "true" ] || [ "${RECEIVER_MODE:-rtlsdr}" = "remote" ]; then
   echo "[uat-stats] UAT decode off (enable_uat off or remote mode); idling"
   exec sleep infinity

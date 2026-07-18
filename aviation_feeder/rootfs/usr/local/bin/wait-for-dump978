@@ -1,0 +1,25 @@
+#!/bin/bash
+# Startup gate for uat-stats: block until dump978's decoded-JSON output (:30979)
+# actually accepts a TCP connection, so stats.py doesn't race dump978 at boot and
+# log "connection refused" retries. Mirrors wait-for-readsb (bash /dev/tcp:
+# connect then close, without draining the stream).
+#
+# Gated on local 978 decode: in remote mode / with UAT off, dump978 never binds
+# :30979, so skip immediately -- otherwise we'd add a pointless ~30s boot delay on
+# every non-UAT boot. Fail OPEN after ~30s so a dump978 problem can't wedge
+# uat-stats behind this gate (and stats.py retries internally regardless).
+if [ "${ENABLE_UAT:-false}" != "true" ] || [ "${RECEIVER_MODE:-rtlsdr}" = "remote" ]; then
+  echo "[wait-for-dump978] UAT decode off (enable_uat off or remote mode); nothing to wait for"
+  exit 0
+fi
+tries=0
+while [ "${tries}" -lt 60 ]; do
+  if (exec 3<>/dev/tcp/127.0.0.1/30979) 2>/dev/null; then
+    echo "[wait-for-dump978] dump978 :30979 is up; releasing uat-stats"
+    exit 0
+  fi
+  tries=$((tries + 1))
+  sleep 0.5
+done
+echo "[wait-for-dump978] dump978 :30979 not accepting after 30s -- releasing uat-stats anyway"
+exit 0
