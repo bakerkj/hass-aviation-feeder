@@ -223,6 +223,10 @@ case_default() {
   assert_env_contains UPDATE_TAR1090 false
   # globe_history retention defaults to 7 days (bounds the persisted /data growth).
   assert_env_contains MAX_GLOBE_HISTORY 7
+  # ADSBItalia registration is opt-in-by-feeding: with feed_adsbitalia off it must
+  # stay unset so the base's 52-adsbitalia-register hook self-noops (no public-IP
+  # detection, no POST to adsbitalia.it).
+  assert_env_unset ADSBITALIA_REGISTRATION
   # Persistent data must live on /data (survives rebuilds) and the high-frequency
   # collectd RRDs must be RAM-backed with hourly write-back to /data.
   assert_symlink /var/globe_history /data/globe_history
@@ -262,6 +266,17 @@ case_rtlsdr() {
   assert_env_contains ULTRAFEEDER_CONFIG 'mlat,dati.flyitalyadsb.com,30100'
   assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed.adsbitalia.it,31108,beast_reduce_plus_out'
   assert_env_contains ULTRAFEEDER_CONFIG 'mlat,mlat.adsbitalia.it,41113'
+  # adsbitalia_name rides the MLAT connector as name= (overrides MLAT_USER).
+  assert_env_contains ULTRAFEEDER_CONFIG 'mlat,mlat.adsbitalia.it,41113,uuid=01234567-89ab-cdef-0123-456789abcdef,name=Motown_ADSB'
+  # Feeding ADSBItalia auto-enables its registration, and the registration name
+  # honors adsbitalia_name via ADSBITALIA_NAME (the patched hook prefers it).
+  assert_env_contains ADSBITALIA_REGISTRATION 'true'
+  assert_env_contains ADSBITALIA_NAME 'Motown_ADSB'
+  if docker exec "${CONTAINER}" grep -q 'FEEDER_NAME="${ADSBITALIA_NAME:-${MLAT_USER:-$FEEDER_ID}}"' /etc/s6-overlay/startup.d/52-adsbitalia-register 2>/dev/null; then
+    ok "52-adsbitalia-register patched to prefer ADSBITALIA_NAME"
+  else
+    bad "52-adsbitalia-register not patched (registration name would fall back to MLAT_USER only)"
+  fi
   assert_env_contains ULTRAFEEDER_CONFIG 'adsb,feed1.adsbexchange.com,30004,beast_reduce_plus_out'
   assert_env_contains ULTRAFEEDER_CONFIG 'mlat,feed.adsbexchange.com,31090'
   # adsb.one / HpRadar: non-uniform ports (64004/64006, 30004/31090). Both ride the

@@ -484,6 +484,20 @@ if [[ ${#UF[@]} -gt 0 ]]; then
   )"
 fi
 
+# ADSBItalia auto-registration. When feeding ADSBItalia, enable the base's
+# 52-adsbitalia-register startup hook (it self-noops unless ADSBITALIA_REGISTRATION
+# is set): it registers/updates the station with adsbitalia.it, detecting the
+# public IP and POSTing to their API, persisting a token under /data (globe_history).
+# The upstream hook names the station from MLAT_USER; the Dockerfile patches it to
+# prefer ADSBITALIA_NAME, so the per-aggregator adsbitalia_name override reaches the
+# registration record too -- exactly as it already names the MLAT connector (via
+# add_aggregator, same uf_safe). Blank adsbitalia_name => ADSBITALIA_NAME empty =>
+# the hook falls back to MLAT_USER, matching the connector's own fallback.
+if [[ "$(opt feed_adsbitalia)" == "true" ]]; then
+  setenv ADSBITALIA_REGISTRATION "true"
+  setenv ADSBITALIA_NAME "$(uf_safe "$(opt adsbitalia_name)")"
+fi
+
 # --- Escape hatch: extra KEY=value lines, one per line ---
 EXTRA="$(jq -r '.extra_env // empty' "${OPTIONS_FILE}")"
 if [[ -n "${EXTRA}" ]]; then
