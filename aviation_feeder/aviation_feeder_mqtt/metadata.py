@@ -581,8 +581,8 @@ REPORT_BINARY_SENSORS: list[tuple[str, str, str, str, str]] = [
 # MLAT metrics — for feeders whose mlat-client writes a --stats-json file (see
 # mlat_stats.py); attached per-feeder under the Feeders device like throughput.
 # Two groups by data source:
-#   SYNC   (peer_count / good_sync %) come from the mlat *server* push -- every
-#          MLAT feeder EXCEPT RadarBox (see MLAT_SYNC_CAPABLE). Enabled.
+#   SYNC   (peer_count / good_sync %) come from the mlat *server* push -- not
+#          every server sends it (see MLAT_SYNC_CAPABLE). Enabled.
 #   RESULT (positions/minute, aircraft-used) are written client-side by our
 #          mlat-client patch (patch-mlat-client.py) -- present for EVERY MLAT
 #          feeder incl. RadarBox. Enabled by default like the sync metrics.

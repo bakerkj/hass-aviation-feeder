@@ -13,12 +13,13 @@ feeder key. (piaware uses fa-mlat-client, not this client, so its MLAT status
 comes from piaware's own status.json.)
 
 Two classes of stat live in these files:
-  - peer_count / good_sync %  -- pushed by the mlat *server* (`stats` message);
-    every aggregator sends it EXCEPT RadarBox, whose server never does.
+  - peer_count / good_sync %  -- pushed by the mlat *server* (`stats` message).
+    Most aggregators send it; RadarBox and sdrmap never do.
   - positions/minute + aircraft-used -- computed client-side and written on the
     client's own timer by our build-time mlat-client patch (see
-    patch-mlat-client.py). These populate for EVERY mlat feeder, incl. RadarBox.
-So RadarBox reports positions/aircraft but not peers/sync (see MLAT_SYNC_CAPABLE)."""
+    patch-mlat-client.py). These populate for EVERY mlat feeder.
+So the servers in MLAT_SYNC_INCAPABLE report positions/aircraft but not
+peers/sync -- see MLAT_SYNC_CAPABLE."""
 
 import json
 import os
@@ -55,11 +56,22 @@ MLAT_STATS_BASENAMES: dict[str, str] = {
 # feeder keys that have MLAT at all (avdelphi and adsbhub have none).
 MLAT_CAPABLE = frozenset(MLAT_STATS_BASENAMES)
 
+# Feeders whose mlat-server never sends the `stats` message, so peer_count and
+# good_sync_percentage_last_hour never appear in their --stats-json. Advertising
+# MLAT Peers / MLAT Sync for these publishes sensors that can never populate --
+# they sit "unavailable" in HA forever.
+#
+# The tell is the file itself: a server that pushes stats yields ~392 bytes with
+# peer_count and good_sync_percentage_last_hour; one that does not yields ~199
+# bytes carrying only the fields our own mlat-client patch writes client-side
+# (positions_per_minute, msg_rate, aircraft_adsb_used/total, *_state). Both
+# RadarBox and sdrmap produce the short form.
+MLAT_SYNC_INCAPABLE = frozenset({"radarbox", "sdrmap"})
+
 # feeder keys whose mlat-server pushes peer_count / good_sync (so the peers/sync
-# sensors get values). Every MLAT feeder EXCEPT RadarBox, whose server never
-# sends the `stats` message -- RadarBox still reports positions/aircraft (written
-# client-side by our mlat-client patch), just not peers/sync.
-MLAT_SYNC_CAPABLE = MLAT_CAPABLE - {"radarbox"}
+# sensors get values). The excluded ones still report positions/aircraft, which
+# are written client-side by our mlat-client patch -- just not peers/sync.
+MLAT_SYNC_CAPABLE = MLAT_CAPABLE - MLAT_SYNC_INCAPABLE
 
 
 def read_mlat_stats(
@@ -92,7 +104,7 @@ def read_mlat_stats(
         if isinstance(sync, (int, float)):
             vals["mlat_sync"] = sync
         # Client-side stats (written by our mlat-client patch) -- present for
-        # every mlat feeder incl. RadarBox.
+        # every mlat feeder, including the sync-incapable ones.
         pos = data.get("positions_per_minute")
         if isinstance(pos, (int, float)):
             vals["mlat_positions_rate"] = pos

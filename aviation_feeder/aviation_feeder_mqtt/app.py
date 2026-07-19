@@ -188,7 +188,7 @@ def assemble_feeder_discovery(
         # the aggregator's own aircraft view (differs from ours, by design)
         **fm(sub(lambda k: k in _PORTAL_AIRCRAFT_FEEDERS), PORTAL_AIRCRAFT_METRICS),
         **fm(sub(lambda k: k in _PORTAL_RATE_FEEDERS), PORTAL_RATE_METRICS),
-        # MLAT peers/sync (server-pushed; all but RadarBox) + positions/aircraft (all)
+        # MLAT peers/sync (server-pushed; not every server does) + positions/aircraft (all)
         **fm(sub(lambda k: k in MLAT_SYNC_CAPABLE), MLAT_SYNC_METRICS),
         **fm(sub(lambda k: k in MLAT_CAPABLE), MLAT_RESULT_METRICS),
         # feeder self-report binary_sensors (piaware MLAT / Radio)
