@@ -237,14 +237,21 @@ These categories are published, toggled independently:
 
   Feeders whose client reports the aggregator's _own_ view of your station also
   get **Aircraft Tracked**, **Aircraft ADS-B** and **Aircraft non-ADS-B**
-  (FlightRadar24 today). **These numbers are meant to disagree** with the
-  Aircraft sensors on the main Aviation Feeder device, and with each other. The
-  main device reports what your receiver decoded; each portal reports what _its_
-  tracker made of that same feed, and every portal decides for itself what
-  counts as a tracked aircraft. FlightRadar24's non-ADS-B count in particular is
-  aircraft it positions via _its_ MLAT network — typically far higher than the
-  main device's **Aircraft MLAT**, which only counts MLAT resolved locally and
-  is usually 0. A gap between these is normal and is not a fault.
+  (FlightRadar24 today). The main device reports what your receiver decoded;
+  each portal reports what _its_ tracker made of that same feed.
+
+  Expect the portal's **total** to sit close to the main device's — every feeder
+  reads the same in-container readsb, so they are watching the same aircraft.
+  What **is** meant to differ is the ADS-B/non-ADS-B **split**, because each
+  portal classifies for itself. A simultaneous sample: FlightRadar24 reported 59
+  aircraft as 41 ADS-B + 18 non-ADS-B, while readsb reported 58 as 52 ADS-B + 6
+  Mode-S. Same aircraft, different classification — that split is the
+  informative part.
+
+  So do not read **Aircraft non-ADS-B** as an equivalent of the main device's
+  **Aircraft MLAT**: they are not measuring the same thing, and FlightRadar24
+  does not document how it classifies. Small differences in the totals (a few
+  aircraft, from tracker timing and timeouts) are normal and not a fault.
 
   "Feeding" is measured: community aggregators (adsb.lol, adsb.fi, ADS-B
   Exchange, …) report readsb's own connection state; feeders that hold an open
