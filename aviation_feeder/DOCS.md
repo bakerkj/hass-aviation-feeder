@@ -282,12 +282,14 @@ These categories are published, toggled independently:
   whose MLAT server reports it, and **MLAT Positions / Aircraft Used** (the
   client's own resolve rate
   - aircraft it contributes). RadarBox and sdrmap do not send sync statistics,
-    so for those two the positions/aircraft pair is their only MLAT signal. The
-    cumulative Data Sent/Received and Messages counters are also published but
-    disabled by default (enable them in HA if you want totals). FlightAware
-    additionally gets **MLAT** and **Radio** health binary sensors from its own
-    status; the full self-report also rides along as attributes on the
-    Connection sensor.
+    so for those two the positions/aircraft pair is their only MLAT signal. An
+    MLAT sensor reads **0** when that aggregator is not syncing — the MLAT
+    client only reports statistics once it has established sync, so 0 means "not
+    syncing" rather than "no data". The cumulative Data Sent/Received and
+    Messages counters are also published but disabled by default (enable them in
+    HA if you want totals). FlightAware additionally gets **MLAT** and **Radio**
+    health binary sensors from its own status; the full self-report also rides
+    along as attributes on the Connection sensor.
 
   Feeders whose client reports the aggregator's _own_ view of your station also
   get **Aircraft Tracked**, **Aircraft ADS-B** and **Aircraft non-ADS-B**

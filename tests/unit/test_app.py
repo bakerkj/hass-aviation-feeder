@@ -14,6 +14,7 @@ sys.path.insert(
 
 from aviation_feeder_mqtt import app  # noqa: E402
 from aviation_feeder_mqtt.feeders import ALL_FEEDER_KEYS  # noqa: E402
+from aviation_feeder_mqtt.mlat_stats import MLAT_CAPABLE  # noqa: E402
 from aviation_feeder_mqtt.metadata import (  # noqa: E402
     FEEDERS_DEVICE_ID,
     REPORT_BINARY_SENSORS,
@@ -209,6 +210,80 @@ class StaleFeederTopics(unittest.TestCase):
             f"{self.PREFIX}/binary_sensor/{FEEDERS_DEVICE_ID}/piaware_mlat_ok/config",
             stale,
         )
+
+
+class MlatStates(unittest.TestCase):
+    """Zero-fill for MLAT sensors that are not syncing.
+
+    These tests model "enabled feeder, no fresh stats" -- they do not assert
+    anything about the client process, which mlat_states never inspects. The
+    policy under test is that such a feeder reports 0 rather than nothing,
+    because mlat-client writes its --stats-json only after establishing sync."""
+
+    ENABLED = {"adsbfi", "hpradar", "sdrmap", "radarbox", "piaware", "fr24"}
+
+    def test_syncing_feeder_reports_real_values(self):
+        stats = {
+            "adsbfi": {
+                "mlat_peers": 69,
+                "mlat_sync": 99,
+                "mlat_positions_rate": 23.9,
+                "mlat_aircraft": 9,
+            }
+        }
+        out = app.mlat_states(stats, self.ENABLED)
+        self.assertEqual(out[("adsbfi", "mlat_peers")], 69)
+        self.assertEqual(out[("adsbfi", "mlat_sync")], 99)
+        self.assertAlmostEqual(out[("adsbfi", "mlat_positions_rate")], 23.9)
+
+    def test_feeder_with_no_stats_file_reports_zero_not_nothing(self):
+        # THE regression: hpradar's client is running but has never written a
+        # stats file, so it is not syncing. That is knowledge, not ignorance.
+        out = app.mlat_states({}, self.ENABLED)
+        for suf in ("mlat_peers", "mlat_sync", "mlat_positions_rate", "mlat_aircraft"):
+            self.assertEqual(out[("hpradar", suf)], 0, f"{suf} should be 0")
+
+    def test_sync_incapable_feeders_get_no_peers_or_sync(self):
+        # Applicability must mirror assemble_feeder_discovery: radarbox and
+        # sdrmap have no peers/sync discovery, so publishing a state for them
+        # would target a sensor that was never advertised.
+        out = app.mlat_states({}, self.ENABLED)
+        for key in ("radarbox", "sdrmap"):
+            self.assertNotIn((key, "mlat_peers"), out)
+            self.assertNotIn((key, "mlat_sync"), out)
+            self.assertEqual(out[(key, "mlat_aircraft")], 0)
+            self.assertEqual(out[(key, "mlat_positions_rate")], 0)
+
+    def test_non_mlat_and_disabled_feeders_are_absent(self):
+        out = app.mlat_states({}, self.ENABLED)
+        # piaware uses fa-mlat-client (not MLAT_CAPABLE); fr24 has no MLAT
+        for key in ("piaware", "fr24"):
+            self.assertFalse(
+                [k for k in out if k[0] == key], f"{key} is not MLAT-capable"
+            )
+        # a MLAT-capable feeder the user disabled must not get states either
+        self.assertFalse(app.mlat_states({}, set()))
+
+    def test_partial_stats_zero_fill_the_missing_field(self):
+        # A file carrying peers but no sync yields sync=0 rather than a gap.
+        out = app.mlat_states({"adsbfi": {"mlat_peers": 5}}, self.ENABLED)
+        self.assertEqual(out[("adsbfi", "mlat_peers")], 5)
+        self.assertEqual(out[("adsbfi", "mlat_sync")], 0)
+
+    def test_every_state_has_matching_discovery(self):
+        """Drift guard: a state published for a sensor with no discovery is an
+        orphan. Every (key, suffix) produced here must exist as a discovery
+        topic for the same feeder set."""
+        enabled = sorted(MLAT_CAPABLE)
+        fstat = [(k, k, True) for k in enabled]
+        disc = app.assemble_feeder_discovery(
+            "homeassistant", "t/f", "t/s", 90, fstat, via_parent=True
+        )
+        for key, suf in app.mlat_states({}, set(enabled)):
+            topic = f"homeassistant/sensor/{FEEDERS_DEVICE_ID}/{key}_{suf}/config"
+            self.assertIn(
+                topic, disc, f"{key}/{suf} would be published with no discovery"
+            )
 
 
 if __name__ == "__main__":
