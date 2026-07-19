@@ -112,13 +112,47 @@ class ReadMlatStats(unittest.TestCase):
             )
             self.assertNotIn("mlat_peers", out["radarbox"])
 
-    def test_radarbox_capable_but_not_sync_capable(self):
-        self.assertIn("radarbox", mlat_stats.MLAT_CAPABLE)
-        self.assertNotIn("radarbox", mlat_stats.MLAT_SYNC_CAPABLE)
-        # every other MLAT feeder is sync-capable
+    def test_sync_incapable_feeders_are_capable_but_not_sync_capable(self):
+        # RadarBox and sdrmap run MLAT, but their servers never push the `stats`
+        # message, so peers/sync would sit unavailable forever if advertised.
+        for key in ("radarbox", "sdrmap"):
+            self.assertIn(key, mlat_stats.MLAT_CAPABLE, f"{key} should do MLAT")
+            self.assertNotIn(key, mlat_stats.MLAT_SYNC_CAPABLE, f"{key} has no sync")
         self.assertEqual(
-            mlat_stats.MLAT_SYNC_CAPABLE, mlat_stats.MLAT_CAPABLE - {"radarbox"}
+            mlat_stats.MLAT_SYNC_CAPABLE,
+            mlat_stats.MLAT_CAPABLE - mlat_stats.MLAT_SYNC_INCAPABLE,
         )
+
+    def test_sync_incapable_derived_from_a_stats_file_without_peer_count(self):
+        """The exclusion is a claim about the file each server produces, so drive
+        it from a realistic file rather than restating the constant.
+
+        A sync-incapable server yields only the fields our own mlat-client patch
+        writes client-side; a capable one adds peer_count and the sync
+        percentages. Anything parsed out of the short form must not include
+        mlat_peers/mlat_sync, which is exactly why those feeders are excluded."""
+        short_form = {
+            "positions_per_minute": 0.0,
+            "msg_rate": 274.5,
+            "aircraft_adsb_used": 31,
+            "aircraft_adsb_total": 38,
+            "receiver_state": "connected",
+            "server_state": "ready",
+            "client_now": 1784491744,
+        }
+        with tempfile.TemporaryDirectory() as d:
+            for key in mlat_stats.MLAT_SYNC_INCAPABLE:
+                base = mlat_stats.MLAT_STATS_BASENAMES[key]
+                with open(os.path.join(d, base + ".json"), "w", encoding="utf-8") as f:
+                    json.dump(short_form, f)
+            out = mlat_stats.read_mlat_stats(directory=d)
+            for key in mlat_stats.MLAT_SYNC_INCAPABLE:
+                self.assertIn(key, out, f"{key} should still report client-side stats")
+                self.assertNotIn("mlat_peers", out[key])
+                self.assertNotIn("mlat_sync", out[key])
+                # ...but the client-side metrics DO survive, which is why these
+                # feeders stay in MLAT_CAPABLE.
+                self.assertIn("mlat_aircraft", out[key])
 
     def test_all_basenames_map_to_known_feeder_keys(self):
         # every configured basename key is a real feeder key (community or client)

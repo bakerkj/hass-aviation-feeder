@@ -278,10 +278,11 @@ These categories are published, toggled independently:
   a **Connection** sensor showing whether it is actually feeding, plus an
   **Uptime** sensor. Where the data is available a feeder also gets a **Send /
   Receive Rate** (bytes/sec — or a **Message Rate** for FlightRadar24, which
-  feeds over UDP with no byte count), **MLAT peers / MLAT sync** for
-  MLAT-capable feeders (all but RadarBox), and **MLAT Positions / Aircraft
-  Used** (the client's own resolve rate
-  - aircraft it contributes — for RadarBox this is its only MLAT signal). The
+  feeds over UDP with no byte count), **MLAT peers / MLAT sync** for the feeders
+  whose MLAT server reports it, and **MLAT Positions / Aircraft Used** (the
+  client's own resolve rate
+  - aircraft it contributes). RadarBox and sdrmap do not send sync statistics,
+    so for those two the positions/aircraft pair is their only MLAT signal. The
     cumulative Data Sent/Received and Messages counters are also published but
     disabled by default (enable them in HA if you want totals). FlightAware
     additionally gets **MLAT** and **Radio** health binary sensors from its own

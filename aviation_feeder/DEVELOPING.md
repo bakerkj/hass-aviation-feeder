@@ -807,12 +807,12 @@ longer applies — e.g. dropped from an older build — is deleted, not left
 - **Messages** — fr24 only: a **Message Rate** (msg/s) primary sensor
   (`MESSAGES_RATE_METRICS`) plus a disabled-by-default cumulative `Messages`
   counter, since UDP has no byte counter.
-- **MLAT Peers / MLAT Sync** — the `MLAT_SYNC_CAPABLE` feeders (every MLAT
-  feeder _except_ RadarBox, whose server never pushes the sync stats): the
-  community MLAT connectors + the commercial clients plane.watch, sdrmap,
-  radarvirtuel. RadarBox reports no peers/sync, so **MLAT Positions / Aircraft
-  Used** (client-side stats present for every MLAT feeder) are its only MLAT
-  signal.
+- **MLAT Peers / MLAT Sync** — the `MLAT_SYNC_CAPABLE` feeders, i.e. every MLAT
+  feeder except those in `MLAT_SYNC_INCAPABLE` (**RadarBox and sdrmap**, whose
+  servers never push the sync stats): the community MLAT connectors + the
+  commercial clients plane.watch and radarvirtuel. For RadarBox and sdrmap,
+  **MLAT Positions / Aircraft Used** (client-side stats present for every MLAT
+  feeder) are their only MLAT signal.
 - **piaware MLAT / Radio** — piaware isn't `MLAT_CAPABLE` (it uses
   `fa-mlat-client`, no peer_count), so its MLAT + radio health from
   `status.json` are surfaced as `binary_sensor`s (`REPORT_BINARY_SENSORS`, on
