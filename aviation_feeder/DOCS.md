@@ -235,6 +235,17 @@ These categories are published, toggled independently:
     status; the full self-report also rides along as attributes on the
     Connection sensor.
 
+  Feeders whose client reports the aggregator's _own_ view of your station also
+  get **Aircraft Tracked**, **Aircraft ADS-B** and **Aircraft non-ADS-B**
+  (FlightRadar24 today). **These numbers are meant to disagree** with the
+  Aircraft sensors on the main Aviation Feeder device, and with each other. The
+  main device reports what your receiver decoded; each portal reports what _its_
+  tracker made of that same feed, and every portal decides for itself what
+  counts as a tracked aircraft. FlightRadar24's non-ADS-B count in particular is
+  aircraft it positions via _its_ MLAT network — typically far higher than the
+  main device's **Aircraft MLAT**, which only counts MLAT resolved locally and
+  is usually 0. A gap between these is normal and is not a fault.
+
   "Feeding" is measured: community aggregators (adsb.lol, adsb.fi, ADS-B
   Exchange, …) report readsb's own connection state; feeders that hold an open
   connection are checked for a live socket to the aggregator (so a feeder that

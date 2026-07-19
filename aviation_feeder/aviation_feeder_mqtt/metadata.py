@@ -319,6 +319,43 @@ UPTIME_METRICS: list[FeederMetric] = [
     ),
 ]
 
+# Per-portal aircraft counts: the aggregator's OWN view of the station, read from
+# that feeder client's self-report (see app_reports). These deliberately DISAGREE
+# with the main device's aircraft_* sensors and with each other -- each portal
+# runs its own tracker over the same feed, so it decides for itself what counts
+# as a tracked aircraft. That divergence is the point (it's what the retired
+# Multi-Portal add-on surfaced); it is not a bug. Names stay unqualified because
+# these hang off the per-feeder sub-device, which already carries the attribution.
+PORTAL_AIRCRAFT_METRICS: list[FeederMetric] = [
+    FeederMetric(
+        "portal_aircraft",
+        "Aircraft Tracked",
+        "aircraft",
+        None,
+        "measurement",
+        "mdi:airplane",
+        0,
+    ),
+    FeederMetric(
+        "portal_aircraft_adsb",
+        "Aircraft ADS-B",
+        "aircraft",
+        None,
+        "measurement",
+        "mdi:airplane",
+        0,
+    ),
+    FeederMetric(
+        "portal_aircraft_other",
+        "Aircraft non-ADS-B",
+        "aircraft",
+        None,
+        "measurement",
+        "mdi:airplane-marker",
+        0,
+    ),
+]
+
 # Feeder-specific health binary_sensors derived from an app self-report — currently
 # only piaware (from its status.json), whose MLAT/radio health has no mlat-client
 # --stats-json equivalent. (feeder_key, suffix, entity_name, report_field, icon):

@@ -35,6 +35,7 @@ from .metadata import (
     MLAT_SYNC_METRICS,
     NEARBY_METRICS,
     NEARBY_STATE_KEY,
+    PORTAL_AIRCRAFT_METRICS,
     REPORT_BINARY_SENSORS,
     THROUGHPUT_METRICS,
     THROUGHPUT_RATE_METRICS,
@@ -82,6 +83,7 @@ _ALL_FEEDER_METRIC_SUFFIXES: tuple[str, ...] = tuple(
         UPTIME_METRICS,
         MLAT_SYNC_METRICS,
         MLAT_RESULT_METRICS,
+        PORTAL_AIRCRAFT_METRICS,
     )
     for m in grp
 )
@@ -94,6 +96,9 @@ _ALL_FEEDER_METRIC_SUFFIXES: tuple[str, ...] = tuple(
 # MLAT_SYNC_CAPABLE.)
 _BYTE_FEEDERS = frozenset(THROUGHPUT_KERNEL) | {"planefinder"}
 _MESSAGE_FEEDERS = frozenset({"fr24"})
+# Feeders whose client reports the aggregator's own aircraft view (app_reports).
+# Only fr24 so far; radarbox/adsbx/planefinder follow in their own changes.
+_PORTAL_AIRCRAFT_FEEDERS = frozenset({"fr24"})
 
 
 class RateTracker:
@@ -171,6 +176,8 @@ def assemble_feeder_discovery(
         **fm(sub(lambda k: k in _MESSAGE_FEEDERS), MESSAGES_METRICS),
         **fm(sub(lambda k: k in _BYTE_FEEDERS), THROUGHPUT_RATE_METRICS),
         **fm(sub(lambda k: k in _MESSAGE_FEEDERS), MESSAGES_RATE_METRICS),
+        # the aggregator's own aircraft view (differs from ours, by design)
+        **fm(sub(lambda k: k in _PORTAL_AIRCRAFT_FEEDERS), PORTAL_AIRCRAFT_METRICS),
         # MLAT peers/sync (server-pushed; all but RadarBox) + positions/aircraft (all)
         **fm(sub(lambda k: k in MLAT_SYNC_CAPABLE), MLAT_SYNC_METRICS),
         **fm(sub(lambda k: k in MLAT_CAPABLE), MLAT_RESULT_METRICS),
@@ -879,6 +886,14 @@ def main() -> int:
                         mr = rates.rate("fr24", "messages", fr["messages"], now)
                         if mr is not None:
                             _pub("messages_rate", "fr24", round(mr, 1))
+                    # Per-portal aircraft counts (the aggregator's own view).
+                    for key in _PORTAL_AIRCRAFT_FEEDERS & enabled_keys:
+                        rep = reports.get(key)
+                        if not rep:
+                            continue
+                        for pm in PORTAL_AIRCRAFT_METRICS:
+                            if pm.suffix in rep:
+                                _pub(pm.suffix, key, rep[pm.suffix])
                     # Per-feeder MLAT sync (mlat-client --stats-json files).
                     for key, vals in read_mlat_stats().items():
                         if key not in enabled_keys:

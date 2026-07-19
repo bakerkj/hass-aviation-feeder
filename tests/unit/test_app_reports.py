@@ -66,6 +66,83 @@ class Fr24Report(unittest.TestCase):
     def test_unreachable(self):
         self.assertIsNone(app_reports.fr24_report(fetch=lambda url: None))
 
+    def test_portal_aircraft_counts(self):
+        # monitor.json reports every value as a string.
+        r = app_reports.fr24_report(
+            fetch=lambda url: {
+                "feed_status": "connected",
+                "feed_num_ac_tracked": "78",
+                "feed_num_ac_adsb_tracked": "56",
+                "feed_num_ac_non_adsb_tracked": "22",
+            }
+        )
+        self.assertEqual(r["portal_aircraft"], 78)
+        self.assertEqual(r["portal_aircraft_adsb"], 56)
+        self.assertEqual(r["portal_aircraft_other"], 22)
+
+    def test_portal_aircraft_absent_when_not_reported(self):
+        # An older/leaner fr24feed that omits the counts must not fabricate them.
+        r = app_reports.fr24_report(fetch=lambda url: {"feed_status": "connected"})
+        for k in ("portal_aircraft", "portal_aircraft_adsb", "portal_aircraft_other"):
+            self.assertNotIn(k, r)
+
+    def test_unparsable_counts_are_skipped(self):
+        r = app_reports.fr24_report(
+            fetch=lambda url: {
+                "feed_status": "connected",
+                "feed_num_ac_tracked": "n/a",
+                "feed_num_ac_adsb_tracked": None,
+            }
+        )
+        self.assertNotIn("portal_aircraft", r)
+        self.assertNotIn("portal_aircraft_adsb", r)
+
+
+class ReportsDoNotLeakIdentity(unittest.TestCase):
+    """Reports are published verbatim to MQTT as feeder attributes (see app.py's
+    reports loop), so a reader must copy an explicit allowlist and drop anything
+    else. These payloads carry station identity; the repo is public."""
+
+    def test_fr24_drops_feed_alias_and_unknown_keys(self):
+        r = app_reports.fr24_report(
+            fetch=lambda url: {
+                "feed_status": "connected",
+                "feed_num_ac_tracked": "78",
+                "feed_alias": "T-STATION123",  # station id -- must not publish
+                "feed_current_server": "blender.example.invalid",
+                "some_future_upstream_field": "surprise",
+            }
+        )
+        blob = json.dumps(r)
+        self.assertNotIn("T-STATION123", blob)
+        self.assertNotIn("blender.example.invalid", blob)
+        self.assertNotIn("surprise", blob)
+        self.assertEqual(r["portal_aircraft"], 78)  # allowlisted field survives
+
+    def test_piaware_drops_site_url(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "status.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "piaware": {"status": "green"},
+                        "mlat": {"status": "green"},
+                        # username + site id live here -- must never be published
+                        "site_url": "https://flightaware.example/user/someuser#stats-99",
+                        "cpu_temp_celcius": 51.2,
+                    },
+                    f,
+                )
+            r = app_reports.piaware_report(p)
+            # Assert the allowlisted fields survived FIRST -- otherwise a reader
+            # that returned None would make every assertNotIn below pass
+            # vacuously and the leak guard would be worthless.
+            self.assertEqual(r["mlat"], "green")
+            self.assertEqual(r["cpu_temp_c"], 51.2)
+            blob = json.dumps(r)
+            self.assertNotIn("someuser", blob)
+            self.assertNotIn("site_url", blob)
+
 
 class PfclientReport(unittest.TestCase):
     def test_bytes_no_connected(self):

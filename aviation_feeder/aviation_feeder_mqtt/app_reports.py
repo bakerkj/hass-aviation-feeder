@@ -21,7 +21,18 @@ we use as the authoritative source for BOTH their feeding-state and throughput:
 Each report carries a "connected" bool (authoritative feeding-state for that
 feeder) plus metric/attribute fields. Everything is best-effort: any
 read/parse/HTTP error yields no report (the feeder then falls back to its
-process/kernel signal, or shows unavailable — never a fabricated value)."""
+process/kernel signal, or shows unavailable — never a fabricated value).
+
+SECURITY — read before adding a field. Whatever a report returns is published
+verbatim to MQTT as that feeder's `attributes` (see app.py's reports loop), so
+these functions are the ONLY barrier between a vendor payload and the broker.
+The source payloads carry station identity: piaware's status.json embeds the
+FlightAware username and site id in `site_url`; rbfeeder's status.json carries
+the serial number, MAC and coordinates; fr24's monitor.json carries `feed_alias`;
+pfclient's /ajax/aircraft carries user_lat/user_lon. So every reader copies an
+explicit allowlist of scalar fields into a fresh dict — never `return d`, never
+`out.update(d)`, never pass through a nested sub-dict. Adding a field here is a
+publishing decision, not a parsing one."""
 
 import json
 import urllib.request
@@ -88,6 +99,19 @@ def fr24_report(fetch=_http_json) -> dict[str, Any] | None:
     msgs = _as_int(d.get("num_messages"))
     if msgs is not None:
         out["messages"] = msgs
+    # FR24's own view of the station: how many aircraft *it* considers tracked,
+    # split ADS-B vs not. Deliberately differs from our receiver-side counts --
+    # non_adsb is FR24's MLAT-derived total (positions computed by FR24's
+    # network), not readsb's local MLAT count, which is usually 0. monitor.json
+    # reports every value as a string, hence _as_int.
+    for field, name in (
+        ("feed_num_ac_tracked", "portal_aircraft"),
+        ("feed_num_ac_adsb_tracked", "portal_aircraft_adsb"),
+        ("feed_num_ac_non_adsb_tracked", "portal_aircraft_other"),
+    ):
+        v = _as_int(d.get(field))
+        if v is not None:
+            out[name] = v
     # Authoritative feeding-state for fr24: its own feed_status.
     out["connected"] = d.get("feed_status") == "connected"
     return out
