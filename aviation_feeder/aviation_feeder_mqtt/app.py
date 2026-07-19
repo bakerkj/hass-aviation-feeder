@@ -18,6 +18,7 @@ import paho.mqtt.client as mqtt
 
 from . import __version__
 from .feeders import (
+    ALL_FEEDER_KEYS,
     THROUGHPUT_KERNEL,
     _truthy,
     compute_feeder_status,
@@ -95,6 +96,14 @@ _ALL_FEEDER_METRIC_SUFFIXES: tuple[str, ...] = tuple(
     for m in grp
 )
 
+# Report binary_sensors per feeder (piaware mlat_ok / radio_ok). Keyed by feeder
+# because the association is load-bearing: only the owning feeder ever gets that
+# topic, so flattening to a bare suffix list would make the retraction generate
+# combinations that can never exist (adsblol_mlat_ok, fr24_radio_ok, ...).
+_REPORT_BINARY_SUFFIXES_BY_KEY: dict[str, list[str]] = {}
+for _rk, _rsuf, _rn, _rf, _ri in REPORT_BINARY_SENSORS:
+    _REPORT_BINARY_SUFFIXES_BY_KEY.setdefault(_rk, []).append(_rsuf)
+
 # Per-feeder metric applicability — single source of truth for discovery (the
 # state-publish loops below feed the same suffixes from each metric's data
 # source). Byte throughput is measurable for the kernel-TCP feeders plus pfclient
@@ -141,6 +150,36 @@ class PlanefinderFeedState:
         if prev is None:
             return bool(bytes_sent)
         return bytes_sent is not None and bytes_sent > prev
+
+
+def stale_feeder_topics(discovery_prefix, published) -> list[str]:
+    """Per-feeder discovery topics that should be retracted (empty retained
+    payload) because this cycle did not publish them.
+
+    Covers EVERY known feeder, not just the enabled ones. compute_feeder_status
+    enumerates only enabled feeders, so a feeder the user has switched off is
+    absent from that list -- anything iterating it can never reach the disabled
+    feeder's topics, and its retained configs would sit in the broker forever
+    while HA shows the entities as permanently "unavailable".
+
+    All three per-feeder topic shapes are covered: the connection binary_sensor,
+    the report binary_sensors (piaware mlat_ok / radio_ok), and the metrics.
+    """
+    out: list[str] = []
+    for key in sorted(ALL_FEEDER_KEYS):
+        candidates = [
+            f"{discovery_prefix}/binary_sensor/{FEEDERS_DEVICE_ID}/{key}/config"
+        ]
+        candidates += [
+            f"{discovery_prefix}/binary_sensor/{FEEDERS_DEVICE_ID}/{key}_{suf}/config"
+            for suf in _REPORT_BINARY_SUFFIXES_BY_KEY.get(key, ())
+        ]
+        candidates += [
+            f"{discovery_prefix}/sensor/{FEEDERS_DEVICE_ID}/{key}_{suf}/config"
+            for suf in _ALL_FEEDER_METRIC_SUFFIXES
+        ]
+        out.extend(t for t in candidates if t not in published)
+    return out
 
 
 def assemble_feeder_discovery(
@@ -530,26 +569,18 @@ def main() -> int:
                             health=health,
                         )
                         published += 1
-                    # Remove any per-feeder metric entity that no longer applies
-                    # (e.g. the dropped aggregator/fr24 byte sensors from an older
-                    # build): publish an empty retained config so HA deletes it
-                    # instead of leaving it "unavailable".
-                    for key, _n, _c in fstat:
-                        for suf in _ALL_FEEDER_METRIC_SUFFIXES:
-                            topic = (
-                                f"{discovery_prefix}/sensor/{FEEDERS_DEVICE_ID}"
-                                f"/{key}_{suf}/config"
-                            )
-                            if topic not in feeders_disc:
-                                mqtt_publish(
-                                    client,
-                                    topic,
-                                    "",
-                                    qos=1,
-                                    retain=True,
-                                    log_level=log_level,
-                                    health=health,
-                                )
+                    # Retract anything this cycle did not publish -- including
+                    # every entity of a feeder the user has since disabled.
+                    for topic in stale_feeder_topics(discovery_prefix, feeders_disc):
+                        mqtt_publish(
+                            client,
+                            topic,
+                            "",
+                            qos=1,
+                            retain=True,
+                            log_level=log_level,
+                            health=health,
+                        )
                 # Toggleable main-device discovery. Each publishes its real config
                 # when its feature is on, else retained-empty to remove the entity.
                 # SDR + UAT are hardware-gated (local dongle / local 978 decode);

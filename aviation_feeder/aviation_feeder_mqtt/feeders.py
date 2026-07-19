@@ -118,6 +118,15 @@ PROPRIETARY_FEEDERS: list[tuple[str, str, str, str, str]] = [
     ("uk1090", "1090MHz UK", "enable_uk1090", "sbin/radar", "conn"),
 ]
 
+# Every feeder key the add-on knows about, enabled or not. Discovery retraction
+# needs this: a feeder the user has DISABLED is absent from compute_feeder_status,
+# so anything iterating only the enabled set can never reach it to clean up its
+# retained configs.
+ALL_FEEDER_KEYS: frozenset[str] = frozenset(
+    [f[0] for f in COMMUNITY_FEEDERS] + [f[0] for f in PROPRIETARY_FEEDERS]
+)
+
+
 # Client feeders whose byte throughput comes from the kernel's per-socket
 # counters (persistent TCP, inode-attributed — the "conn"-mode feeders). fr24
 # and pfclient report their own throughput (app_reports); radarvirtuel/sdrmap
