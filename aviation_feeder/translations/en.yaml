@@ -461,6 +461,14 @@ configuration:
       Publish a counter on the "Aviation Feeder" device of how many distinct
       aircraft you have seen since local midnight. Resets each day; a restart of
       the add-on also resets the running count.
+  ha_message_types:
+    name: Publish message-type (downlink format) sensors
+    description: >-
+      Publish an "Aviation Feeder — Message Types" device breaking your 1090 MHz
+      traffic down by Mode S downlink format: ADS-B position broadcasts,
+      all-call replies, aircraft-to-aircraft collision-avoidance messages, and
+      replies to ground radar. Shows what kind of traffic your receiver hears,
+      not just how much. Reads readsb's data stream on a background connection.
   ha_near_me_radius:
     name: Nearby radius (nmi)
     description: >-

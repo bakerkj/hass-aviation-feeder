@@ -765,6 +765,51 @@ def compute_sdr_metrics(stats: dict[str, Any]) -> dict[str, float | int | None]:
 # equivalents of the 1090 receiver stats on a SEPARATE device so they group on
 # their own and appear/disappear with local UAT decode. max_distance_m is only
 # present when the receiver location (LAT/LON) is set.
+# --- "Message Types" device (Mode S downlink-format breakdown) --------------
+# DF (Downlink Format) is the first five bits of every Mode S message and says
+# what kind of message it is. readsb publishes no per-DF breakdown anywhere, so
+# these rates are counted off its Beast stream by beast.BeastDfCounter; the
+# publisher hands us the {df: rate} snapshot, so the extract functions are unused
+# (like the broker metrics). Own device so the nine sensors group together.
+#
+# The three that sit near zero on a typical station ship hidden, matching how the
+# minor CPU workers are handled: DF5 and DF21 (identity replies, only sent when a
+# radar asks for a squawk) and DF18 (TIS-B/ADS-R, rebroadcast ground services).
+DF_DEVICE_ID = "aviation_feeder_message_types"
+DF_DEVICE_NAME = "Aviation Feeder — Message Types"
+
+# (df, key, display name, icon, enabled_default)
+_DF_SENSORS: list[tuple[int, str, str, str, bool]] = [
+    (17, "df17_rate", "ADS-B (DF17)", "mdi:broadcast", True),
+    (11, "df11_rate", "All-Call Reply (DF11)", "mdi:account-question-outline", True),
+    (0, "df0_rate", "TCAS Short (DF0)", "mdi:airplane-alert", True),
+    (16, "df16_rate", "TCAS Long (DF16)", "mdi:airplane-alert", True),
+    (4, "df4_rate", "Altitude Reply (DF4)", "mdi:altimeter", True),
+    (20, "df20_rate", "Comm-B Altitude (DF20)", "mdi:altimeter", True),
+    (5, "df5_rate", "Identity Reply (DF5)", "mdi:identifier", False),
+    (21, "df21_rate", "Comm-B Identity (DF21)", "mdi:identifier", False),
+    (18, "df18_rate", "TIS-B / ADS-R (DF18)", "mdi:satellite-uplink", False),
+]
+
+DF_METRICS: list[Metric] = [
+    Metric(
+        key,
+        name,
+        "msg/s",
+        None,
+        "measurement",
+        icon,
+        2,
+        lambda s: None,  # filled by the publisher from the Beast snapshot
+        enabled_default=on,
+    )
+    for _df, key, name, icon, on in _DF_SENSORS
+]
+
+# metric key -> the DF number the counter reports it under.
+DF_KEY_BY_NUMBER: dict[int, str] = {df: key for df, key, _n, _i, _e in _DF_SENSORS}
+
+
 UAT_DEVICE_ID = "aviation_feeder_uat"
 UAT_DEVICE_NAME = "Aviation Feeder — UAT"
 

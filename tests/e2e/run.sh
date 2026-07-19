@@ -822,6 +822,27 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
       *"aviation_feeder_feeders/adsbexchange_portal_message_rate/config {"*) bad "portal rate sensor present for adsbexchange (it reports no rates)" ;;
       *) ok "portal rate sensors correctly absent for adsbexchange" ;;
     esac
+    # Mode S downlink-format rates on their own Message Types device, counted
+    # off readsb's Beast stream (readsb reports no per-DF breakdown itself).
+    case "${CAP}" in
+      *"aviation_feeder_message_types/df17_rate/config {"*) ok "mqtt DF17 (ADS-B) discovery published" ;;
+      *) bad "mqtt DF17 discovery missing" ;;
+    esac
+    case "${CAP}" in
+      *"aviation_feeder_message_types/df11_rate/config {"*) ok "mqtt DF11 (all-call) discovery published" ;;
+      *) bad "mqtt DF11 discovery missing" ;;
+    esac
+    # The near-zero DFs ship hidden; check the flag on their own config line.
+    if printf '%s' "${CAP}" | grep -q 'aviation_feeder_message_types/df21_rate/config .*"enabled_by_default":false'; then
+      ok "mqtt DF21 ships hidden"
+    else
+      bad "df21_rate missing enabled_by_default:false in its own config"
+    fi
+    if printf '%s' "${CAP}" | grep -q 'aviation_feeder_message_types/df17_rate/config .*"enabled_by_default":false'; then
+      bad "df17_rate is hidden but should be visible"
+    else
+      ok "mqtt DF17 correctly visible"
+    fi
     # Network-ingest rates on the main device (readsb stats.json last1min.remote).
     case "${CAP}" in
       *"aviation_feeder/remote_message_rate/config {"*) ok "mqtt network message-rate discovery published" ;;

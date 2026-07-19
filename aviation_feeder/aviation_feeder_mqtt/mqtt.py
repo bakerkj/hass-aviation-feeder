@@ -17,6 +17,9 @@ from .metadata import (
     DEVICE_NAME,
     EMERGENCY_SQUAWK_KEY,
     FEEDERS_DEVICE_ID,
+    DF_DEVICE_ID,
+    DF_DEVICE_NAME,
+    DF_METRICS,
     METRICS,
     PERFORMANCE_METRICS,
     REMOTE_METRICS,
@@ -340,6 +343,32 @@ def build_uat_discovery(
             diagnostic=False,
         )
         out[f"{discovery_prefix}/sensor/{UAT_DEVICE_ID}/{m.key}/config"] = cfg
+    return out
+
+
+def build_df_discovery(
+    discovery_prefix: str,
+    df_topic: str,
+    availability_topic: str,
+    expire_after_s: int,
+) -> dict[str, dict[str, Any]]:
+    """Mode S downlink-format message rates on their OWN "Message Types" device.
+    Counted off readsb's Beast stream (see beast.py) because readsb reports no
+    per-DF breakdown itself. Not diagnostic -- the traffic mix is a dashboard
+    number, not a fault indicator."""
+    out: dict[str, dict[str, Any]] = {}
+    device = _device(DF_DEVICE_ID, DF_DEVICE_NAME)
+    for m in DF_METRICS:
+        cfg = _metric_config(
+            m,
+            device,
+            DF_DEVICE_ID,
+            f"{df_topic}/{m.key}/state",
+            availability_topic,
+            expire_after_s,
+            diagnostic=False,
+        )
+        out[f"{discovery_prefix}/sensor/{DF_DEVICE_ID}/{m.key}/config"] = cfg
     return out
 
 

@@ -250,6 +250,29 @@ These categories are published, toggled independently:
   counter on the **Aviation Feeder** device: how many distinct aircraft you have
   seen since local midnight. It resets each day (and on an add-on restart, which
   Home Assistant treats as a normal counter reset).
+- **Message types** (`ha_message_types`) → an **Aviation Feeder — Message
+  Types** device breaking your 1090 MHz traffic down by **Downlink Format**, the
+  field at the start of every Mode S message that says what kind of message it
+  is. All values are messages/second:
+
+  | Sensor                                               | What it is                                                |
+  | ---------------------------------------------------- | --------------------------------------------------------- |
+  | **ADS-B (DF17)**                                     | aircraft broadcasting position, velocity and callsign     |
+  | **All-Call Reply (DF11)**                            | replies announcing an aircraft's ICAO address             |
+  | **TCAS Short / Long (DF0, DF16)**                    | aircraft interrogating each other for collision avoidance |
+  | **Altitude Reply (DF4)**, **Comm-B Altitude (DF20)** | replies to a ground radar asking for altitude             |
+  | **Identity Reply (DF5)**, **Comm-B Identity (DF21)** | replies to a ground radar asking for the squawk           |
+  | **TIS-B / ADS-R (DF18)**                             | ground services rebroadcasting traffic                    |
+
+  The mix tells you about your RF environment, not just your antenna: DF17 and
+  DF11 are aircraft transmitting on their own, while DF4/5/20/21 only exist
+  because a ground radar interrogated something nearby — a high count means you
+  are near an interrogating radar.
+
+  readsb does not report this itself, so the add-on counts it directly from
+  readsb's Beast output on a background thread. **DF5**, **DF21** and **DF18**
+  ship hidden, since they are typically a fraction of a message per second.
+
 - **Per-feeder status** (`ha_feeder_status`) → **one device per enabled feeder**
   (each grouped under the main Aviation Feeder device). Every feeder device has
   a **Connection** sensor showing whether it is actually feeding, plus an

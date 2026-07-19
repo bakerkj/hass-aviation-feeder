@@ -10,6 +10,7 @@ the --stats-json filename). Drift is silent at runtime -- a status sensor stuck
 00-haos-options and asserts the two Python tables agree with it, so a drift
 fails here instead of in the field."""
 
+import json
 import os
 import re
 import sys
@@ -90,6 +91,75 @@ class AggregatorTablesInSync(unittest.TestCase):
                     MLAT_STATS_BASENAMES,
                     f"{key}: has an MLAT basename but no MLAT connector",
                 )
+
+
+class SensorGroupToggles(unittest.TestCase):
+    """Every ha_* sensor-group toggle must be wired into app.py's per-cycle
+    publish gate. That gate is a hand-listed set of booleans: omitting a toggle
+    publishes the group's discovery configs but never its state topics, so the
+    entities register in Home Assistant and sit permanently unavailable. This is
+    exactly how ha_message_types shipped broken, and it is silent -- no error,
+    no failing assertion, just dead sensors."""
+
+    _CONFIG = os.path.join(
+        os.path.dirname(__file__), "..", "..", "aviation_feeder", "config.json"
+    )
+    _APP = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "aviation_feeder",
+        "aviation_feeder_mqtt",
+        "app.py",
+    )
+    # ha_sensors is the master switch (guards the publisher as a whole) and
+    # ha_near_me_radius is a value, not a group toggle.
+    _NOT_GROUP_TOGGLES = {"ha_sensors", "ha_near_me_radius"}
+
+    def _group_toggles(self):
+        with open(self._CONFIG, encoding="utf-8") as f:
+            opts = json.load(f)["options"]
+        return {
+            k
+            for k, v in opts.items()
+            if k.startswith("ha_")
+            and isinstance(v, bool)
+            and k not in self._NOT_GROUP_TOGGLES
+        }
+
+    def _app_source(self) -> str:
+        with open(self._APP, encoding="utf-8") as f:
+            return f.read()
+
+    def test_every_toggle_is_read_by_the_publisher(self):
+        src = self._app_source()
+        for opt in sorted(self._group_toggles()):
+            self.assertIn(
+                f'"{opt}"',
+                src,
+                f"{opt} is defined in config.json but app.py never reads it",
+            )
+
+    def test_every_toggle_reaches_the_state_publish_gate(self):
+        """The gate is the `any((...))` guarding the per-cycle state publish.
+        Each toggle's variable must appear inside it."""
+        src = self._app_source()
+        m = re.search(r"if health\.connected and any\(\s*\((.*?)\)\s*\)", src, re.S)
+        self.assertIsNotNone(m, "could not locate the state-publish gate in app.py")
+        gate = m.group(1)
+        # map each option to the local variable app.py assigns it to
+        var_of = {}
+        for opt in self._group_toggles():
+            am = re.search(rf'(\w+)\s*=\s*bool\(opts\.get\(\s*"{opt}"', src)
+            self.assertIsNotNone(am, f"{opt} is not assigned to a local in app.py")
+            var_of[opt] = am.group(1)
+        for opt, var in sorted(var_of.items()):
+            self.assertRegex(
+                gate,
+                rf"\b{var}\b",
+                f"{opt} (local `{var}`) is missing from the state-publish gate -- "
+                f"its sensors would register in HA and never receive a state",
+            )
 
 
 if __name__ == "__main__":
