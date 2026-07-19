@@ -160,6 +160,60 @@ METRICS: list[Metric] = [
 ]
 
 
+def _remote_rate(s: dict[str, Any], field: str) -> float | None:
+    """last1min.remote.<field> as a per-second rate. `remote` counts messages
+    arriving over readsb's NETWORK connectors rather than the local SDR."""
+    start = _num(_get(s, "last1min", "start"))
+    end = _num(_get(s, "last1min", "end"))
+    v = _num(_get(s, "last1min", "remote", field))
+    if start is None or end is None or v is None:
+        return None
+    dur = end - start
+    return v / dur if dur > 0 else None
+
+
+# Network-ingest message rates, split Mode-S vs Mode A/C: how much traffic readsb
+# is taking in over its NETWORK connectors rather than the local SDR. This is a
+# station-wide receiver statistic and belongs to the main device.
+#
+# NOT per-feeder, and specifically NOT OpenSky stats. The retired Multi-Portal
+# add-on published these same two fields as opensky_mode_s_rate /
+# opensky_mode_ac_rate, but that name was wrong at the source: its "opensky"
+# sensors read the shared decoder's stats.json, not anything OpenSky reported.
+# openskyd exposes no status endpoint or file at all, so no OpenSky-specific
+# figure exists to publish -- do not present these as one.
+#
+# Mode A/C stays ~0 unless readsb runs with --modeac (it does not by default);
+# a non-zero value here is Mode A/C arriving from a network peer.
+REMOTE_METRICS: list[Metric] = [
+    Metric(
+        "remote_message_rate",
+        "Network Message Rate",
+        "msg/s",
+        None,
+        "measurement",
+        "mdi:lan-pending",
+        1,
+        lambda s: _remote_rate(s, "modes"),
+    ),
+    Metric(
+        "remote_modeac_rate",
+        "Network Mode A/C Rate",
+        "msg/s",
+        None,
+        "measurement",
+        "mdi:radio-tower",
+        2,
+        lambda s: _remote_rate(s, "modeac"),
+    ),
+]
+
+
+def compute_remote_metrics(stats: dict[str, Any]) -> dict[str, float | int | None]:
+    """Map a parsed stats.json into {remote_metric_key: value} (None when absent)."""
+    return {m.key: m.extract(stats) for m in REMOTE_METRICS}
+
+
 def compute_metrics(stats: dict[str, Any]) -> dict[str, float | int | None]:
     """Map a parsed stats.json into {metric_key: value}. Missing values are
     None (skipped when publishing so the HA entity expires cleanly)."""
@@ -326,6 +380,40 @@ UPTIME_METRICS: list[FeederMetric] = [
 # the ADS-B/non-ADS-B SPLIT, since each portal classifies for itself; that split
 # is the informative part, not a bug. Names stay unqualified because these hang
 # off the per-feeder sub-device, which already carries the attribution.
+# Per-portal decode rates, reported by the feeder client itself (already
+# per-second, no rate maths). These are the equivalents of the retired
+# Multi-Portal add-on's planefinder_mode_s_rate / _mode_ac_rate / _bandwidth.
+PORTAL_RATE_METRICS: list[FeederMetric] = [
+    FeederMetric(
+        "portal_message_rate",
+        "Message Rate",
+        "msg/s",
+        None,
+        "measurement",
+        "mdi:message-fast-outline",
+        0,
+    ),
+    FeederMetric(
+        "portal_modeac_rate",
+        "Mode A/C Rate",
+        "msg/s",
+        None,
+        "measurement",
+        "mdi:radio-tower",
+        0,
+        enabled_default=False,
+    ),
+    FeederMetric(
+        "portal_receive_rate",
+        "Receiver Data Rate",
+        "B/s",
+        "data_rate",
+        "measurement",
+        "mdi:download-network",
+        0,
+    ),
+]
+
 PORTAL_AIRCRAFT_METRICS: list[FeederMetric] = [
     FeederMetric(
         "portal_aircraft",

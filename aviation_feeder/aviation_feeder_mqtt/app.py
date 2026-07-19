@@ -36,11 +36,13 @@ from .metadata import (
     NEARBY_METRICS,
     NEARBY_STATE_KEY,
     PORTAL_AIRCRAFT_METRICS,
+    PORTAL_RATE_METRICS,
     REPORT_BINARY_SENSORS,
     THROUGHPUT_METRICS,
     THROUGHPUT_RATE_METRICS,
     UPTIME_METRICS,
     compute_metrics,
+    compute_remote_metrics,
     compute_sdr_metrics,
     compute_uat_metrics,
 )
@@ -84,6 +86,7 @@ _ALL_FEEDER_METRIC_SUFFIXES: tuple[str, ...] = tuple(
         MLAT_SYNC_METRICS,
         MLAT_RESULT_METRICS,
         PORTAL_AIRCRAFT_METRICS,
+        PORTAL_RATE_METRICS,
     )
     for m in grp
 )
@@ -98,7 +101,9 @@ _BYTE_FEEDERS = frozenset(THROUGHPUT_KERNEL) | {"planefinder"}
 _MESSAGE_FEEDERS = frozenset({"fr24"})
 # Feeders whose client reports the aggregator's own aircraft view (app_reports).
 # Only fr24 so far; radarbox/adsbx/planefinder follow in their own changes.
-_PORTAL_AIRCRAFT_FEEDERS = frozenset({"fr24"})
+_PORTAL_AIRCRAFT_FEEDERS = frozenset({"fr24", "adsbexchange"})
+# Feeders whose client reports its own per-second decode rates.
+_PORTAL_RATE_FEEDERS = frozenset({"planefinder"})
 
 
 class RateTracker:
@@ -178,6 +183,7 @@ def assemble_feeder_discovery(
         **fm(sub(lambda k: k in _MESSAGE_FEEDERS), MESSAGES_RATE_METRICS),
         # the aggregator's own aircraft view (differs from ours, by design)
         **fm(sub(lambda k: k in _PORTAL_AIRCRAFT_FEEDERS), PORTAL_AIRCRAFT_METRICS),
+        **fm(sub(lambda k: k in _PORTAL_RATE_FEEDERS), PORTAL_RATE_METRICS),
         # MLAT peers/sync (server-pushed; all but RadarBox) + positions/aircraft (all)
         **fm(sub(lambda k: k in MLAT_SYNC_CAPABLE), MLAT_SYNC_METRICS),
         **fm(sub(lambda k: k in MLAT_CAPABLE), MLAT_RESULT_METRICS),
@@ -617,7 +623,10 @@ def main() -> int:
                 or unique_on
             ):
                 if feeder_health and stats is not None:
-                    metrics = compute_metrics(stats)
+                    metrics = {
+                        **compute_metrics(stats),
+                        **compute_remote_metrics(stats),
+                    }
                     n = 0
                     for key, val in metrics.items():
                         if val is None:
@@ -887,13 +896,17 @@ def main() -> int:
                         if mr is not None:
                             _pub("messages_rate", "fr24", round(mr, 1))
                     # Per-portal aircraft counts (the aggregator's own view).
-                    for key in _PORTAL_AIRCRAFT_FEEDERS & enabled_keys:
-                        rep = reports.get(key)
-                        if not rep:
-                            continue
-                        for pm in PORTAL_AIRCRAFT_METRICS:
-                            if pm.suffix in rep:
-                                _pub(pm.suffix, key, rep[pm.suffix])
+                    for feeder_set, group in (
+                        (_PORTAL_AIRCRAFT_FEEDERS, PORTAL_AIRCRAFT_METRICS),
+                        (_PORTAL_RATE_FEEDERS, PORTAL_RATE_METRICS),
+                    ):
+                        for fkey in feeder_set & enabled_keys:
+                            rep = reports.get(fkey)
+                            if not rep:
+                                continue
+                            for pm in group:
+                                if pm.suffix in rep:
+                                    _pub(pm.suffix, fkey, rep[pm.suffix])
                     # Per-feeder MLAT sync (mlat-client --stats-json files).
                     for key, vals in read_mlat_stats().items():
                         if key not in enabled_keys:
