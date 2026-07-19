@@ -29,7 +29,10 @@ MLAT_STATS_DIR = "/run/mlat-client"
 # A live mlat-client rewrites its file every --stats-interval (we use 30s;
 # ultrafeeder's community clients ~60s). If a file hasn't been touched in well
 # over that, the mlat-client is dead/gone -> skip it so its last peers/sync don't
-# republish forever (the HA sensor then expires to unavailable, which is honest).
+# republish forever. The caller (app.mlat_states) then reports 0 for that feeder
+# rather than letting the sensor expire: mlat-client only writes this file once
+# it has synced, so a missing or stale file beside a running client is positive
+# evidence that MLAT is NOT syncing, not an absence of evidence.
 _STALE_AFTER_S = 180.0
 
 # feeder_key -> the mlat-client --stats-json basename (no .json). Community
@@ -58,8 +61,9 @@ MLAT_CAPABLE = frozenset(MLAT_STATS_BASENAMES)
 
 # Feeders whose mlat-server never sends the `stats` message, so peer_count and
 # good_sync_percentage_last_hour never appear in their --stats-json. Advertising
-# MLAT Peers / MLAT Sync for these publishes sensors that can never populate --
-# they sit "unavailable" in HA forever.
+# MLAT Peers / MLAT Sync for these publishes sensors that can never carry a
+# meaningful value -- they would sit at a permanent 0 implying a sync problem
+# that does not exist.
 #
 # The tell is the file itself: a server that pushes stats yields ~392 bytes with
 # peer_count and good_sync_percentage_last_hour; one that does not yields ~199
@@ -89,7 +93,7 @@ def read_mlat_stats(
         path = os.path.join(directory, base + ".json")
         try:
             if now - os.path.getmtime(path) > _STALE_AFTER_S:
-                continue  # mlat-client dead/gone -> let the sensor expire
+                continue  # dead/gone -> caller reports 0, not a stale value
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except (OSError, ValueError):

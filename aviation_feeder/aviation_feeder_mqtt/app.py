@@ -152,6 +152,36 @@ class PlanefinderFeedState:
         return bytes_sent is not None and bytes_sent > prev
 
 
+def mlat_states(stats, enabled_keys):
+    """{(feeder_key, metric_suffix): value} for every MLAT sensor that has
+    discovery, defaulting to 0 when there are no fresh stats.
+
+    mlat-client only writes its --stats-json AFTER establishing sync with the
+    server, so a missing or stale file next to a running client is positive
+    evidence that MLAT is NOT syncing -- not an absence of evidence. Leaving the
+    sensor to expire to "unavailable" hides that; 0 states it.
+
+    This is only defensible because a feeder the user disabled no longer has
+    entities at all (see stale_feeder_topics): every MLAT entity that exists
+    belongs to an enabled feeder, so there is no remaining case where we are
+    genuinely ignorant.
+
+    Applicability mirrors assemble_feeder_discovery exactly -- peers/sync only
+    for MLAT_SYNC_CAPABLE feeders -- so this can never publish a state for a
+    sensor that was never advertised.
+    """
+    out: dict[tuple[str, str], float | int] = {}
+    for key in sorted(MLAT_CAPABLE & set(enabled_keys)):
+        vals = stats.get(key) or {}
+        suffixes = [m.suffix for m in MLAT_RESULT_METRICS]
+        if key in MLAT_SYNC_CAPABLE:
+            suffixes += [m.suffix for m in MLAT_SYNC_METRICS]
+        for suf in suffixes:
+            v = vals.get(suf)
+            out[(key, suf)] = v if isinstance(v, (int, float)) else 0
+    return out
+
+
 def stale_feeder_topics(discovery_prefix, published) -> list[str]:
     """Per-feeder discovery topics that should be retracted (empty retained
     payload) because this cycle did not publish them.
@@ -989,12 +1019,14 @@ def main() -> int:
                             for pm in group:
                                 if pm.suffix in rep:
                                     _pub(pm.suffix, fkey, rep[pm.suffix])
-                    # Per-feeder MLAT sync (mlat-client --stats-json files).
-                    for key, vals in read_mlat_stats().items():
-                        if key not in enabled_keys:
-                            continue
-                        for suffix, val in vals.items():
-                            _pub(suffix, key, val)
+                    # Per-feeder MLAT (mlat-client --stats-json files). Every
+                    # advertised sensor gets a value each cycle -- 0 when the
+                    # feeder is not syncing -- rather than being left to expire
+                    # to "unavailable", which hid a known state.
+                    for (key, suffix), val in mlat_states(
+                        read_mlat_stats(), enabled_keys
+                    ).items():
+                        _pub(suffix, key, val)
                     # Per-feeder uptime (aggregator connect-seconds / process age).
                     for key, secs in compute_feeder_uptime(
                         opts, connectors=connectors, cmd_by_pid=cmd_by_pid
