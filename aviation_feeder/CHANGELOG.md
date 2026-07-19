@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.0.12](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.11...aviation_feeder-v0.0.12) (2026-07-19)
+
+
+### Bug Fixes
+
+* **ha-sensors:** report 0 for MLAT that is not syncing, not unavailable ([#78](https://github.com/bakerkj/hass-aviation-feeder/issues/78)) ([793846d](https://github.com/bakerkj/hass-aviation-feeder/commit/793846d0835daf83e48ee23c6360a8523dae719c))
+* **ha-sensors:** retract discovery for feeders the user has disabled ([#77](https://github.com/bakerkj/hass-aviation-feeder/issues/77)) ([ed46781](https://github.com/bakerkj/hass-aviation-feeder/commit/ed46781c17039880a0b25107b738092f0fc1c6be))
+* **ha-sensors:** sdrmap has no MLAT sync stats either ([#75](https://github.com/bakerkj/hass-aviation-feeder/issues/75)) ([edd985e](https://github.com/bakerkj/hass-aviation-feeder/commit/edd985ee2e16f7d32561547958dbf9748a24bd1c))
+
 ## [0.0.11](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.10...aviation_feeder-v0.0.11) (2026-07-19)
 
 
