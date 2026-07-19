@@ -785,6 +785,24 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
       *"aviation_feeder_feeders/fr24_bytes_sent/config {"*) bad "fr24 byte sensor present (should be dropped for UDP feed)" ;;
       *) ok "fr24 byte sensor correctly absent" ;;
     esac
+    # fr24 reports the aggregator's own aircraft view (feed_num_ac_*_tracked).
+    case "${CAP}" in
+      *"aviation_feeder_feeders/fr24_portal_aircraft/config {"*) ok "mqtt fr24 portal-aircraft discovery published" ;;
+      *) bad "mqtt fr24 portal-aircraft discovery missing" ;;
+    esac
+    case "${CAP}" in
+      *"aviation_feeder_feeders/fr24_portal_aircraft_adsb/config {"*) ok "mqtt fr24 portal ADS-B discovery published" ;;
+      *) bad "mqtt fr24 portal ADS-B discovery missing" ;;
+    esac
+    case "${CAP}" in
+      *"aviation_feeder_feeders/fr24_portal_aircraft_other/config {"*) ok "mqtt fr24 portal non-ADS-B discovery published" ;;
+      *) bad "mqtt fr24 portal non-ADS-B discovery missing" ;;
+    esac
+    # ...and only fr24: portal counts must not appear for a feeder with no such report.
+    case "${CAP}" in
+      *"aviation_feeder_feeders/adsblol_portal_aircraft/config {"*) bad "portal-aircraft sensor present for a community aggregator (no client to report it)" ;;
+      *) ok "portal-aircraft correctly absent for community aggregator" ;;
+    esac
     # community aggregators no longer get an (unreliable) per-connector byte sensor.
     case "${CAP}" in
       *"aviation_feeder_feeders/adsblol_bytes_sent/config {"*) bad "aggregator byte sensor present (should be dropped)" ;;

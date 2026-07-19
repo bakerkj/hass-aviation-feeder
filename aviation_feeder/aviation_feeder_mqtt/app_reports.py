@@ -21,7 +21,18 @@ we use as the authoritative source for BOTH their feeding-state and throughput:
 Each report carries a "connected" bool (authoritative feeding-state for that
 feeder) plus metric/attribute fields. Everything is best-effort: any
 read/parse/HTTP error yields no report (the feeder then falls back to its
-process/kernel signal, or shows unavailable — never a fabricated value)."""
+process/kernel signal, or shows unavailable — never a fabricated value).
+
+SECURITY — read before adding a field. Whatever a report returns is published
+verbatim to MQTT as that feeder's `attributes` (see app.py's reports loop), so
+these functions are the ONLY barrier between a vendor payload and the broker.
+The source payloads carry station identity: piaware's status.json embeds the
+FlightAware username and site id in `site_url`; rbfeeder's status.json carries
+the serial number, MAC and coordinates; fr24's monitor.json carries `feed_alias`;
+pfclient's /ajax/aircraft carries user_lat/user_lon. So every reader copies an
+explicit allowlist of scalar fields into a fresh dict — never `return d`, never
+`out.update(d)`, never pass through a nested sub-dict. Adding a field here is a
+publishing decision, not a parsing one."""
 
 import json
 import urllib.request
@@ -32,6 +43,45 @@ from .util import read_json_dict
 PIAWARE_STATUS = "/run/piaware/status.json"
 FR24_MONITOR_URL = "http://localhost:8754/monitor.json"
 PFCLIENT_STATS_URL = "http://localhost:30053/ajax/stats.php"
+
+# The COMPLETE set of fields each reader is permitted to publish. gather_reports
+# filters every report through this, so a reader that accidentally passes a
+# vendor payload through cannot leak: undeclared keys are dropped before they
+# reach MQTT. Adding a field here is the explicit, reviewable act of deciding to
+# publish it — do that only after checking the vendor payload for identity data
+# (see the SECURITY note above). A reader with no entry publishes nothing, so a
+# new reader must register here to work at all.
+REPORT_FIELDS: dict[str, frozenset[str]] = {
+    "piaware": frozenset({"flightaware", "mlat", "radio", "cpu_temp_c"}),
+    "fr24": frozenset(
+        {
+            "feed_status",
+            "feed_mode",
+            "messages",
+            "connected",
+            "portal_aircraft",
+            "portal_aircraft_adsb",
+            "portal_aircraft_other",
+        }
+    ),
+    # "connected" is attached by app.py AFTER gather_reports (pfclient's feeding
+    # state is a delta between cycles, which a single reader call can't see), so
+    # it must be declared here or the publish-time filter would drop it.
+    "planefinder": frozenset({"bytes_sent", "bytes_received", "connected"}),
+}
+
+
+def filter_report(key: str, report: dict[str, Any]) -> dict[str, Any]:
+    """Drop every field not declared in REPORT_FIELDS[key].
+
+    Applied twice on purpose: once in gather_reports, and again in app.py right
+    before the reports are published as MQTT attributes. The second application
+    is what makes the allowlist an actual barrier rather than a convention —
+    app.py enriches reports after gather_reports returns (pfclient's derived
+    `connected`), so a field added that way would otherwise reach the broker
+    without ever being declared. An unregistered feeder yields nothing."""
+    allowed = REPORT_FIELDS.get(key, frozenset())
+    return {k: v for k, v in report.items() if k in allowed}
 
 
 def _http_json(url: str, timeout: float = 2.0) -> dict | None:
@@ -88,6 +138,19 @@ def fr24_report(fetch=_http_json) -> dict[str, Any] | None:
     msgs = _as_int(d.get("num_messages"))
     if msgs is not None:
         out["messages"] = msgs
+    # FR24's own view of the station: how many aircraft *it* considers tracked,
+    # split ADS-B vs not. Deliberately differs from our receiver-side counts --
+    # non_adsb is FR24's MLAT-derived total (positions computed by FR24's
+    # network), not readsb's local MLAT count, which is usually 0. monitor.json
+    # reports every value as a string, hence _as_int.
+    for field, name in (
+        ("feed_num_ac_tracked", "portal_aircraft"),
+        ("feed_num_ac_adsb_tracked", "portal_aircraft_adsb"),
+        ("feed_num_ac_non_adsb_tracked", "portal_aircraft_other"),
+    ):
+        v = _as_int(d.get(field))
+        if v is not None:
+            out[name] = v
     # Authoritative feeding-state for fr24: its own feed_status.
     out["connected"] = d.get("feed_status") == "connected"
     return out
@@ -129,5 +192,10 @@ def gather_reports(
         if truthy(options.get(flag)):
             r = fn()
             if r:
-                out[key] = r
+                # Enforce the publish allowlist here rather than trusting each
+                # reader. app.py applies it a second time just before publishing,
+                # to also cover fields attached after this point.
+                filtered = filter_report(key, r)
+                if filtered:
+                    out[key] = filtered
     return out
