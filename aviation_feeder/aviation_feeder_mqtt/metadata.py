@@ -320,12 +320,12 @@ UPTIME_METRICS: list[FeederMetric] = [
 ]
 
 # Per-portal aircraft counts: the aggregator's OWN view of the station, read from
-# that feeder client's self-report (see app_reports). These deliberately DISAGREE
-# with the main device's aircraft_* sensors and with each other -- each portal
-# runs its own tracker over the same feed, so it decides for itself what counts
-# as a tracked aircraft. That divergence is the point (it's what the retired
-# Multi-Portal add-on surfaced); it is not a bug. Names stay unqualified because
-# these hang off the per-feeder sub-device, which already carries the attribution.
+# that feeder client's self-report (see app_reports). Every feeder reads the same
+# in-container readsb, so expect the portal's TOTAL to sit close to the main
+# device's -- they are watching the same aircraft. What differs, by design, is
+# the ADS-B/non-ADS-B SPLIT, since each portal classifies for itself; that split
+# is the informative part, not a bug. Names stay unqualified because these hang
+# off the per-feeder sub-device, which already carries the attribution.
 PORTAL_AIRCRAFT_METRICS: list[FeederMetric] = [
     FeederMetric(
         "portal_aircraft",

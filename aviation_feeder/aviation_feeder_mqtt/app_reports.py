@@ -139,10 +139,12 @@ def fr24_report(fetch=_http_json) -> dict[str, Any] | None:
     if msgs is not None:
         out["messages"] = msgs
     # FR24's own view of the station: how many aircraft *it* considers tracked,
-    # split ADS-B vs not. Deliberately differs from our receiver-side counts --
-    # non_adsb is FR24's MLAT-derived total (positions computed by FR24's
-    # network), not readsb's local MLAT count, which is usually 0. monitor.json
-    # reports every value as a string, hence _as_int.
+    # split ADS-B vs not. fr24feed reads the same in-container readsb we do, so
+    # its total tracks ours closely -- what differs is the classification. A
+    # simultaneous sample: fr24 59 = 41 adsb + 18 non_adsb, readsb 58 = 52
+    # adsb_icao + 6 mode_s. Do NOT equate non_adsb with readsb's mlat count;
+    # they are different measures and FR24 does not document its rule.
+    # monitor.json reports every value as a string, hence _as_int.
     for field, name in (
         ("feed_num_ac_tracked", "portal_aircraft"),
         ("feed_num_ac_adsb_tracked", "portal_aircraft_adsb"),
