@@ -33,7 +33,7 @@ FROM ghcr.io/sdr-enthusiasts/docker-adsbhub:latest-build-529@sha256:8d9953dc6b75
 FROM ghcr.io/plane-watch/docker-plane-watch:v0.0.9@sha256:54531eb196367e03a44bd36cde58f408c9984c275f6b28e1b7cb9adf816eb520 AS planewatch
 FROM ghcr.io/sdr-enthusiasts/docker-radarvirtuel:latest-build-799@sha256:b5b4236e0aed6b06d4112a3669d775e8cd2be1bde19e9e6225d7aab8ea4f4ec0 AS radarvirtuel
 FROM ghcr.io/sdr-enthusiasts/docker-sdrmap:latest-build-98@sha256:8aab9e1c416f01f955a10d330016e1fc4b2d979e91249a9d7d15a062d3735212 AS sdrmap
-FROM ghcr.io/sdr-enthusiasts/docker-radarbox:latest-build-881@sha256:3562238cf66fb49ecbb099de54bb6d69a61b7df92082c2cdfbc71169d2212fa4 AS radarbox
+FROM ghcr.io/sdr-enthusiasts/docker-radarbox:latest-build-882@sha256:248ce194ba48cbfb0686cfb5b73c991c94a812594f6b6e3007c38fdad6df5146 AS radarbox
 # AirNav ships rbfeeder only for ARM. On arm64 the base image has a NATIVE
 # rbfeeder (and no qemu); on amd64 it has the armhf binary + qemu-arm-static.
 # Stage exactly the runtime this arch needs into /rbx so the final image can copy
