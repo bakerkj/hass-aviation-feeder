@@ -223,9 +223,17 @@ These categories are published, toggled independently:
   messages above the strong-signal threshold, so a large number means the gain
   is set too high and the front end is being overloaded.
 
-  Two of these are hidden by default because they read 0 on a healthy station
-  and would otherwise be permanent noise: **Bad Position Decodes** and **SDR
-  Samples Lost**. Enable them in Home Assistant if you are chasing a problem.
+  readsb splits its work across eleven workers and all of them are published,
+  but only the three above are shown. The other eight — `aircraft.json`,
+  `globe.json`, `binCraft`, `traces`, `heatmap/state`, `API workers`,
+  `API update` and `remove stale` — cover its JSON writers, API threads and
+  housekeeping, and each runs at roughly 0.03% of a core. They are hidden so
+  eight near-zero tiles don't drown the three that carry signal; enable them if
+  you are profiling something specific.
+
+  **Bad Position Decodes** and **SDR Samples Lost** are hidden for the opposite
+  reason: they read 0 on a healthy station, so they would be permanent noise.
+  Enable them in Home Assistant if you are chasing a problem.
 
 - **Planes near me** (`ha_planes_near_me`) → the **Aviation Feeder — Nearby**
   device: how many aircraft are within the **Nearby radius**
