@@ -637,12 +637,21 @@ def main() -> int:
                     log_level,
                 )
 
-            if health.connected and (
-                feeder_health
-                or planes_near_me
-                or feeder_status
-                or emergency_on
-                or unique_on
+            # Every sensor-group toggle must appear here, or that group's state
+            # topics are never published while its discovery configs still are --
+            # the entities register in HA and sit permanently unavailable.
+            # ha_message_types was omitted when it was added, which is exactly
+            # this failure. Evaluated at gate time because planes_near_me can be
+            # switched off above when the station has no location.
+            if health.connected and any(
+                (
+                    feeder_health,
+                    planes_near_me,
+                    feeder_status,
+                    emergency_on,
+                    unique_on,
+                    df_on,
+                )
             ):
                 if feeder_health and stats is not None:
                     metrics = {
