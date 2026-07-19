@@ -207,7 +207,26 @@ These categories are published, toggled independently:
   attributable to any one feeder; Mode A/C stays near zero unless a peer is
   sending it); a pair of MQTT broker-link diagnostic sensors (link uptime and
   reconnect count); and — when you run a local RTL-SDR — the dongle's receiver
-  stats (gain, frequency error, signal / noise, samples dropped).
+  stats (gain, frequency error, signal / noise, samples dropped / lost, strong
+  signals, peak signal).
+
+  It also carries readsb's own performance, which nothing else in Home Assistant
+  exposes: **readsb CPU (reader)**, **(demod)** and **(background)**, each as a
+  percentage of one core. They are reported separately because they mean
+  different things — `reader` is USB/SDR input pressure and is the early warning
+  that samples are about to start dropping, `demod` is signal-processing load,
+  `background` is housekeeping. **Bad Position Decodes** counts positions readsb
+  decoded and then rejected as impossible; a flat line is healthy, a climbing
+  one suggests interference or multipath.
+
+  **SDR Strong Signals** is worth watching next to **SDR Gain** — it counts
+  messages above the strong-signal threshold, so a large number means the gain
+  is set too high and the front end is being overloaded.
+
+  Two of these are hidden by default because they read 0 on a healthy station
+  and would otherwise be permanent noise: **Bad Position Decodes** and **SDR
+  Samples Lost**. Enable them in Home Assistant if you are chasing a problem.
+
 - **Planes near me** (`ha_planes_near_me`) → the **Aviation Feeder — Nearby**
   device: how many aircraft are within the **Nearby radius**
   (`ha_near_me_radius`, default 50 nmi), and the nearest aircraft (callsign,

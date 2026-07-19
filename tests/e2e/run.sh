@@ -827,6 +827,21 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
       *"aviation_feeder/remote_message_rate/config {"*) ok "mqtt network message-rate discovery published" ;;
       *) bad "mqtt network message-rate discovery missing" ;;
     esac
+    # readsb performance diagnostics on the main device (last1min.cpu / total.cpr).
+    case "${CAP}" in
+      *"aviation_feeder/cpu_reader_pct/config {"*) ok "mqtt readsb reader-CPU discovery published" ;;
+      *) bad "mqtt readsb reader-CPU discovery missing" ;;
+    esac
+    case "${CAP}" in
+      *"aviation_feeder/cpu_demod_pct/config {"*) ok "mqtt readsb demod-CPU discovery published" ;;
+      *) bad "mqtt readsb demod-CPU discovery missing" ;;
+    esac
+    # Sensors that read 0 on a healthy station ship hidden, so their config must
+    # carry enabled_by_default:false rather than simply being absent.
+    case "${CAP}" in
+      *'"enabled_by_default":false'*) ok "mqtt hidden-by-default diagnostics flagged" ;;
+      *) bad "no enabled_by_default:false in any discovery config" ;;
+    esac
     # community aggregators no longer get an (unreliable) per-connector byte sensor.
     case "${CAP}" in
       *"aviation_feeder_feeders/adsblol_bytes_sent/config {"*) bad "aggregator byte sensor present (should be dropped)" ;;

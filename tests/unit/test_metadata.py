@@ -95,6 +95,56 @@ class Extractors(unittest.TestCase):
         self.assertAlmostEqual(out["remote_modeac_rate"], 0.1)
         self.assertEqual(set(out), {m.key for m in metadata.REMOTE_METRICS})
 
+    def test_compute_performance_metrics(self):
+        stats = {
+            "last1min": {
+                "start": 1000.0,
+                "end": 1060.0,
+                # ms of CPU over a 60s window -> % of one core
+                "cpu": {"reader": 19722, "demod": 1443, "background": 690},
+            },
+            "total": {"cpr": {"global_bad": 6}},
+        }
+        out = metadata.compute_performance_metrics(stats)
+        self.assertAlmostEqual(out["cpu_reader_pct"], 32.87)
+        self.assertAlmostEqual(out["cpu_demod_pct"], 2.405)
+        self.assertAlmostEqual(out["cpu_background_pct"], 1.15)
+        self.assertEqual(out["cpr_bad_positions"], 6)
+        self.assertEqual(set(out), {m.key for m in metadata.PERFORMANCE_METRICS})
+
+    def test_compute_performance_metrics_degenerate(self):
+        # missing cpu block, absent task, and a zero-length window all -> None
+        out = metadata.compute_performance_metrics({})
+        self.assertIsNone(out["cpu_reader_pct"])
+        self.assertIsNone(out["cpr_bad_positions"])
+        no_task = {"last1min": {"start": 0.0, "end": 60.0, "cpu": {"demod": 1}}}
+        self.assertIsNone(
+            metadata.compute_performance_metrics(no_task)["cpu_reader_pct"]
+        )
+        zero = {"last1min": {"start": 5.0, "end": 5.0, "cpu": {"reader": 100}}}
+        self.assertIsNone(metadata.compute_performance_metrics(zero)["cpu_reader_pct"])
+
+    def test_new_sdr_health_metrics(self):
+        stats = {
+            "last1min": {"local": {"strong_signals": 1059, "peak_signal": -1.2}},
+            "total": {"local": {"samples_lost": 3, "samples_dropped": 4}},
+        }
+        out = metadata.compute_sdr_metrics(stats)
+        self.assertEqual(out["sdr_strong_signals"], 1059)
+        self.assertAlmostEqual(out["sdr_peak_signal_dbfs"], -1.2)
+        # samples_lost is a DIFFERENT failure mode from samples_dropped
+        self.assertEqual(out["sdr_samples_lost"], 3)
+        self.assertEqual(out["sdr_samples_dropped"], 4)
+
+    def test_zero_reading_metrics_are_hidden_by_default(self):
+        # These read 0 on a healthy station; showing them always would be noise.
+        hidden = {
+            m.key
+            for m in (*metadata.PERFORMANCE_METRICS, *metadata.SDR_METRICS)
+            if not m.enabled_default
+        }
+        self.assertEqual(hidden, {"cpr_bad_positions", "sdr_samples_lost"})
+
     def test_compute_remote_metrics_degenerate(self):
         # No remote block, and a zero-length window, must yield None not a crash
         # or a divide-by-zero.

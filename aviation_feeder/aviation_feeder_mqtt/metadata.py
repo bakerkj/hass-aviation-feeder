@@ -38,6 +38,9 @@ class Metric:
     # Extract this metric's value from a parsed stats.json dict. Returns None
     # when the source field is absent (the HA entity then expires/unavailable).
     extract: Callable[[dict[str, Any]], float | int | None]
+    # False hides the entity in HA until the user enables it. Used for metrics
+    # that read 0 on a healthy station, so they don't add permanent noise.
+    enabled_default: bool = True
 
 
 def _get(d: dict[str, Any], *path: str) -> Any:
@@ -212,6 +215,84 @@ REMOTE_METRICS: list[Metric] = [
 def compute_remote_metrics(stats: dict[str, Any]) -> dict[str, float | int | None]:
     """Map a parsed stats.json into {remote_metric_key: value} (None when absent)."""
     return {m.key: m.extract(stats) for m in REMOTE_METRICS}
+
+
+def _cpu_pct(s: dict[str, Any], task: str) -> float | None:
+    """One readsb worker's CPU use over the last1min window, as a percentage of
+    ONE core. last1min.cpu holds per-task milliseconds, so ms / (seconds * 10)
+    gives percent. Reported per task rather than summed because the tasks fail
+    for different reasons: `reader` is USB/SDR I/O pressure, `demod` is signal
+    processing load, `background` is housekeeping. A rising `reader` is the
+    early warning that samples are about to start dropping."""
+    start = _num(_get(s, "last1min", "start"))
+    end = _num(_get(s, "last1min", "end"))
+    ms = _num(_get(s, "last1min", "cpu", task))
+    if start is None or end is None or ms is None:
+        return None
+    dur = end - start
+    if dur <= 0:
+        return None
+    return ms / (dur * 10.0)
+
+
+# readsb's own performance, from the same stats.json. Diagnostics: they answer
+# "is the receiver keeping up?", which nothing else in HA exposes. All disabled
+# by default -- a healthy station reads a steady low number and most users never
+# need them; they earn their keep when something is wrong.
+PERFORMANCE_METRICS: list[Metric] = [
+    Metric(
+        "cpu_reader_pct",
+        "readsb CPU (reader)",
+        "%",
+        None,
+        "measurement",
+        "mdi:usb-port",
+        1,
+        lambda s: _cpu_pct(s, "reader"),
+    ),
+    Metric(
+        "cpu_demod_pct",
+        "readsb CPU (demod)",
+        "%",
+        None,
+        "measurement",
+        "mdi:sine-wave",
+        1,
+        lambda s: _cpu_pct(s, "demod"),
+    ),
+    Metric(
+        "cpu_background_pct",
+        "readsb CPU (background)",
+        "%",
+        None,
+        "measurement",
+        "mdi:cog-outline",
+        1,
+        lambda s: _cpu_pct(s, "background"),
+    ),
+    # Positions readsb decoded but threw out as impossible -- the CPR global
+    # decode failing its consistency check. Cumulative, so a flat line is
+    # healthy and a climbing one means interference, multipath or a bad frame
+    # source.
+    Metric(
+        "cpr_bad_positions",
+        "Bad Position Decodes",
+        None,
+        None,
+        "total_increasing",
+        "mdi:map-marker-alert",
+        0,
+        lambda s: _num(_get(s, "total", "cpr", "global_bad")),
+        enabled_default=False,
+    ),
+]
+
+
+def compute_performance_metrics(
+    stats: dict[str, Any],
+) -> dict[str, float | int | None]:
+    """Map a parsed stats.json into {performance_metric_key: value}."""
+    return {m.key: m.extract(stats) for m in PERFORMANCE_METRICS}
 
 
 def compute_metrics(stats: dict[str, Any]) -> dict[str, float | int | None]:
@@ -587,6 +668,43 @@ SDR_METRICS: list[Metric] = [
         "mdi:alert-circle-outline",
         0,
         lambda s: _num(_get(s, "total", "local", "samples_dropped")),
+    ),
+    # Distinct from samples_dropped: "dropped" is readsb discarding samples it
+    # could not keep up with, "lost" is the USB layer never delivering them.
+    # Both mean the receiver is falling behind, but they point at different
+    # causes (CPU vs USB/cabling), so they are separate sensors.
+    Metric(
+        "sdr_samples_lost",
+        "SDR Samples Lost",
+        None,
+        None,
+        "total_increasing",
+        "mdi:alert-octagon-outline",
+        0,
+        lambda s: _num(_get(s, "total", "local", "samples_lost")),
+        enabled_default=False,
+    ),
+    # Messages received above the strong-signal threshold in the last minute.
+    # The classic "gain is too high" indicator -- read it alongside SDR Gain.
+    Metric(
+        "sdr_strong_signals",
+        "SDR Strong Signals",
+        None,
+        None,
+        "measurement",
+        "mdi:signal-cellular-3",
+        0,
+        lambda s: _num(_get(s, "last1min", "local", "strong_signals")),
+    ),
+    Metric(
+        "sdr_peak_signal_dbfs",
+        "SDR Peak Signal",
+        "dBFS",
+        None,
+        "measurement",
+        "mdi:waveform",
+        1,
+        lambda s: _num(_get(s, "last1min", "local", "peak_signal")),
     ),
 ]
 
