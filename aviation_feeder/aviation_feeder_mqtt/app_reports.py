@@ -64,8 +64,24 @@ REPORT_FIELDS: dict[str, frozenset[str]] = {
             "portal_aircraft_other",
         }
     ),
-    "planefinder": frozenset({"bytes_sent", "bytes_received"}),
+    # "connected" is attached by app.py AFTER gather_reports (pfclient's feeding
+    # state is a delta between cycles, which a single reader call can't see), so
+    # it must be declared here or the publish-time filter would drop it.
+    "planefinder": frozenset({"bytes_sent", "bytes_received", "connected"}),
 }
+
+
+def filter_report(key: str, report: dict[str, Any]) -> dict[str, Any]:
+    """Drop every field not declared in REPORT_FIELDS[key].
+
+    Applied twice on purpose: once in gather_reports, and again in app.py right
+    before the reports are published as MQTT attributes. The second application
+    is what makes the allowlist an actual barrier rather than a convention —
+    app.py enriches reports after gather_reports returns (pfclient's derived
+    `connected`), so a field added that way would otherwise reach the broker
+    without ever being declared. An unregistered feeder yields nothing."""
+    allowed = REPORT_FIELDS.get(key, frozenset())
+    return {k: v for k, v in report.items() if k in allowed}
 
 
 def _http_json(url: str, timeout: float = 2.0) -> dict | None:
@@ -177,10 +193,9 @@ def gather_reports(
             r = fn()
             if r:
                 # Enforce the publish allowlist here rather than trusting each
-                # reader: this is the last point before app.py ships the dict to
-                # MQTT verbatim. An unregistered feeder yields nothing.
-                allowed = REPORT_FIELDS.get(key, frozenset())
-                filtered = {k: v for k, v in r.items() if k in allowed}
+                # reader. app.py applies it a second time just before publishing,
+                # to also cover fields attached after this point.
+                filtered = filter_report(key, r)
                 if filtered:
                     out[key] = filtered
     return out

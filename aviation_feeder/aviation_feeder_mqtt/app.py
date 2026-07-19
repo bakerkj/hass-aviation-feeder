@@ -44,7 +44,7 @@ from .metadata import (
     compute_sdr_metrics,
     compute_uat_metrics,
 )
-from .app_reports import gather_reports
+from .app_reports import filter_report, gather_reports
 from .mlat_stats import MLAT_CAPABLE, MLAT_SYNC_CAPABLE, read_mlat_stats
 from .mqtt import (
     MqttHealth,
@@ -908,14 +908,20 @@ def main() -> int:
                             continue
                         _pub("uptime", key, secs)
                     # App self-reports -> attributes (semantic health: piaware
-                    # MLAT/radio, fr24 feed status, …).
+                    # MLAT/radio, fr24 feed status, …). Re-apply the publish
+                    # allowlist here: reports are enriched above (pfclient's
+                    # derived `connected`) after gather_reports already filtered
+                    # them, so this is the real last barrier before a vendor
+                    # payload could reach the broker.
                     for key, attrs in reports.items():
                         if key not in enabled_keys:
                             continue
                         mqtt_publish(
                             client,
                             f"{feeders_topic}/{key}/attributes",
-                            json.dumps(attrs, separators=(",", ":")),
+                            json.dumps(
+                                filter_report(key, attrs), separators=(",", ":")
+                            ),
                             qos=0,
                             retain=False,
                             log_level=log_level,

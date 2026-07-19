@@ -791,6 +791,10 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
       *) bad "mqtt fr24 portal-aircraft discovery missing" ;;
     esac
     case "${CAP}" in
+      *"aviation_feeder_feeders/fr24_portal_aircraft_adsb/config {"*) ok "mqtt fr24 portal ADS-B discovery published" ;;
+      *) bad "mqtt fr24 portal ADS-B discovery missing" ;;
+    esac
+    case "${CAP}" in
       *"aviation_feeder_feeders/fr24_portal_aircraft_other/config {"*) ok "mqtt fr24 portal non-ADS-B discovery published" ;;
       *) bad "mqtt fr24 portal non-ADS-B discovery missing" ;;
     esac

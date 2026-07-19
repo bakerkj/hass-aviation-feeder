@@ -150,6 +150,25 @@ class PublishAllowlist(unittest.TestCase):
                 f"{key} published a field outside its allowlist",
             )
 
+    def test_filter_applies_to_fields_added_after_gather(self):
+        # app.py enriches reports after gather_reports returns (pfclient's
+        # derived `connected`) and then publishes them as MQTT attributes. That
+        # path bypassed the allowlist until filter_report was applied there too,
+        # so exercise the post-gather mutation shape directly.
+        enriched = dict(self._gather({"bytes_sent": 5})["planefinder"])
+        enriched["connected"] = True  # declared -> must survive
+        enriched["user_lat"] = self.CANARY  # undeclared -> must be dropped
+        out = app_reports.filter_report("planefinder", enriched)
+        self.assertEqual(out["bytes_sent"], 5)
+        self.assertIs(out["connected"], True)
+        self.assertNotIn("user_lat", out)
+        self.assertNotIn(self.CANARY, json.dumps(out))
+
+    def test_filter_report_drops_everything_for_unregistered_feeder(self):
+        self.assertEqual(
+            app_reports.filter_report("not_a_feeder", {"sn": self.CANARY}), {}
+        )
+
     def test_allowlist_matches_what_readers_actually_emit(self):
         # A declared-but-never-emitted field is dead config; catching it keeps
         # the allowlist honest rather than an ever-growing wishlist. fr24 is the
