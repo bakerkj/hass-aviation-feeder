@@ -98,6 +98,76 @@ class Fr24Report(unittest.TestCase):
         self.assertNotIn("portal_aircraft_adsb", r)
 
 
+class PublishAllowlist(unittest.TestCase):
+    """The allowlist is enforced in gather_reports, so these hold for every
+    reader — including ones added later that nobody wrote a leak test for."""
+
+    # Canary values standing in for the real identity data in these payloads:
+    # piaware's site_url (username + site id), rbfeeder's serial/MAC/coords,
+    # fr24's feed_alias, pfclient's user_lat/user_lon.
+    CANARY = "CANARY-LEAKED-IDENTITY"
+
+    def _gather(self, report):
+        """Run one canned report through the real gather_reports filter."""
+        return app_reports.gather_reports(
+            {"enable_piaware": True, "enable_fr24": True, "enable_planefinder": True},
+            _truthy,
+            piaware=lambda: report,
+            fr24=lambda: report,
+            pfclient=lambda: report,
+        )
+
+    def test_every_reader_is_registered(self):
+        # A reader with no REPORT_FIELDS entry publishes nothing, which would be
+        # a silent feature outage. Keep the registry in step with gather_reports.
+        got = self._gather({"connected": True, "mlat": "green", "bytes_sent": 1})
+        self.assertEqual(
+            set(got),
+            {"piaware", "fr24", "planefinder"},
+            "a feeder in gather_reports is missing from REPORT_FIELDS",
+        )
+
+    def test_undeclared_keys_are_dropped_for_every_feeder(self):
+        got = self._gather(
+            {
+                "connected": True,
+                "mlat": "green",
+                "bytes_sent": 1,
+                "site_url": self.CANARY,
+                "feed_alias": self.CANARY,
+                "sn": self.CANARY,
+                "mac": self.CANARY,
+                "user_lat": self.CANARY,
+                "some_future_upstream_field": self.CANARY,
+            }
+        )
+        self.assertTrue(got, "guard would pass vacuously on an empty result")
+        self.assertNotIn(self.CANARY, json.dumps(got))
+        for key, fields in got.items():
+            self.assertLessEqual(
+                set(fields),
+                set(app_reports.REPORT_FIELDS[key]),
+                f"{key} published a field outside its allowlist",
+            )
+
+    def test_allowlist_matches_what_readers_actually_emit(self):
+        # A declared-but-never-emitted field is dead config; catching it keeps
+        # the allowlist honest rather than an ever-growing wishlist. fr24 is the
+        # exhaustive case: a payload with every field it knows how to read must
+        # produce exactly its declared set.
+        fr = app_reports.fr24_report(
+            fetch=lambda url: {
+                "feed_status": "connected",
+                "feed_current_mode": "UDP",
+                "num_messages": "5",
+                "feed_num_ac_tracked": "78",
+                "feed_num_ac_adsb_tracked": "56",
+                "feed_num_ac_non_adsb_tracked": "22",
+            }
+        )
+        self.assertEqual(set(fr), set(app_reports.REPORT_FIELDS["fr24"]))
+
+
 class ReportsDoNotLeakIdentity(unittest.TestCase):
     """Reports are published verbatim to MQTT as feeder attributes (see app.py's
     reports loop), so a reader must copy an explicit allowlist and drop anything

@@ -44,6 +44,29 @@ PIAWARE_STATUS = "/run/piaware/status.json"
 FR24_MONITOR_URL = "http://localhost:8754/monitor.json"
 PFCLIENT_STATS_URL = "http://localhost:30053/ajax/stats.php"
 
+# The COMPLETE set of fields each reader is permitted to publish. gather_reports
+# filters every report through this, so a reader that accidentally passes a
+# vendor payload through cannot leak: undeclared keys are dropped before they
+# reach MQTT. Adding a field here is the explicit, reviewable act of deciding to
+# publish it — do that only after checking the vendor payload for identity data
+# (see the SECURITY note above). A reader with no entry publishes nothing, so a
+# new reader must register here to work at all.
+REPORT_FIELDS: dict[str, frozenset[str]] = {
+    "piaware": frozenset({"flightaware", "mlat", "radio", "cpu_temp_c"}),
+    "fr24": frozenset(
+        {
+            "feed_status",
+            "feed_mode",
+            "messages",
+            "connected",
+            "portal_aircraft",
+            "portal_aircraft_adsb",
+            "portal_aircraft_other",
+        }
+    ),
+    "planefinder": frozenset({"bytes_sent", "bytes_received"}),
+}
+
 
 def _http_json(url: str, timeout: float = 2.0) -> dict | None:
     try:
@@ -153,5 +176,11 @@ def gather_reports(
         if truthy(options.get(flag)):
             r = fn()
             if r:
-                out[key] = r
+                # Enforce the publish allowlist here rather than trusting each
+                # reader: this is the last point before app.py ships the dict to
+                # MQTT verbatim. An unregistered feeder yields nothing.
+                allowed = REPORT_FIELDS.get(key, frozenset())
+                filtered = {k: v for k, v in r.items() if k in allowed}
+                if filtered:
+                    out[key] = filtered
     return out
