@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.0.11](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.10...aviation_feeder-v0.0.11) (2026-07-19)
+
+
+### Features
+
+* **ha-sensors:** break 1090 MHz traffic down by Mode S downlink format ([#74](https://github.com/bakerkj/hass-aviation-feeder/issues/74)) ([c31d7ed](https://github.com/bakerkj/hass-aviation-feeder/commit/c31d7ed360451787cf6fea679bc815ce54b4754f))
+* **ha-sensors:** publish FlightRadar24's own aircraft view ([#68](https://github.com/bakerkj/hass-aviation-feeder/issues/68)) ([348c37d](https://github.com/bakerkj/hass-aviation-feeder/commit/348c37d70dea69a5fb6334f22368739c89b583dc))
+* **ha-sensors:** publish readsb's own performance metrics ([#73](https://github.com/bakerkj/hass-aviation-feeder/issues/73)) ([2706bfb](https://github.com/bakerkj/hass-aviation-feeder/commit/2706bfbf4b671e8cbd62b1675d0d7512e6bd3165))
+* **ha-sensors:** publish the remaining Multi-Portal dashboard metrics ([#71](https://github.com/bakerkj/hass-aviation-feeder/issues/71)) ([#72](https://github.com/bakerkj/hass-aviation-feeder/issues/72)) ([f6133dc](https://github.com/bakerkj/hass-aviation-feeder/commit/f6133dc5e69ebd8641f7c10894ff10342bca1659))
+
+
+### Miscellaneous Chores
+
+* **deps:** update ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder docker tag to latest-build-946 ([#69](https://github.com/bakerkj/hass-aviation-feeder/issues/69)) ([7b344c9](https://github.com/bakerkj/hass-aviation-feeder/commit/7b344c90c9c76f0c0c0bc141a155511c24832e1b))
+* **deps:** update ghcr.io/sdr-enthusiasts/docker-radarbox docker tag to latest-build-882 ([#66](https://github.com/bakerkj/hass-aviation-feeder/issues/66)) ([a3c78a0](https://github.com/bakerkj/hass-aviation-feeder/commit/a3c78a0d8aefeaf0fe20c55dcdb08e2afa952f4f))
+
+
+### Documentation
+
+* **ha-sensors:** correct the FR24 non-ADS-B explanation ([#70](https://github.com/bakerkj/hass-aviation-feeder/issues/70)) ([60f20c5](https://github.com/bakerkj/hass-aviation-feeder/commit/60f20c508f32d7cde26b44dd2b35f61fc789cfcb))
+
 ## [0.0.10](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.9...aviation_feeder-v0.0.10) (2026-07-18)
 
 
