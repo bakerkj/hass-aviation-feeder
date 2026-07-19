@@ -18,6 +18,7 @@ from .metadata import (
     EMERGENCY_SQUAWK_KEY,
     FEEDERS_DEVICE_ID,
     METRICS,
+    REMOTE_METRICS,
     REPORT_BINARY_SENSORS,
     NEARBY_DEVICE_ID,
     NEARBY_DEVICE_NAME,
@@ -190,10 +191,14 @@ def build_discovery_payloads(
     availability_topic: str,
     expire_after_s: int,
 ) -> dict[str, dict[str, Any]]:
-    """Feeder-health discovery: one retained config per metric (diagnostic)."""
+    """Feeder-health discovery: one retained config per metric (diagnostic).
+
+    REMOTE_METRICS ride along here: they come from the same stats.json and
+    belong to the same device, they just describe network ingest rather than
+    the local SDR."""
     out: dict[str, dict[str, Any]] = {}
     device = _device(DEVICE_ID, DEVICE_NAME)
-    for m in METRICS:
+    for m in (*METRICS, *REMOTE_METRICS):
         cfg = _metric_config(
             m,
             device,

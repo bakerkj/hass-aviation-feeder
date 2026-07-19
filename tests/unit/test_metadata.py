@@ -80,6 +80,28 @@ class Extractors(unittest.TestCase):
         # absent local block -> None, not a crash
         self.assertIsNone(metadata.compute_sdr_metrics({})["sdr_signal_dbfs"])
 
+    def test_compute_remote_metrics(self):
+        # remote.* counts messages arriving over readsb's NETWORK connectors,
+        # divided by the last1min window to give a per-second rate.
+        stats = {
+            "last1min": {
+                "start": 1000.0,
+                "end": 1060.0,
+                "remote": {"modes": 120, "modeac": 6},
+            }
+        }
+        out = metadata.compute_remote_metrics(stats)
+        self.assertAlmostEqual(out["remote_message_rate"], 2.0)
+        self.assertAlmostEqual(out["remote_modeac_rate"], 0.1)
+        self.assertEqual(set(out), {m.key for m in metadata.REMOTE_METRICS})
+
+    def test_compute_remote_metrics_degenerate(self):
+        # No remote block, and a zero-length window, must yield None not a crash
+        # or a divide-by-zero.
+        self.assertIsNone(metadata.compute_remote_metrics({})["remote_message_rate"])
+        zero = {"last1min": {"start": 1000.0, "end": 1000.0, "remote": {"modes": 5}}}
+        self.assertIsNone(metadata.compute_remote_metrics(zero)["remote_message_rate"])
+
 
 if __name__ == "__main__":
     unittest.main()
