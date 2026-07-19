@@ -201,10 +201,12 @@ These categories are published, toggled independently:
 
 - **Feeder health** (`ha_feeder_health`) → the **Aviation Feeder** device:
   aircraft tracked, ADS-B / Mode-S / MLAT counts, aircraft with position,
-  message rate, max range, session tracks; a pair of MQTT broker-link diagnostic
-  sensors (link uptime and reconnect count); and — when you run a local RTL-SDR
-  — the dongle's receiver stats (gain, frequency error, signal / noise, samples
-  dropped).
+  message rate, max range, session tracks; **Network Message Rate** and
+  **Network Mode A/C Rate** (messages arriving over readsb's network connectors
+  rather than the local dongle — Mode A/C stays near zero unless a peer is
+  sending it); a pair of MQTT broker-link diagnostic sensors (link uptime and
+  reconnect count); and — when you run a local RTL-SDR — the dongle's receiver
+  stats (gain, frequency error, signal / noise, samples dropped).
 - **Planes near me** (`ha_planes_near_me`) → the **Aviation Feeder — Nearby**
   device: how many aircraft are within the **Nearby radius**
   (`ha_near_me_radius`, default 50 nmi), and the nearest aircraft (callsign,
@@ -252,6 +254,13 @@ These categories are published, toggled independently:
   **Aircraft MLAT**: they are not measuring the same thing, and FlightRadar24
   does not document how it classifies. Small differences in the totals (a few
   aircraft, from tracker timing and timeouts) are normal and not a fault.
+
+  ADS-B Exchange gets the same three sensors, counted from the stats its own
+  feeder writes. PlaneFinder instead reports per-second decode rates from its
+  client: **Message Rate**, **Receiver Data Rate**, and **Mode A/C Rate**
+  (disabled by default — it reads 0 unless Mode A/C is being decoded, and some
+  PlaneFinder client versions report a nonsense value here, which the add-on
+  discards rather than publishes).
 
   "Feeding" is measured: community aggregators (adsb.lol, adsb.fi, ADS-B
   Exchange, …) report readsb's own connection state; feeders that hold an open

@@ -107,23 +107,33 @@ class PublishAllowlist(unittest.TestCase):
     # fr24's feed_alias, pfclient's user_lat/user_lon.
     CANARY = "CANARY-LEAKED-IDENTITY"
 
+    ALL_ENABLED = {
+        "enable_piaware": True,
+        "enable_fr24": True,
+        "enable_planefinder": True,
+        "feed_adsbexchange": True,
+    }
+
     def _gather(self, report):
         """Run one canned report through the real gather_reports filter."""
         return app_reports.gather_reports(
-            {"enable_piaware": True, "enable_fr24": True, "enable_planefinder": True},
+            dict(self.ALL_ENABLED),
             _truthy,
             piaware=lambda: report,
             fr24=lambda: report,
             pfclient=lambda: report,
+            adsbx=lambda: report,
         )
 
     def test_every_reader_is_registered(self):
         # A reader with no REPORT_FIELDS entry publishes nothing, which would be
         # a silent feature outage. Keep the registry in step with gather_reports.
-        got = self._gather({"connected": True, "mlat": "green", "bytes_sent": 1})
+        got = self._gather(
+            {"connected": True, "mlat": "green", "bytes_sent": 1, "portal_aircraft": 3}
+        )
         self.assertEqual(
             set(got),
-            {"piaware", "fr24", "planefinder"},
+            {"piaware", "fr24", "planefinder", "adsbexchange"},
             "a feeder in gather_reports is missing from REPORT_FIELDS",
         )
 
@@ -249,6 +259,82 @@ class PfclientReport(unittest.TestCase):
 
     def test_unreachable(self):
         self.assertIsNone(app_reports.pfclient_report(fetch=lambda url: None))
+
+
+class PfclientPortalRates(unittest.TestCase):
+    def test_decode_rates_and_bandwidth(self):
+        r = app_reports.pfclient_report(
+            fetch=lambda url: {
+                "master_server_bytes_out": 1,
+                "total_modes_packets_ps": 391,
+                "total_modeac_packets_ps": 0,
+                "receiver_bytes_in_ps": 7276,
+            }
+        )
+        self.assertEqual(r["portal_message_rate"], 391)
+        self.assertEqual(r["portal_modeac_rate"], 0)
+        self.assertEqual(r["portal_receive_rate"], 7276)
+
+    def test_modeac_counter_underflow_is_dropped(self):
+        # Upstream pfclient has been observed reporting ~2^64 here (an unsigned
+        # underflow). Publishing 1.8e19 msg/s would poison the HA statistic.
+        r = app_reports.pfclient_report(
+            fetch=lambda url: {
+                "master_server_bytes_out": 1,
+                "total_modeac_packets_ps": 18446744073700084000,
+                "total_modes_packets_ps": 391,
+            }
+        )
+        self.assertNotIn("portal_modeac_rate", r)
+        self.assertEqual(r["portal_message_rate"], 391)  # sane sibling survives
+
+    def test_absent_fields_are_not_fabricated(self):
+        r = app_reports.pfclient_report(
+            fetch=lambda url: {"master_server_bytes_out": 1}
+        )
+        for k in ("portal_message_rate", "portal_modeac_rate", "portal_receive_rate"):
+            self.assertNotIn(k, r)
+
+
+class AdsbxReport(unittest.TestCase):
+    def _write(self, d, payload):
+        p = os.path.join(d, "new.json")
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        return p
+
+    def test_counts_by_type(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self._write(
+                d,
+                {
+                    "messages": 2678768,
+                    "aircraft": [
+                        {"hex": "a1", "type": "adsb_icao"},
+                        {"hex": "a2", "type": "adsb_icao"},
+                        {"hex": "a3", "type": "adsb_icao_nt"},
+                        {"hex": "a4", "type": "mode_s"},
+                        {"hex": "a5", "type": "mlat"},
+                    ],
+                },
+            )
+            r = app_reports.adsbx_report(p)
+            self.assertEqual(r["portal_aircraft"], 5)
+            self.assertEqual(r["portal_aircraft_adsb"], 3)  # icao + icao_nt
+            self.assertEqual(r["portal_aircraft_other"], 2)  # mode_s + mlat
+            self.assertEqual(r["messages"], 2678768)
+
+    def test_empty_aircraft_list(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = app_reports.adsbx_report(self._write(d, {"aircraft": []}))
+            self.assertEqual(r["portal_aircraft"], 0)
+            self.assertEqual(r["portal_aircraft_adsb"], 0)
+
+    def test_missing_or_malformed(self):
+        self.assertIsNone(app_reports.adsbx_report("/nonexistent/new.json"))
+        with tempfile.TemporaryDirectory() as d:
+            # no aircraft key at all -> no report rather than a fabricated zero
+            self.assertIsNone(app_reports.adsbx_report(self._write(d, {"now": 1})))
 
 
 class GatherReports(unittest.TestCase):

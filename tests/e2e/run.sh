@@ -798,10 +798,24 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
       *"aviation_feeder_feeders/fr24_portal_aircraft_other/config {"*) ok "mqtt fr24 portal non-ADS-B discovery published" ;;
       *) bad "mqtt fr24 portal non-ADS-B discovery missing" ;;
     esac
-    # ...and only fr24: portal counts must not appear for a feeder with no such report.
+    # ...but not for a community aggregator, which has no client to report it.
     case "${CAP}" in
       *"aviation_feeder_feeders/adsblol_portal_aircraft/config {"*) bad "portal-aircraft sensor present for a community aggregator (no client to report it)" ;;
       *) ok "portal-aircraft correctly absent for community aggregator" ;;
+    esac
+    # PlaneFinder reports its own per-second decode rates (not aircraft counts).
+    case "${CAP}" in
+      *"aviation_feeder_feeders/planefinder_portal_message_rate/config {"*) ok "mqtt planefinder portal message-rate discovery published" ;;
+      *) bad "mqtt planefinder portal message-rate discovery missing" ;;
+    esac
+    case "${CAP}" in
+      *"aviation_feeder_feeders/planefinder_portal_receive_rate/config {"*) ok "mqtt planefinder portal receive-rate discovery published" ;;
+      *) bad "mqtt planefinder portal receive-rate discovery missing" ;;
+    esac
+    # Network-ingest rates on the main device (readsb stats.json last1min.remote).
+    case "${CAP}" in
+      *"aviation_feeder/remote_message_rate/config {"*) ok "mqtt network message-rate discovery published" ;;
+      *) bad "mqtt network message-rate discovery missing" ;;
     esac
     # community aggregators no longer get an (unreliable) per-connector byte sensor.
     case "${CAP}" in

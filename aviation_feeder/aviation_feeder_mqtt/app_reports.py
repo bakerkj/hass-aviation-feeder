@@ -43,6 +43,8 @@ from .util import read_json_dict
 PIAWARE_STATUS = "/run/piaware/status.json"
 FR24_MONITOR_URL = "http://localhost:8754/monitor.json"
 PFCLIENT_STATS_URL = "http://localhost:30053/ajax/stats.php"
+# Written by the base image's adsbx-stats service (ADSB Exchange's own view).
+ADSBX_STATS = "/run/adsbexchange-stats/new.json"
 
 # The COMPLETE set of fields each reader is permitted to publish. gather_reports
 # filters every report through this, so a reader that accidentally passes a
@@ -67,7 +69,24 @@ REPORT_FIELDS: dict[str, frozenset[str]] = {
     # "connected" is attached by app.py AFTER gather_reports (pfclient's feeding
     # state is a delta between cycles, which a single reader call can't see), so
     # it must be declared here or the publish-time filter would drop it.
-    "planefinder": frozenset({"bytes_sent", "bytes_received", "connected"}),
+    "planefinder": frozenset(
+        {
+            "bytes_sent",
+            "bytes_received",
+            "connected",
+            "portal_message_rate",
+            "portal_modeac_rate",
+            "portal_receive_rate",
+        }
+    ),
+    "adsbexchange": frozenset(
+        {
+            "portal_aircraft",
+            "portal_aircraft_adsb",
+            "portal_aircraft_other",
+            "messages",
+        }
+    ),
 }
 
 
@@ -170,10 +189,55 @@ def pfclient_report(fetch=_http_json) -> dict[str, Any] | None:
         out["bytes_sent"] = bo
     if bi is not None:
         out["bytes_received"] = bi
+    # pfclient's own decode counters, already per-second (no rate maths needed).
+    # These are the equivalents of the retired Multi-Portal add-on's
+    # planefinder_mode_s_rate / _mode_ac_rate / _bandwidth sensors, which read the
+    # same three fields. NB upstream pfclient has been seen to underflow
+    # total_modeac_packets_ps to ~2^64; clamp implausible values rather than
+    # publish a 1.8e19 spike.
+    msr = _as_int(d.get("total_modes_packets_ps"))
+    if msr is not None and 0 <= msr < 1_000_000:
+        out["portal_message_rate"] = msr
+    acr = _as_int(d.get("total_modeac_packets_ps"))
+    if acr is not None and 0 <= acr < 1_000_000:
+        out["portal_modeac_rate"] = acr
+    bw = _as_int(d.get("receiver_bytes_in_ps"))
+    if bw is not None and bw >= 0:
+        out["portal_receive_rate"] = bw
     # NB: "connected" is NOT set here. master_server_bytes_out is a CUMULATIVE
     # counter, so >0 stays true forever after the first byte even if the feed
     # later dies. The caller (app.py) derives feeding from a positive delta
     # between cycles, mirroring PlaneFinder's own healthcheck.
+    return out
+
+
+def adsbx_report(path: str = ADSBX_STATS) -> dict[str, Any] | None:
+    """ADSB Exchange's own aircraft view, from the adsbx-stats service's json.
+
+    This is the source the retired Multi-Portal add-on's adsbx_* sensors read
+    (it used /run/adsbexchange-feed/status.json from its own per-portal feed
+    client; ours is written by the base image's adsbx-stats service). Counts by
+    `type` so the ADS-B / Mode-S / MLAT split matches how readsb classifies."""
+    d = read_json_dict(path)
+    if not d:
+        return None
+    acs = d.get("aircraft")
+    if not isinstance(acs, list):
+        return None
+    by_type: dict[str, int] = {}
+    for a in acs:
+        if isinstance(a, dict):
+            t = a.get("type")
+            if isinstance(t, str):
+                by_type[t] = by_type.get(t, 0) + 1
+    out: dict[str, Any] = {"portal_aircraft": len(acs)}
+    # adsb_icao(+_nt) are ADS-B; mlat is multilaterated; mode_s is Mode-S only.
+    adsb = by_type.get("adsb_icao", 0) + by_type.get("adsb_icao_nt", 0)
+    out["portal_aircraft_adsb"] = adsb
+    out["portal_aircraft_other"] = len(acs) - adsb
+    msgs = _as_int(d.get("messages"))
+    if msgs is not None:
+        out["messages"] = msgs
     return out
 
 
@@ -183,6 +247,7 @@ def gather_reports(
     piaware=piaware_report,
     fr24=fr24_report,
     pfclient=pfclient_report,
+    adsbx=adsbx_report,
 ) -> dict[str, dict[str, Any]]:
     """{feeder_key: report} for the enabled feeders that expose a self-report."""
     out: dict[str, dict[str, Any]] = {}
@@ -190,6 +255,7 @@ def gather_reports(
         ("enable_piaware", "piaware", piaware),
         ("enable_fr24", "fr24", fr24),
         ("enable_planefinder", "planefinder", pfclient),
+        ("feed_adsbexchange", "adsbexchange", adsbx),
     ):
         if truthy(options.get(flag)):
             r = fn()
