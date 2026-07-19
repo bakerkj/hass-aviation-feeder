@@ -29,10 +29,11 @@ MLAT_STATS_DIR = "/run/mlat-client"
 # A live mlat-client rewrites its file every --stats-interval (we use 30s;
 # ultrafeeder's community clients ~60s). If a file hasn't been touched in well
 # over that, the mlat-client is dead/gone -> skip it so its last peers/sync don't
-# republish forever. The caller (app.mlat_states) then reports 0 for that feeder
-# rather than letting the sensor expire: mlat-client only writes this file once
-# it has synced, so a missing or stale file beside a running client is positive
-# evidence that MLAT is NOT syncing, not an absence of evidence.
+# republish forever. Skipping here is not the end of the story: the caller
+# (app.mlat_states) treats absent stats for an ENABLED feeder as 0. This module
+# has no view of whether the client process is alive; it reports only what the
+# files say. The 0 is justified by mlat-client writing this file only once it
+# has synced, so for an enabled feeder no stats means not syncing.
 _STALE_AFTER_S = 180.0
 
 # feeder_key -> the mlat-client --stats-json basename (no .json). Community

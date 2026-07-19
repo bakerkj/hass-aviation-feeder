@@ -215,9 +215,10 @@ class StaleFeederTopics(unittest.TestCase):
 class MlatStates(unittest.TestCase):
     """Zero-fill for MLAT sensors that are not syncing.
 
-    mlat-client only writes its --stats-json after establishing sync, so a
-    missing file beside a running client means "not syncing" -- a known state
-    that used to be hidden behind an expired, unavailable sensor."""
+    These tests model "enabled feeder, no fresh stats" -- they do not assert
+    anything about the client process, which mlat_states never inspects. The
+    policy under test is that such a feeder reports 0 rather than nothing,
+    because mlat-client writes its --stats-json only after establishing sync."""
 
     ENABLED = {"adsbfi", "hpradar", "sdrmap", "radarbox", "piaware", "fr24"}
 
@@ -261,7 +262,7 @@ class MlatStates(unittest.TestCase):
                 [k for k in out if k[0] == key], f"{key} is not MLAT-capable"
             )
         # a MLAT-capable feeder the user disabled must not get states either
-        self.assertFalse([k for k in app.mlat_states({}, set()) if k])
+        self.assertFalse(app.mlat_states({}, set()))
 
     def test_partial_stats_zero_fill_the_missing_field(self):
         # A file carrying peers but no sync yields sync=0 rather than a gap.

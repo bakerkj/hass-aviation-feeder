@@ -156,10 +156,16 @@ def mlat_states(stats, enabled_keys):
     """{(feeder_key, metric_suffix): value} for every MLAT sensor that has
     discovery, defaulting to 0 when there are no fresh stats.
 
-    mlat-client only writes its --stats-json AFTER establishing sync with the
-    server, so a missing or stale file next to a running client is positive
-    evidence that MLAT is NOT syncing -- not an absence of evidence. Leaving the
-    sensor to expire to "unavailable" hides that; 0 states it.
+    Policy: for an ENABLED MLAT feeder, absent or stale stats are reported as
+    0 rather than not published. Nothing here inspects whether that feeder's
+    mlat-client process is alive -- the function only sees the parsed stats and
+    the enabled set.
+
+    That policy is sound because mlat-client writes its --stats-json only AFTER
+    establishing sync, so for a feeder the user has switched on, no stats means
+    it is not syncing. Leaving the sensor to expire to "unavailable" hid that;
+    0 states it. The residual case -- feeder enabled but its client crashed --
+    also reports 0, which remains the right answer: MLAT is not working.
 
     This is only defensible because a feeder the user disabled no longer has
     entities at all (see stale_feeder_topics): every MLAT entity that exists
