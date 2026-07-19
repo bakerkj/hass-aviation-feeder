@@ -172,12 +172,19 @@ def _remote_rate(s: dict[str, Any], field: str) -> float | None:
     return v / dur if dur > 0 else None
 
 
-# Network-ingest message rates, split Mode-S vs Mode A/C. These are the fields
-# the retired Multi-Portal add-on surfaced as opensky_mode_s_rate /
-# opensky_mode_ac_rate -- its "opensky" sensors actually read the shared decoder's
-# stats.json, not anything OpenSky-specific, so the honest home for them is the
-# main device. Mode A/C stays ~0 unless readsb runs with --modeac (it does not by
-# default); a non-zero value here is Mode A/C arriving from a network peer.
+# Network-ingest message rates, split Mode-S vs Mode A/C: how much traffic readsb
+# is taking in over its NETWORK connectors rather than the local SDR. This is a
+# station-wide receiver statistic and belongs to the main device.
+#
+# NOT per-feeder, and specifically NOT OpenSky stats. The retired Multi-Portal
+# add-on published these same two fields as opensky_mode_s_rate /
+# opensky_mode_ac_rate, but that name was wrong at the source: its "opensky"
+# sensors read the shared decoder's stats.json, not anything OpenSky reported.
+# openskyd exposes no status endpoint or file at all, so no OpenSky-specific
+# figure exists to publish -- do not present these as one.
+#
+# Mode A/C stays ~0 unless readsb runs with --modeac (it does not by default);
+# a non-zero value here is Mode A/C arriving from a network peer.
 REMOTE_METRICS: list[Metric] = [
     Metric(
         "remote_message_rate",
