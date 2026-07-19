@@ -33,6 +33,7 @@ from .metadata import (
     MESSAGES_RATE_METRICS,
     MLAT_RESULT_METRICS,
     MLAT_SYNC_METRICS,
+    DF_KEY_BY_NUMBER,
     NEARBY_METRICS,
     NEARBY_STATE_KEY,
     PORTAL_AIRCRAFT_METRICS,
@@ -59,11 +60,13 @@ from .mqtt import (
     build_nearby_discovery,
     build_report_binary_discovery,
     build_sdr_discovery,
+    build_df_discovery,
     build_uat_discovery,
     build_unique_discovery,
     connect_mqtt_with_retry,
     mqtt_publish,
 )
+from .beast import BeastDfCounter
 from .emergency import compute_emergency
 from .nearby import compute_nearby, read_aircraft
 from .unique_daily import UniqueDailyTracker
@@ -324,6 +327,15 @@ def main() -> int:
         receiver_mode == "rtlsdr" and bool(opts.get("enable_uat"))
     )
     uat_topic = f"{base_topic}/uat"
+    df_topic = f"{base_topic}/message_types"
+    # Mode S downlink-format rates: readsb publishes no per-DF breakdown, so a
+    # daemon thread counts them off its Beast stream and the loop below samples
+    # the tally each cycle (see beast.py). Separate toggle because it holds a
+    # persistent socket, which the other sensor groups do not.
+    df_on = bool(opts.get("ha_message_types", True))
+    df_counter = BeastDfCounter() if df_on else None
+    if df_counter is not None:
+        df_counter.start()
     # Fall back to the LAT/LONG the bridge resolved (incl. HA-inherited location)
     # so blank lat/long options don't disable planes-near-me.
     station_lat = _coord(opts.get("lat"), os.environ.get("LAT"))
@@ -581,6 +593,15 @@ def main() -> int:
                     log_level=log_level,
                     health=health,
                 )
+                published += _publish_toggleable_discovery(
+                    client,
+                    build_df_discovery(
+                        discovery_prefix, df_topic, availability_topic, expire_after_s
+                    ),
+                    df_on,
+                    log_level=log_level,
+                    health=health,
+                )
                 # MQTT broker-link diagnostics (main device), under feeder_health.
                 broker_disc = build_broker_discovery(
                     discovery_prefix, base_topic, availability_topic, expire_after_s
@@ -679,6 +700,25 @@ def main() -> int:
                                 health=health,
                                 mark_state=True,
                             )
+
+                # Mode S downlink-format rates. snapshot() returns {} on the
+                # first cycle (no baseline interval yet) and while the Beast
+                # reader is disconnected, so nothing fabricated is published.
+                if df_counter is not None:
+                    for df_num, rate in df_counter.snapshot().items():
+                        df_key = DF_KEY_BY_NUMBER.get(df_num)
+                        if df_key is None:
+                            continue  # a DF we do not publish a sensor for
+                        mqtt_publish(
+                            client,
+                            f"{df_topic}/{df_key}/state",
+                            f"{rate:.2f}",
+                            qos=0,
+                            retain=False,
+                            log_level=log_level,
+                            health=health,
+                            mark_state=True,
+                        )
 
                 if feeder_health:
                     uptime_s = (
@@ -991,6 +1031,11 @@ def main() -> int:
         return EXIT_LOOP_ERROR
     finally:
         stop["v"] = True
+        # Ask the Beast reader to stop. It is a daemon thread, so it cannot hold
+        # the process open, but signalling lets it close its socket promptly
+        # instead of leaving readsb a dangling client until the process exits.
+        if df_counter is not None:
+            df_counter.stop()
         try:
             mqtt_publish(
                 client,
