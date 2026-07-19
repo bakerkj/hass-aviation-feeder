@@ -13,6 +13,7 @@ sys.path.insert(
 )
 
 from aviation_feeder_mqtt import app  # noqa: E402
+from aviation_feeder_mqtt.feeders import ALL_FEEDER_KEYS  # noqa: E402
 from aviation_feeder_mqtt.metadata import FEEDERS_DEVICE_ID  # noqa: E402
 
 
@@ -102,6 +103,84 @@ class AssembleFeederDiscovery(unittest.TestCase):
         )
         p = c[self._topic("radarbox", "uptime")]
         self.assertNotIn("via_device", p["device"])
+
+
+class StaleFeederTopics(unittest.TestCase):
+    """Retraction of per-feeder discovery.
+
+    The bug this guards: the retraction loop used to iterate the ENABLED feeders
+    (compute_feeder_status's output), so a feeder the user switched off was never
+    visited and its retained configs stayed in the broker -- its entities sat
+    permanently "unavailable" in Home Assistant. Observed live with adsb.one
+    (feed_adsbone: false) leaving 6 orphans."""
+
+    PREFIX = "homeassistant"
+
+    def _conn(self, key):
+        return f"{self.PREFIX}/binary_sensor/{FEEDERS_DEVICE_ID}/{key}/config"
+
+    def _metric(self, key, suffix):
+        return f"{self.PREFIX}/sensor/{FEEDERS_DEVICE_ID}/{key}_{suffix}/config"
+
+    def test_disabled_feeder_is_fully_retracted(self):
+        # Publish a complete set for one feeder only; every OTHER feeder is
+        # "disabled" from the loop's point of view.
+        published = {self._conn("fr24"), self._metric("fr24", "uptime")}
+        stale = app.stale_feeder_topics(self.PREFIX, published)
+        # a disabled feeder's connection binary_sensor must be retracted --
+        # this shape was never covered before
+        self.assertIn(self._conn("adsbone"), stale)
+        self.assertIn(self._metric("adsbone", "uptime"), stale)
+        self.assertIn(self._metric("adsbone", "mlat_sync"), stale)
+
+    def test_published_topics_are_never_retracted(self):
+        published = {self._conn("fr24"), self._metric("fr24", "uptime")}
+        stale = app.stale_feeder_topics(self.PREFIX, published)
+        for t in published:
+            self.assertNotIn(t, stale, "retracted a topic that was just published")
+
+    def test_enabled_feeder_missing_one_metric_retracts_only_that(self):
+        # An enabled feeder whose applicability dropped a metric: that metric is
+        # retracted, its connection is not.
+        published = {self._conn("adsblol"), self._metric("adsblol", "uptime")}
+        stale = app.stale_feeder_topics(self.PREFIX, published)
+        self.assertNotIn(self._conn("adsblol"), stale)
+        self.assertIn(self._metric("adsblol", "bytes_sent"), stale)
+
+    def test_covers_every_known_feeder_not_just_enabled_ones(self):
+        # The regression in one assertion: with nothing published, every known
+        # feeder must appear. A loop over the enabled set would yield nothing.
+        stale = app.stale_feeder_topics(self.PREFIX, set())
+        for key in ALL_FEEDER_KEYS:
+            self.assertIn(self._conn(key), stale, f"{key} would never be cleaned up")
+
+    def test_every_shape_discovery_can_emit_is_retractable(self):
+        """Drift guard: if assemble_feeder_discovery grows a fourth topic shape,
+        the retraction must learn it too, or that entity becomes unremovable.
+        Every topic the builder can produce must appear in a full retraction."""
+        fstat = [
+            ("piaware", "FlightAware", True),  # has report binary_sensors
+            ("fr24", "FlightRadar24", True),  # messages + portal metrics
+            ("planefinder", "PlaneFinder", True),  # bytes + portal rates
+            ("adsblol", "adsb.lol", True),  # community + MLAT sync
+        ]
+        disc = app.assemble_feeder_discovery(
+            self.PREFIX, "t/feeders", "t/status", 90, fstat, via_parent=True
+        )
+        retractable = set(app.stale_feeder_topics(self.PREFIX, set()))
+        missing = sorted(t for t in disc if t not in retractable)
+        self.assertEqual(
+            missing, [], "discovery emits topics the retraction cannot remove"
+        )
+
+    def test_covers_report_binary_sensors(self):
+        # piaware's mlat_ok / radio_ok live under binary_sensor/<key>_<suffix>,
+        # a shape the old loop never touched.
+        stale = app.stale_feeder_topics(self.PREFIX, set())
+        self.assertIn(
+            f"{self.PREFIX}/binary_sensor/{FEEDERS_DEVICE_ID}/piaware_mlat_ok/config",
+            stale,
+        )
 
 
 if __name__ == "__main__":
