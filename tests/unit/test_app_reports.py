@@ -295,6 +295,20 @@ class PfclientPortalRates(unittest.TestCase):
         for k in ("portal_message_rate", "portal_modeac_rate", "portal_receive_rate"):
             self.assertNotIn(k, r)
 
+    def test_bandwidth_underflow_is_dropped_too(self):
+        # receiver_bytes_in_ps comes from the same client and the same payload as
+        # the counter known to underflow, so it gets the same treatment rather
+        # than being assumed immune.
+        r = app_reports.pfclient_report(
+            fetch=lambda url: {
+                "master_server_bytes_out": 1,
+                "receiver_bytes_in_ps": 18446744073700084000,
+                "total_modes_packets_ps": 391,
+            }
+        )
+        self.assertNotIn("portal_receive_rate", r)
+        self.assertEqual(r["portal_message_rate"], 391)  # sane sibling survives
+
 
 class AdsbxReport(unittest.TestCase):
     def _write(self, d, payload):
@@ -322,7 +336,9 @@ class AdsbxReport(unittest.TestCase):
             self.assertEqual(r["portal_aircraft"], 5)
             self.assertEqual(r["portal_aircraft_adsb"], 3)  # icao + icao_nt
             self.assertEqual(r["portal_aircraft_other"], 2)  # mode_s + mlat
-            self.assertEqual(r["messages"], 2678768)
+            # new.json's `messages` is written from our own readsb, so it would
+            # duplicate the main device's counts -- deliberately not published.
+            self.assertNotIn("messages", r)
 
     def test_empty_aircraft_list(self):
         with tempfile.TemporaryDirectory() as d:

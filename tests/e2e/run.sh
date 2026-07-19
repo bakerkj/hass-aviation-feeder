@@ -812,6 +812,16 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
       *"aviation_feeder_feeders/planefinder_portal_receive_rate/config {"*) ok "mqtt planefinder portal receive-rate discovery published" ;;
       *) bad "mqtt planefinder portal receive-rate discovery missing" ;;
     esac
+    # ADS-B Exchange reports its own aircraft view (from the adsbx-stats json).
+    case "${CAP}" in
+      *"aviation_feeder_feeders/adsbexchange_portal_aircraft/config {"*) ok "mqtt adsbexchange portal-aircraft discovery published" ;;
+      *) bad "mqtt adsbexchange portal-aircraft discovery missing" ;;
+    esac
+    # ...but adsbexchange reports no decode rates, so it must NOT get those.
+    case "${CAP}" in
+      *"aviation_feeder_feeders/adsbexchange_portal_message_rate/config {"*) bad "portal rate sensor present for adsbexchange (it reports no rates)" ;;
+      *) ok "portal rate sensors correctly absent for adsbexchange" ;;
+    esac
     # Network-ingest rates on the main device (readsb stats.json last1min.remote).
     case "${CAP}" in
       *"aviation_feeder/remote_message_rate/config {"*) ok "mqtt network message-rate discovery published" ;;

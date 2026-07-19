@@ -8,6 +8,8 @@
   "remote_beast_port": 30005,
   "enable_piaware": true,
   "enable_fr24": true,
+  "enable_planefinder": true,
+  "feed_adsbexchange": true,
   "feed_adsblol": true,
   "ha_sensors": true,
   "mqtt_host": "aviation_feeder_e2e_mqtt",

@@ -46,6 +46,13 @@ PFCLIENT_STATS_URL = "http://localhost:30053/ajax/stats.php"
 # Written by the base image's adsbx-stats service (ADSB Exchange's own view).
 ADSBX_STATS = "/run/adsbexchange-stats/new.json"
 
+# Plausibility ceilings for pfclient's per-second counters. Not tuning knobs --
+# they exist only to reject the ~2^64 underflow that client is known to emit.
+# Both sit far above any real station (a busy site runs ~1k msg/s and well under
+# 1 MB/s of Beast), so a legitimate reading can never trip them.
+_MAX_MSG_RATE = 1_000_000  # msg/s
+_MAX_BYTE_RATE = 100_000_000  # B/s
+
 # The COMPLETE set of fields each reader is permitted to publish. gather_reports
 # filters every report through this, so a reader that accidentally passes a
 # vendor payload through cannot leak: undeclared keys are dropped before they
@@ -80,12 +87,7 @@ REPORT_FIELDS: dict[str, frozenset[str]] = {
         }
     ),
     "adsbexchange": frozenset(
-        {
-            "portal_aircraft",
-            "portal_aircraft_adsb",
-            "portal_aircraft_other",
-            "messages",
-        }
+        {"portal_aircraft", "portal_aircraft_adsb", "portal_aircraft_other"}
     ),
 }
 
@@ -192,18 +194,18 @@ def pfclient_report(fetch=_http_json) -> dict[str, Any] | None:
     # pfclient's own decode counters, already per-second (no rate maths needed).
     # These are the equivalents of the retired Multi-Portal add-on's
     # planefinder_mode_s_rate / _mode_ac_rate / _bandwidth sensors, which read the
-    # same three fields. NB upstream pfclient has been seen to underflow
-    # total_modeac_packets_ps to ~2^64; clamp implausible values rather than
-    # publish a 1.8e19 spike.
-    msr = _as_int(d.get("total_modes_packets_ps"))
-    if msr is not None and 0 <= msr < 1_000_000:
-        out["portal_message_rate"] = msr
-    acr = _as_int(d.get("total_modeac_packets_ps"))
-    if acr is not None and 0 <= acr < 1_000_000:
-        out["portal_modeac_rate"] = acr
-    bw = _as_int(d.get("receiver_bytes_in_ps"))
-    if bw is not None and bw >= 0:
-        out["portal_receive_rate"] = bw
+    # same three fields. Every one of them is clamped: upstream pfclient has been
+    # seen to underflow a per-second counter to ~2^64 (nine months of recorded
+    # history show total_modeac_packets_ps averaging 1.6e14), and all three come
+    # from the same client and the same payload, so none is assumed immune.
+    for field, name, ceiling in (
+        ("total_modes_packets_ps", "portal_message_rate", _MAX_MSG_RATE),
+        ("total_modeac_packets_ps", "portal_modeac_rate", _MAX_MSG_RATE),
+        ("receiver_bytes_in_ps", "portal_receive_rate", _MAX_BYTE_RATE),
+    ):
+        v = _as_int(d.get(field))
+        if v is not None and 0 <= v < ceiling:
+            out[name] = v
     # NB: "connected" is NOT set here. master_server_bytes_out is a CUMULATIVE
     # counter, so >0 stays true forever after the first byte even if the feed
     # later dies. The caller (app.py) derives feeding from a positive delta
@@ -235,9 +237,9 @@ def adsbx_report(path: str = ADSBX_STATS) -> dict[str, Any] | None:
     adsb = by_type.get("adsb_icao", 0) + by_type.get("adsb_icao_nt", 0)
     out["portal_aircraft_adsb"] = adsb
     out["portal_aircraft_other"] = len(acs) - adsb
-    msgs = _as_int(d.get("messages"))
-    if msgs is not None:
-        out["messages"] = msgs
+    # Deliberately NOT publishing new.json's `messages`: adsbx-stats writes that
+    # file from our own readsb, so the count duplicates the main device's
+    # message figures rather than adding an ADSBX-specific view.
     return out
 
 
