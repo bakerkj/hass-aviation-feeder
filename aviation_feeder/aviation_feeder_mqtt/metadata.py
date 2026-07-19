@@ -235,10 +235,53 @@ def _cpu_pct(s: dict[str, Any], task: str) -> float | None:
     return ms / (dur * 10.0)
 
 
+# The rest of readsb's last1min.cpu block: the json/API writers and housekeeping
+# workers. Each runs at roughly 0.03% of a core on a live station -- real work,
+# but eight near-zero tiles would drown the three that carry signal, so these
+# ship hidden and can be enabled when profiling something specific.
+# (task, metric key, display name, icon)
+_MINOR_CPU_TASKS: list[tuple[str, str, str, str]] = [
+    ("aircraft_json", "cpu_aircraft_json_pct", "aircraft.json", "mdi:code-json"),
+    ("globe_json", "cpu_globe_json_pct", "globe.json", "mdi:earth"),
+    ("binCraft", "cpu_bincraft_pct", "binCraft", "mdi:file-code-outline"),
+    ("trace_json", "cpu_trace_json_pct", "traces", "mdi:chart-timeline-variant"),
+    (
+        "heatmap_and_state",
+        "cpu_heatmap_state_pct",
+        "heatmap/state",
+        "mdi:grid",
+    ),
+    ("api_workers", "cpu_api_workers_pct", "API workers", "mdi:api"),
+    ("api_update", "cpu_api_update_pct", "API update", "mdi:api"),
+    ("remove_stale", "cpu_remove_stale_pct", "remove stale", "mdi:broom"),
+]
+
+
+def _minor_cpu_metric(task: str, key: str, label: str, icon: str) -> "Metric":
+    """Build one hidden CPU sensor. `task` is a parameter of THIS function, so
+    each call closes over its own value -- no late-binding hazard even though
+    the callers build these in a comprehension."""
+
+    def extract(s: dict[str, Any]) -> float | int | None:
+        return _cpu_pct(s, task)
+
+    return Metric(
+        key,
+        f"readsb CPU ({label})",
+        "%",
+        None,
+        "measurement",
+        icon,
+        2,  # these sit near 0.03%, so 1dp would round most of them to 0.0
+        extract,
+        enabled_default=False,
+    )
+
+
 # readsb's own performance, from the same stats.json. Diagnostics: they answer
-# "is the receiver keeping up?", which nothing else in HA exposes. All disabled
-# by default -- a healthy station reads a steady low number and most users never
-# need them; they earn their keep when something is wrong.
+# "is the receiver keeping up?", which nothing else in HA exposes. The three
+# headline CPU workers and the SDR health sensors are visible; anything that
+# reads ~0 on a healthy station ships hidden so it isn't permanent noise.
 PERFORMANCE_METRICS: list[Metric] = [
     Metric(
         "cpu_reader_pct",
@@ -285,6 +328,7 @@ PERFORMANCE_METRICS: list[Metric] = [
         lambda s: _num(_get(s, "total", "cpr", "global_bad")),
         enabled_default=False,
     ),
+    *(_minor_cpu_metric(*t) for t in _MINOR_CPU_TASKS),
 ]
 
 
