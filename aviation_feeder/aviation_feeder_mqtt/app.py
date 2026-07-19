@@ -42,6 +42,7 @@ from .metadata import (
     THROUGHPUT_RATE_METRICS,
     UPTIME_METRICS,
     compute_metrics,
+    compute_performance_metrics,
     compute_remote_metrics,
     compute_sdr_metrics,
     compute_uat_metrics,
@@ -626,6 +627,7 @@ def main() -> int:
                     metrics = {
                         **compute_metrics(stats),
                         **compute_remote_metrics(stats),
+                        **compute_performance_metrics(stats),
                     }
                     n = 0
                     for key, val in metrics.items():

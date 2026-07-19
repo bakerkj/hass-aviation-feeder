@@ -18,6 +18,7 @@ from .metadata import (
     EMERGENCY_SQUAWK_KEY,
     FEEDERS_DEVICE_ID,
     METRICS,
+    PERFORMANCE_METRICS,
     REMOTE_METRICS,
     REPORT_BINARY_SENSORS,
     NEARBY_DEVICE_ID,
@@ -182,6 +183,7 @@ def _metric_config(
         unit=m.unit,
         device_class=m.device_class,
         diagnostic=diagnostic,
+        enabled_by_default=m.enabled_default,
     )
 
 
@@ -198,7 +200,7 @@ def build_discovery_payloads(
     the local SDR."""
     out: dict[str, dict[str, Any]] = {}
     device = _device(DEVICE_ID, DEVICE_NAME)
-    for m in (*METRICS, *REMOTE_METRICS):
+    for m in (*METRICS, *REMOTE_METRICS, *PERFORMANCE_METRICS):
         cfg = _metric_config(
             m,
             device,

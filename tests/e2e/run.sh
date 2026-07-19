@@ -827,6 +827,38 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
       *"aviation_feeder/remote_message_rate/config {"*) ok "mqtt network message-rate discovery published" ;;
       *) bad "mqtt network message-rate discovery missing" ;;
     esac
+    # readsb performance diagnostics on the main device (last1min.cpu / total.cpr).
+    case "${CAP}" in
+      *"aviation_feeder/cpu_reader_pct/config {"*) ok "mqtt readsb reader-CPU discovery published" ;;
+      *) bad "mqtt readsb reader-CPU discovery missing" ;;
+    esac
+    case "${CAP}" in
+      *"aviation_feeder/cpu_demod_pct/config {"*) ok "mqtt readsb demod-CPU discovery published" ;;
+      *) bad "mqtt readsb demod-CPU discovery missing" ;;
+    esac
+    # Hidden diagnostics must carry enabled_by_default:false in their OWN config.
+    # Matched with grep, not a case glob: CAP is the whole capture and a glob's
+    # * spans newlines, so a bare *'"enabled_by_default":false'* would be
+    # satisfied by any pre-existing per-feeder sensor and could never fail.
+    # These two assertions are what prove Metric.enabled_default is threaded
+    # through _metric_config at all.
+    if printf '%s' "${CAP}" | grep -q 'aviation_feeder/cpr_bad_positions/config .*"enabled_by_default":false'; then
+      ok "mqtt cpr_bad_positions ships hidden"
+    else
+      bad "cpr_bad_positions missing enabled_by_default:false in its own config"
+    fi
+    if printf '%s' "${CAP}" | grep -q 'aviation_feeder/cpu_aircraft_json_pct/config .*"enabled_by_default":false'; then
+      ok "mqtt minor CPU sensor ships hidden"
+    else
+      bad "cpu_aircraft_json_pct missing enabled_by_default:false in its own config"
+    fi
+    # ...and the counterpart: a VISIBLE sensor must NOT carry the flag, so the
+    # two assertions above can't both pass by everything being hidden.
+    if printf '%s' "${CAP}" | grep -q 'aviation_feeder/cpu_reader_pct/config .*"enabled_by_default":false'; then
+      bad "cpu_reader_pct is hidden but should be visible"
+    else
+      ok "mqtt cpu_reader_pct correctly visible"
+    fi
     # community aggregators no longer get an (unreliable) per-connector byte sensor.
     case "${CAP}" in
       *"aviation_feeder_feeders/adsblol_bytes_sent/config {"*) bad "aggregator byte sensor present (should be dropped)" ;;
