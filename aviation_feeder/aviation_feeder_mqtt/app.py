@@ -96,11 +96,13 @@ _ALL_FEEDER_METRIC_SUFFIXES: tuple[str, ...] = tuple(
     for m in grp
 )
 
-# Report binary_sensor suffixes (piaware mlat_ok / radio_ok). Derived from
-# REPORT_BINARY_SENSORS so the retraction below cannot drift if one is added.
-_ALL_REPORT_BINARY_SUFFIXES: tuple[str, ...] = tuple(
-    dict.fromkeys(suffix for _k, suffix, _n, _f, _i in REPORT_BINARY_SENSORS)
-)
+# Report binary_sensors per feeder (piaware mlat_ok / radio_ok). Keyed by feeder
+# because the association is load-bearing: only the owning feeder ever gets that
+# topic, so flattening to a bare suffix list would make the retraction generate
+# combinations that can never exist (adsblol_mlat_ok, fr24_radio_ok, ...).
+_REPORT_BINARY_SUFFIXES_BY_KEY: dict[str, list[str]] = {}
+for _rk, _rsuf, _rn, _rf, _ri in REPORT_BINARY_SENSORS:
+    _REPORT_BINARY_SUFFIXES_BY_KEY.setdefault(_rk, []).append(_rsuf)
 
 # Per-feeder metric applicability — single source of truth for discovery (the
 # state-publish loops below feed the same suffixes from each metric's data
@@ -170,7 +172,7 @@ def stale_feeder_topics(discovery_prefix, published) -> list[str]:
         ]
         candidates += [
             f"{discovery_prefix}/binary_sensor/{FEEDERS_DEVICE_ID}/{key}_{suf}/config"
-            for suf in _ALL_REPORT_BINARY_SUFFIXES
+            for suf in _REPORT_BINARY_SUFFIXES_BY_KEY.get(key, ())
         ]
         candidates += [
             f"{discovery_prefix}/sensor/{FEEDERS_DEVICE_ID}/{key}_{suf}/config"

@@ -14,7 +14,10 @@ sys.path.insert(
 
 from aviation_feeder_mqtt import app  # noqa: E402
 from aviation_feeder_mqtt.feeders import ALL_FEEDER_KEYS  # noqa: E402
-from aviation_feeder_mqtt.metadata import FEEDERS_DEVICE_ID  # noqa: E402
+from aviation_feeder_mqtt.metadata import (  # noqa: E402
+    FEEDERS_DEVICE_ID,
+    REPORT_BINARY_SENSORS,
+)
 
 
 class RateTracker(unittest.TestCase):
@@ -172,6 +175,31 @@ class StaleFeederTopics(unittest.TestCase):
         self.assertEqual(
             missing, [], "discovery emits topics the retraction cannot remove"
         )
+
+    def test_no_report_binaries_for_feeders_that_never_have_them(self):
+        """The inverse of the drift guard above.
+
+        REPORT_BINARY_SENSORS pairs a suffix with the feeder that owns it --
+        only piaware has mlat_ok/radio_ok. Flattening that to a bare suffix list
+        makes the retraction emit combinations that can never exist
+        (adsblol_mlat_ok, fr24_radio_ok, ...): harmless in MQTT but needless
+        traffic on every reconnect, and it silently discards the pairing the
+        'cannot drift' comment relies on."""
+        stale = app.stale_feeder_topics(self.PREFIX, set())
+        report = [
+            t for t in stale if t.endswith(("_mlat_ok/config", "_radio_ok/config"))
+        ]
+        owners = {k for k, *_rest in REPORT_BINARY_SENSORS}
+        for t in report:
+            entity = t.rsplit("/", 2)[-2]  # e.g. piaware_mlat_ok
+            key = entity.rsplit("_", 2)[0]  # -> piaware
+            self.assertIn(
+                key,
+                owners,
+                f"{t} is a report-binary topic for a feeder that never has one",
+            )
+        # and the real ones ARE still there
+        self.assertEqual(len(report), len(REPORT_BINARY_SENSORS))
 
     def test_covers_report_binary_sensors(self):
         # piaware's mlat_ok / radio_ok live under binary_sensor/<key>_<suffix>,
