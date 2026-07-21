@@ -28,7 +28,7 @@
       "description": "npm packages pinned via pre-commit additional_dependencies (e.g. @commitlint/config-conventional@N in .pre-commit-config.yaml). The built-in pre-commit manager only bumps the `rev:` on each hook — it doesn't touch the additional_dependencies array, so without this regex those pins go stale.",
       "managerFilePatterns": ["/^\\.pre-commit-config\\.yaml$/"],
       "matchStrings": [
-        "\"(?<depName>@?[^\"@\\s]+(?:/[^\"@\\s]+)?)@(?<currentValue>[^\"\\s]+)\""
+        "\"(?<depName>@?[^\"@\\s]+)@(?<currentValue>[^\"\\s]+)\""
       ],
       "datasourceTemplate": "npm",
       "versioningTemplate": "npm"
