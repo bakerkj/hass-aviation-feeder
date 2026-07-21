@@ -1,6 +1,11 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "helpers:pinGitHubActionDigestsToSemver"],
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigestsToSemver",
+    ":semanticCommits",
+    ":dependencyDashboard"
+  ],
   "schedule": ["before 6pm on friday"],
   "timezone": "America/New_York",
   "assignees": ["bakerkj"],
@@ -17,6 +22,16 @@
         "runs-on:\\s*(?<depName>ubuntu|macos|windows)-(?<currentValue>[\\w.-]+)"
       ],
       "datasourceTemplate": "github-runners"
+    },
+    {
+      "customType": "regex",
+      "description": "npm packages pinned via pre-commit additional_dependencies (e.g. @commitlint/config-conventional@N in .pre-commit-config.yaml). The built-in pre-commit manager only bumps the `rev:` on each hook — it doesn't touch the additional_dependencies array, so without this regex those pins go stale.",
+      "managerFilePatterns": ["/^\\.pre-commit-config\\.yaml$/"],
+      "matchStrings": [
+        "\"(?<depName>@?[^\"@\\s]+(?:/[^\"@\\s]+)?)@(?<currentValue>[^\"\\s]+)\""
+      ],
+      "datasourceTemplate": "npm",
+      "versioningTemplate": "npm"
     },
     {
       "customType": "regex",
