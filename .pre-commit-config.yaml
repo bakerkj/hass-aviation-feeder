@@ -45,7 +45,7 @@ repos:
         args: ["--ignore-words-list", "hass"]
 
   - repo: https://github.com/rbubley/mirrors-prettier
-    rev: v3.9.5
+    rev: v3.9.6
     hooks:
       - id: prettier
         types_or: [yaml, json, markdown]
