@@ -88,6 +88,15 @@ _running() { [ "$(status)" = "running" ]; }
 _env_has() { case "$(env_val "$1")" in *"$2"*) return 0 ;; *) return 1 ;; esac }
 _log_has() { logs | grep -qE "$1"; }
 _decoded() { case "$(aircraft_json)" in *"$1"*) return 0 ;; *) return 1 ;; esac }
+# Match a regex against the MQTT capture (CAP). Deliberately NOT
+# `printf '%s' "${CAP}" | grep -q ...`: under `set -o pipefail` that construct
+# reports a SUCCESSFUL match as a failure. grep -q exits at its first match and
+# closes the pipe; once CAP outgrows the 64K pipe buffer the writer is still
+# blocked, dies on SIGPIPE, and pipefail propagates the writer's non-zero status
+# even though grep returned 0. Only assertions whose match is EXPECTED break --
+# a non-matching grep reads to EOF and never triggers it -- so the failure looks
+# like a genuine missing sensor. A herestring has no writer process to kill.
+_cap_has() { grep -q "$1" <<<"${CAP}"; }
 _file_exists() { docker exec "${CONTAINER}" test -f "$1" 2>/dev/null; }
 _symlink_to() { [ "$(docker exec "${CONTAINER}" readlink "$1" 2>/dev/null)" = "$2" ]; }
 _is_exec() { docker exec "${CONTAINER}" test -x "$1" 2>/dev/null; }
@@ -328,7 +337,7 @@ case_hostile() {
 
   # 1. no injected connector: every connector must be adsb or mlat, and NOTHING
   #    may point at the attacker host.
-  if env_val ULTRAFEEDER_CONFIG | tr ';' '\n' | grep -q 'evil.example.com'; then
+  if grep -q 'evil.example.com' <<<"$(env_val ULTRAFEEDER_CONFIG | tr ';' '\n')"; then
     bad "remote_beast host/port injected a connector to an arbitrary host"
   else
     ok "hostile remote_beast_host AND port injected no connector"
@@ -527,7 +536,7 @@ case_allfeeders() {
   # extra param and the semicolon STARTS A NEW CONNECTOR, so a station name can
   # inject arbitrary feeder config. Both must arrive neutralised.
   assert_env_contains ULTRAFEEDER_CONFIG 'name=E2E Name_ With_ Sep'
-  if env_val ULTRAFEEDER_CONFIG | tr ';' '\n' | grep -qvE '^(adsb|mlat),'; then
+  if grep -qvE '^(adsb|mlat),' <<<"$(env_val ULTRAFEEDER_CONFIG | tr ';' '\n')"; then
     bad "ULTRAFEEDER_CONFIG has a connector that is neither adsb nor mlat (injection)"
   else
     ok "no injected connector: ',' and ';' in a station name are neutralised"
@@ -833,12 +842,12 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
       *) bad "mqtt DF11 discovery missing" ;;
     esac
     # The near-zero DFs ship hidden; check the flag on their own config line.
-    if printf '%s' "${CAP}" | grep -q 'aviation_feeder_message_types/df21_rate/config .*"enabled_by_default":false'; then
+    if _cap_has 'aviation_feeder_message_types/df21_rate/config .*"enabled_by_default":false'; then
       ok "mqtt DF21 ships hidden"
     else
       bad "df21_rate missing enabled_by_default:false in its own config"
     fi
-    if printf '%s' "${CAP}" | grep -q 'aviation_feeder_message_types/df17_rate/config .*"enabled_by_default":false'; then
+    if _cap_has 'aviation_feeder_message_types/df17_rate/config .*"enabled_by_default":false'; then
       bad "df17_rate is hidden but should be visible"
     else
       ok "mqtt DF17 correctly visible"
@@ -863,19 +872,19 @@ h.HTTPServer(("0.0.0.0", 8099), H).serve_forever()
     # satisfied by any pre-existing per-feeder sensor and could never fail.
     # These two assertions are what prove Metric.enabled_default is threaded
     # through _metric_config at all.
-    if printf '%s' "${CAP}" | grep -q 'aviation_feeder/cpr_bad_positions/config .*"enabled_by_default":false'; then
+    if _cap_has 'aviation_feeder/cpr_bad_positions/config .*"enabled_by_default":false'; then
       ok "mqtt cpr_bad_positions ships hidden"
     else
       bad "cpr_bad_positions missing enabled_by_default:false in its own config"
     fi
-    if printf '%s' "${CAP}" | grep -q 'aviation_feeder/cpu_aircraft_json_pct/config .*"enabled_by_default":false'; then
+    if _cap_has 'aviation_feeder/cpu_aircraft_json_pct/config .*"enabled_by_default":false'; then
       ok "mqtt minor CPU sensor ships hidden"
     else
       bad "cpu_aircraft_json_pct missing enabled_by_default:false in its own config"
     fi
     # ...and the counterpart: a VISIBLE sensor must NOT carry the flag, so the
     # two assertions above can't both pass by everything being hidden.
-    if printf '%s' "${CAP}" | grep -q 'aviation_feeder/cpu_reader_pct/config .*"enabled_by_default":false'; then
+    if _cap_has 'aviation_feeder/cpu_reader_pct/config .*"enabled_by_default":false'; then
       bad "cpu_reader_pct is hidden but should be visible"
     else
       ok "mqtt cpu_reader_pct correctly visible"

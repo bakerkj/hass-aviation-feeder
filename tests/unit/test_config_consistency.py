@@ -162,5 +162,52 @@ class SensorGroupToggles(unittest.TestCase):
             )
 
 
+class E2eGrepIsNotPiped(unittest.TestCase):
+    """`writer | grep -q PAT` is unsafe in run.sh, which sets `pipefail`.
+
+    grep -q exits at its first match and closes the pipe. If the writer is still
+    blocked -- which happens as soon as its output outgrows the 64K pipe buffer
+    -- it dies on SIGPIPE, and pipefail propagates the writer's non-zero status
+    as the pipeline's, so a SUCCESSFUL match is reported as a failure. Only
+    assertions whose match is EXPECTED break; a non-matching grep reads to EOF
+    and never trips it. The failure therefore reads as a genuinely missing
+    sensor, which is why it survives review.
+
+    Use a herestring (`grep -q PAT <<<"${VAR}"`) instead: no writer process, so
+    nothing to kill. Piping from `logs`/`env_val` stays allowed -- both end in
+    `|| true`, so the helper always exits 0 no matter what SIGPIPE does inside.
+    """
+
+    _RUN = os.path.join(os.path.dirname(__file__), "..", "e2e", "run.sh")
+    _IMMUNE = re.compile(r"^(logs|env_val\s+\w+)$")
+
+    def test_no_unguarded_pipe_into_grep_q(self):
+        with open(self._RUN, encoding="utf-8") as f:
+            lines = f.readlines()
+        offenders = []
+        for n, line in enumerate(lines, 1):
+            if line.lstrip().startswith("#") or "grep -q" not in line:
+                continue
+            # `docker exec ... sh -c '... | grep -q ...'` builds its pipeline in
+            # the container's shell, which does not run under our pipefail.
+            if "docker exec" in line:
+                continue
+            before = line.split("grep -q", 1)[0]
+            if "|" not in before:
+                continue  # herestring or file argument -- no writer to kill
+            writer = before.split("|")[-2]
+            writer = re.sub(r"^\s*\w+\(\)\s*\{", "", writer)
+            writer = re.sub(r"^\s*((if|elif|while|until|!)\s+)*", "", writer).strip()
+            if not self._IMMUNE.match(writer):
+                offenders.append(f"  line {n}: {line.strip()}")
+        self.assertEqual(
+            offenders,
+            [],
+            "pipefail + `grep -q` reports a successful match as a failure once "
+            'the writer outgrows the pipe buffer; use `grep -q PAT <<<"$VAR"`:\n'
+            + "\n".join(offenders),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
