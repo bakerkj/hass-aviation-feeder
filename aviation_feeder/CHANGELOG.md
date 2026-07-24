@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.0.13](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.12...aviation_feeder-v0.0.13) (2026-07-24)
+
+
+### Miscellaneous Chores
+
+* **deps:** update ghcr.io/plane-watch/docker-plane-watch docker tag to v0.0.10 ([#86](https://github.com/bakerkj/hass-aviation-feeder/issues/86)) ([fa97877](https://github.com/bakerkj/hass-aviation-feeder/commit/fa97877cc0107389a49c25e09c90fc2ec6f3cdc0))
+* **deps:** update ghcr.io/sdr-enthusiasts/docker-opensky-network docker tag to latest-build-843 ([#80](https://github.com/bakerkj/hass-aviation-feeder/issues/80)) ([f91cfc9](https://github.com/bakerkj/hass-aviation-feeder/commit/f91cfc95059b9795b529510dda8ef001667847a1))
+* **deps:** update pre-commit hook astral-sh/ruff-pre-commit to v0.16.0 ([#88](https://github.com/bakerkj/hass-aviation-feeder/issues/88)) ([fa7115d](https://github.com/bakerkj/hass-aviation-feeder/commit/fa7115da138fdea0471fc3fac5fa5995b5ffd230))
+
 ## [0.0.12](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.11...aviation_feeder-v0.0.12) (2026-07-19)
 
 
