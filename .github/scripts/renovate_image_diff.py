@@ -40,7 +40,7 @@ def run(*args, fatal=False):
     failure is always surfaced -- fatally for the diff (without it we know
     nothing), loudly for an inspect (that image is reported as un-inspectable).
     """
-    proc = subprocess.run(args, capture_output=True, text=True)
+    proc = subprocess.run(args, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         err = (proc.stderr or "").strip().splitlines()
         detail = err[-1] if err else "(no stderr)"

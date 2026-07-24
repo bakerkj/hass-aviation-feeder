@@ -15,19 +15,19 @@ from .metadata import (
     DEVICE_MANUFACTURER,
     DEVICE_MODEL,
     DEVICE_NAME,
-    EMERGENCY_SQUAWK_KEY,
-    FEEDERS_DEVICE_ID,
     DF_DEVICE_ID,
     DF_DEVICE_NAME,
     DF_METRICS,
+    EMERGENCY_SQUAWK_KEY,
+    FEEDERS_DEVICE_ID,
     METRICS,
-    PERFORMANCE_METRICS,
-    REMOTE_METRICS,
-    REPORT_BINARY_SENSORS,
     NEARBY_DEVICE_ID,
     NEARBY_DEVICE_NAME,
     NEARBY_METRICS,
     NEARBY_STATE_KEY,
+    PERFORMANCE_METRICS,
+    REMOTE_METRICS,
+    REPORT_BINARY_SENSORS,
     SDR_METRICS,
     UAT_DEVICE_ID,
     UAT_DEVICE_NAME,
@@ -65,7 +65,7 @@ def mqtt_publish(
                 health.last_state_publish_ok = time.time()
             return True
         log("WARNING", f"MQTT publish rc={info.rc} topic={topic}", log_level)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- never let a publish error kill the loop
         log("WARNING", f"MQTT publish failed topic={topic}: {e}", log_level)
     return False
 
@@ -81,7 +81,7 @@ def connect_mqtt_with_retry(
         try:
             client.connect(mqtt_host, mqtt_port, keepalive=60)
             return
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- retry on any broker connect failure
             log(
                 "WARNING",
                 f"Cannot connect to MQTT broker {mqtt_host}:{mqtt_port}: {e} "

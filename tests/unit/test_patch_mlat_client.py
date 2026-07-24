@@ -156,7 +156,8 @@ class WriteClientStats(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "radarbox.json")
             self._fn()(self._coord(path), 4.5, 1000, 10.0)  # 1000 msgs / 10s = 100/s
-            data = json.load(open(path, encoding="utf-8"))
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
             self.assertEqual(data["positions_per_minute"], 4.5)
             self.assertEqual(data["msg_rate"], 100.0)
             self.assertEqual(data["aircraft_adsb_used"], 1)  # only 'a'
@@ -173,7 +174,8 @@ class WriteClientStats(unittest.TestCase):
             with open(path, "w", encoding="utf-8") as f:
                 json.dump({"peer_count": 42, "good_sync_percentage_last_hour": 99}, f)
             self._fn()(self._coord(path), 1.0, 60, 60.0)
-            data = json.load(open(path, encoding="utf-8"))
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
             self.assertEqual(data["peer_count"], 42)  # server field kept
             self.assertEqual(data["good_sync_percentage_last_hour"], 99)
             self.assertEqual(data["positions_per_minute"], 1.0)  # client field added

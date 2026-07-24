@@ -12,7 +12,7 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "aviation_feeder")
 )
 
-from aviation_feeder_mqtt.unique_daily import UniqueDailyTracker  # noqa: E402
+from aviation_feeder_mqtt.unique_daily import UniqueDailyTracker
 
 DAY1 = (2026, 7, 18)
 DAY2 = (2026, 7, 19)
