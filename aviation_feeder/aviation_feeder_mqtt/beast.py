@@ -172,7 +172,7 @@ class BeastDfCounter:
                 while not self._stop.is_set():
                     try:
                         chunk = sock.recv(65536)
-                    except socket.timeout:
+                    except TimeoutError:
                         continue  # quiet stream is not an error
                     if not chunk:
                         break  # readsb closed the connection

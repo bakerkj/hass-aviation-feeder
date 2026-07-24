@@ -25,7 +25,7 @@ def resolve_mqtt_service(log_level: str) -> dict[str, Any] | None:
     url = os.environ.get("SUPERVISOR_MQTT_SERVICE_URL") or DEFAULT_MQTT_SERVICE
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=10) as resp:
             body = json.loads(resp.read().decode())
     except (urllib.error.URLError, ValueError, OSError) as e:
         log("WARNING", f"could not resolve MQTT service: {e}", log_level)

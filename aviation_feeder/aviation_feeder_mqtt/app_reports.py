@@ -107,9 +107,9 @@ def filter_report(key: str, report: dict[str, Any]) -> dict[str, Any]:
 
 def _http_json(url: str, timeout: float = 2.0) -> dict | None:
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as r:  # noqa: S310 (localhost)
+        with urllib.request.urlopen(url, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8", "replace"))
-    except Exception:
+    except Exception:  # noqa: BLE001 -- any fetch/parse failure means "no report"
         return None
     return data if isinstance(data, dict) else None
 
