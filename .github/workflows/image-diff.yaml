@@ -183,7 +183,7 @@ jobs:
       # stays the build + e2e checks, which are what actually prove the image works.
       - name: Review upstream changes
         continue-on-error: true
-        uses: anthropics/claude-code-action@b76a0776ae74036e77cd11018083743453d7ad35 # v1.0.179
+        uses: anthropics/claude-code-action@44423bdec74b97d67543eb16c110546762c110b2 # v1.0.181
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # This job runs ONLY on renovate[bot] PRs (that is the whole point --
