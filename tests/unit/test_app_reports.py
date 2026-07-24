@@ -9,12 +9,13 @@ import os
 import sys
 import tempfile
 import unittest
+from typing import ClassVar
 
 sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "aviation_feeder")
 )
 
-from aviation_feeder_mqtt import app_reports  # noqa: E402
+from aviation_feeder_mqtt import app_reports
 
 
 def _truthy(v):
@@ -107,7 +108,7 @@ class PublishAllowlist(unittest.TestCase):
     # fr24's feed_alias, pfclient's user_lat/user_lon.
     CANARY = "CANARY-LEAKED-IDENTITY"
 
-    ALL_ENABLED = {
+    ALL_ENABLED: ClassVar[dict[str, bool]] = {
         "enable_piaware": True,
         "enable_fr24": True,
         "enable_planefinder": True,

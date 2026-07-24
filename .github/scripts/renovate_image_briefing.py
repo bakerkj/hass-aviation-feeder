@@ -75,11 +75,17 @@ DOCKERFILE = "aviation_feeder/Dockerfile"
 OUR_TREE = ["aviation_feeder/Dockerfile", "aviation_feeder/rootfs"]
 
 # FROM <image>:<tag>@<digest> AS <stage>
-FROM_RE = re.compile(r"^FROM\s+(?P<ref>\S+)\s+AS\s+(?P<stage>[\w.-]+)", re.M | re.I)
+FROM_RE = re.compile(
+    r"^FROM\s+(?P<ref>\S+)\s+AS\s+(?P<stage>[\w.-]+)", re.MULTILINE | re.IGNORECASE
+)
 # COPY --from=<stage> <src> [<src> ...] <dst>   (we want the srcs)
-COPY_RE = re.compile(r"^COPY\s+--from=(?P<stage>[\w.-]+)\s+(?P<rest>.+)$", re.M | re.I)
+COPY_RE = re.compile(
+    r"^COPY\s+--from=(?P<stage>[\w.-]+)\s+(?P<rest>.+)$", re.MULTILINE | re.IGNORECASE
+)
 # ENV KEY=VALUE  /  ENV KEY VALUE
-ENV_RE = re.compile(r"^\s*ENV\s+(?P<key>[A-Z_][A-Z0-9_]*)[=\s]+(?P<val>.*)$", re.M)
+ENV_RE = re.compile(
+    r"^\s*ENV\s+(?P<key>[A-Z_][A-Z0-9_]*)[=\s]+(?P<val>.*)$", re.MULTILINE
+)
 
 
 def go_buildinfo(image, digest, candidate_paths):
@@ -284,7 +290,9 @@ def we_set(key):
         (rf"^[^#]*(^|[^A-Z_]){k}\s*=", "assignment"),
     )
     for pattern, how in forms:
-        proc = subprocess.run(["grep", "-rqE", pattern, *OUR_TREE], capture_output=True)
+        proc = subprocess.run(
+            ["grep", "-rqE", pattern, *OUR_TREE], capture_output=True, check=False
+        )
         if proc.returncode == 0:
             return how
     return None
@@ -474,11 +482,15 @@ def main():
             "",
             f"- range: [`{old_rev[:7]}…{new_rev[:7]}`]({compare_url}) in `{repo_path}`",
             f"- provenance: {provenance}",
-            f"- {len(patches)} upstream file(s) changed; "
-            f"{len(subjects)} commit(s); we `COPY --from` {len(extracted)} path(s)",
-            f"- prefetched: `{d}/` "
-            f"(`range.txt`, `commits.md`, `changed-files.txt`, `patches/`"
-            f"{', `extracted/`' if hits else ''})",
+            (
+                f"- {len(patches)} upstream file(s) changed; "
+                f"{len(subjects)} commit(s); we `COPY --from` {len(extracted)} path(s)"
+            ),
+            (
+                f"- prefetched: `{d}/` "
+                f"(`range.txt`, `commits.md`, `changed-files.txt`, `patches/`"
+                f"{', `extracted/`' if hits else ''})"
+            ),
             "",
         ]
 
@@ -486,20 +498,24 @@ def main():
             # the path that ACTUALLY yielded the build info -- not extracted[0]
             binary = go_path or "(binary)"
             body += [
-                f":rotating_light: **`{binary}` is a COMPILED binary built from "
-                f"`{repo_path}`.** It has no source file in the image repo, so the "
-                "extracted-path intersection cannot apply -- and 'no file we extract "
-                "changed' would be MISLEADING. **Every commit in this range is a change "
-                f"to code we execute.** Read the diffs in `{d}/patches/`.",
+                (
+                    f":rotating_light: **`{binary}` is a COMPILED binary built from "
+                    f"`{repo_path}`.** It has no source file in the image repo, so the "
+                    "extracted-path intersection cannot apply -- and 'no file we extract "
+                    "changed' would be MISLEADING. **Every commit in this range is a "
+                    f"change to code we execute.** Read the diffs in `{d}/patches/`."
+                ),
                 "",
             ]
         elif base_hits:
             body += [
-                ":rotating_light: **This is the INHERITED BASE IMAGE — we take its whole "
-                "filesystem, including its entire s6 service tree. Every file below "
-                "changed in its `rootfs/`, so it lands in OUR container and RUNS.** "
-                "(`COPY --from` intersection is empty for the base image by definition; "
-                "that is not evidence of safety.)",
+                (
+                    ":rotating_light: **This is the INHERITED BASE IMAGE — we take its "
+                    "whole filesystem, including its entire s6 service tree. Every file "
+                    "below changed in its `rootfs/`, so it lands in OUR container and "
+                    "RUNS.** (`COPY --from` intersection is empty for the base image by "
+                    "definition; that is not evidence of safety.)"
+                ),
                 "",
                 "| runs in our container as | upstream file | change | do we override it? |",
                 "|---|---|---|---|",
@@ -517,16 +533,20 @@ def main():
                 )
             body += [
                 "",
-                f"Full diffs: `{d}/patches/`. For a NEW file, read it in full and find "
-                "its enable-gate: an opt-in we never set is inert; an on-by-default "
-                "script is not.",
+                (
+                    f"Full diffs: `{d}/patches/`. For a NEW file, read it in full and "
+                    "find its enable-gate: an opt-in we never set is inert; an "
+                    "on-by-default script is not."
+                ),
                 "",
             ]
         elif hits:
             body += [
-                ":rotating_light: **We extract files that CHANGED upstream — these land "
-                "in our image and RUN. This is the highest-signal finding available; "
-                "read these first.**",
+                (
+                    ":rotating_light: **We extract files that CHANGED upstream — these "
+                    "land in our image and RUN. This is the highest-signal finding "
+                    "available; read these first.**"
+                ),
                 "",
                 "| we extract | upstream source | change | full diff | whole file |",
                 "|---|---|---|---|---|",
@@ -546,16 +566,21 @@ def main():
             body.append("")
         else:
             body += [
-                "No file we extract was touched in this range (mechanically verified: "
-                "the extracted paths do not intersect the upstream changed-file list).",
+                (
+                    "No file we extract was touched in this range (mechanically "
+                    "verified: the extracted paths do not intersect the upstream "
+                    "changed-file list)."
+                ),
                 "",
             ]
 
         # ENV defaults -- only meaningful for the repo that BUILDS the image.
         if go_provenance:
             body += [
-                "_ENV defaults not compared: the resolved repo is the BINARY's source "
-                "repo, which builds no image and defines no ENV._",
+                (
+                    "_ENV defaults not compared: the resolved repo is the BINARY's "
+                    "source repo, which builds no image and defines no ENV._"
+                ),
                 "",
             ]
         else:
@@ -565,8 +590,10 @@ def main():
             )
             if env_old is None or env_new is None:
                 body += [
-                    ":grey_question: Could not read the upstream Dockerfile at both "
-                    "revisions, so ENV defaults were NOT compared.",
+                    (
+                        ":grey_question: Could not read the upstream Dockerfile at both "
+                        "revisions, so ENV defaults were NOT compared."
+                    ),
                     "",
                 ]
             else:
@@ -604,10 +631,13 @@ def main():
     index = [
         "## Mechanical briefing",
         "",
-        "_Computed, not inferred. The extracted-path intersection and the ENV-default "
-        "diff are set arithmetic over our Dockerfile and the upstream compare API. "
-        "The bulk (full patches, whole before/after files, commit lists) is PREFETCHED "
-        "to disk — read only what you need with Read/Grep. You need no network._",
+        (
+            "_Computed, not inferred. The extracted-path intersection and the "
+            "ENV-default diff are set arithmetic over our Dockerfile and the upstream "
+            "compare API. The bulk (full patches, whole before/after files, commit "
+            "lists) is PREFETCHED to disk — read only what you need with Read/Grep. "
+            "You need no network._"
+        ),
         "",
     ] + sections
     write(out / "briefing.md", "\n".join(index))

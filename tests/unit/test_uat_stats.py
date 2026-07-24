@@ -12,8 +12,8 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "aviation_feeder")
 )
 
-from aviation_feeder_mqtt.metadata import compute_uat_metrics  # noqa: E402
-from aviation_feeder_mqtt.uat_stats import read_uat_stats  # noqa: E402
+from aviation_feeder_mqtt.metadata import compute_uat_metrics
+from aviation_feeder_mqtt.uat_stats import read_uat_stats
 
 # A representative /run/stats/stats.json shape (dump978 stats.py output).
 STATS = {
