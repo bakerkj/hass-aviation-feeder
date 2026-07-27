@@ -148,33 +148,31 @@ toggle** (`*_mlat`, on by default) — turn one off to feed that network's ADS-B
 but skip its MLAT (handy when two networks share a MLAT backend, e.g. adsb.one
 rides airplanes.live's, so feeding both from one receiver looks like a duplicate
 and causes reconnect churn). The account feeders that do MLAT (FlightAware,
-FlightRadar24, PlaneFinder, plane.watch, RadarVirtuel, sdrmap) do it as part of
-the feeder with no separate toggle; OpenSky, ADSBHub, and 1090MHz UK are ADS-B
-only.
+FlightRadar24, PlaneFinder, plane.watch, sdrmap) do it as part of the feeder
+with no separate toggle; OpenSky, ADSBHub, and 1090MHz UK are ADS-B only.
 
-| Aggregator                                                     | Enable                | Credential / identity                                                                                                                                 | MLAT toggle          |
-| -------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| [FlightAware](https://flightaware.com/adsb/piaware/claim)      | `enable_piaware`      | `piaware_feeder_id` (blank → claim on the FA site)                                                                                                    | built-in             |
-| [FlightRadar24](https://www.flightradar24.com/share-your-data) | `enable_fr24`         | `fr24_key` (+ `fr24_uat_key` for UAT)                                                                                                                 | built-in             |
-| [PlaneFinder](https://planefinder.net/)                        | `enable_planefinder`  | `planefinder_sharecode`                                                                                                                               | built-in             |
-| [OpenSky Network](https://opensky-network.org/)                | `enable_opensky`      | `opensky_username` + `opensky_serial` (serial blank first run, then set)                                                                              | —                    |
-| [ADSBHub](https://www.adsbhub.org/)                            | `enable_adsbhub`      | `adsbhub_clientkey`                                                                                                                                   | —                    |
-| [AirNav RadarBox](https://www.radarbox.com/)                   | `enable_radarbox`     | `radarbox_sharing_key` (blank → claim)                                                                                                                | `radarbox_mlat`      |
-| [plane.watch](https://atc.plane.watch/)                        | `enable_planewatch`   | `planewatch_api_key`                                                                                                                                  | built-in             |
-| [RadarVirtuel](https://www.radarvirtuel.com/)                  | `enable_radarvirtuel` | `radarvirtuel_contrib_name` + `radarvirtuel_contrib_email` (+ optional `radarvirtuel_station_uid` — see [Feeder identity](#feeder-identity-and-data)) | built-in             |
-| [sdrmap](https://sdrmap.org/)                                  | `enable_sdrmap`       | `sdrmap_username` + `sdrmap_password`                                                                                                                 | built-in             |
-| [1090MHz UK](https://www.1090mhz.uk/)                          | `enable_uk1090`       | `uk1090_key`                                                                                                                                          | — (ADS-B only)       |
-| [adsb.lol](https://adsb.lol/)                                  | `feed_adsblol`        | `uuid` (or `adsblol_uuid`)                                                                                                                            | `adsblol_mlat`       |
-| [adsb.fi](https://adsb.fi/)                                    | `feed_adsbfi`         | `uuid` (or `adsbfi_uuid`)                                                                                                                             | `adsbfi_mlat`        |
-| [airplanes.live](https://airplanes.live/)                      | `feed_airplaneslive`  | `uuid` (or `airplaneslive_uuid`)                                                                                                                      | `airplaneslive_mlat` |
-| [Planespotters](https://www.planespotters.net/)                | `feed_planespotters`  | `uuid` (or `planespotters_uuid`)                                                                                                                      | `planespotters_mlat` |
-| [TheAirTraffic](https://theairtraffic.com/)                    | `feed_theairtraffic`  | `uuid` (or `theairtraffic_uuid`)                                                                                                                      | `theairtraffic_mlat` |
-| [AVDelphi](https://www.avdelphi.com/)                          | `feed_avdelphi`       | `uuid` (or `avdelphi_uuid`)                                                                                                                           | — (no MLAT)          |
-| [Fly Italy ADSB](https://flyitalyadsb.com/)                    | `feed_flyitaly`       | `uuid` (or `flyitaly_uuid`)                                                                                                                           | `flyitaly_mlat`      |
-| [ADSBItalia](https://www.adsbitalia.it/)                       | `feed_adsbitalia`     | `uuid` (or `adsbitalia_uuid`)                                                                                                                         | `adsbitalia_mlat`    |
-| [ADS-B Exchange](https://www.adsbexchange.com/)                | `feed_adsbexchange`   | `uuid` (or `adsbexchange_uuid`)                                                                                                                       | `adsbexchange_mlat`  |
-| [adsb.one](https://adsb.one/)                                  | `feed_adsbone`        | `uuid` (or `adsbone_uuid`)                                                                                                                            | `adsbone_mlat`       |
-| [HpRadar](https://hpradar.com/)                                | `feed_hpradar`        | `uuid` (or `hpradar_uuid`)                                                                                                                            | `hpradar_mlat`       |
+| Aggregator                                                     | Enable               | Credential / identity                                                    | MLAT toggle          |
+| -------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------ | -------------------- |
+| [FlightAware](https://flightaware.com/adsb/piaware/claim)      | `enable_piaware`     | `piaware_feeder_id` (blank → claim on the FA site)                       | built-in             |
+| [FlightRadar24](https://www.flightradar24.com/share-your-data) | `enable_fr24`        | `fr24_key` (+ `fr24_uat_key` for UAT)                                    | built-in             |
+| [PlaneFinder](https://planefinder.net/)                        | `enable_planefinder` | `planefinder_sharecode`                                                  | built-in             |
+| [OpenSky Network](https://opensky-network.org/)                | `enable_opensky`     | `opensky_username` + `opensky_serial` (serial blank first run, then set) | —                    |
+| [ADSBHub](https://www.adsbhub.org/)                            | `enable_adsbhub`     | `adsbhub_clientkey`                                                      | —                    |
+| [AirNav RadarBox](https://www.radarbox.com/)                   | `enable_radarbox`    | `radarbox_sharing_key` (blank → claim)                                   | `radarbox_mlat`      |
+| [plane.watch](https://atc.plane.watch/)                        | `enable_planewatch`  | `planewatch_api_key`                                                     | built-in             |
+| [sdrmap](https://sdrmap.org/)                                  | `enable_sdrmap`      | `sdrmap_username` + `sdrmap_password`                                    | built-in             |
+| [1090MHz UK](https://www.1090mhz.uk/)                          | `enable_uk1090`      | `uk1090_key`                                                             | — (ADS-B only)       |
+| [adsb.lol](https://adsb.lol/)                                  | `feed_adsblol`       | `uuid` (or `adsblol_uuid`)                                               | `adsblol_mlat`       |
+| [adsb.fi](https://adsb.fi/)                                    | `feed_adsbfi`        | `uuid` (or `adsbfi_uuid`)                                                | `adsbfi_mlat`        |
+| [airplanes.live](https://airplanes.live/)                      | `feed_airplaneslive` | `uuid` (or `airplaneslive_uuid`)                                         | `airplaneslive_mlat` |
+| [Planespotters](https://www.planespotters.net/)                | `feed_planespotters` | `uuid` (or `planespotters_uuid`)                                         | `planespotters_mlat` |
+| [TheAirTraffic](https://theairtraffic.com/)                    | `feed_theairtraffic` | `uuid` (or `theairtraffic_uuid`)                                         | `theairtraffic_mlat` |
+| [AVDelphi](https://www.avdelphi.com/)                          | `feed_avdelphi`      | `uuid` (or `avdelphi_uuid`)                                              | — (no MLAT)          |
+| [Fly Italy ADSB](https://flyitalyadsb.com/)                    | `feed_flyitaly`      | `uuid` (or `flyitaly_uuid`)                                              | `flyitaly_mlat`      |
+| [ADSBItalia](https://www.adsbitalia.it/)                       | `feed_adsbitalia`    | `uuid` (or `adsbitalia_uuid`)                                            | `adsbitalia_mlat`    |
+| [ADS-B Exchange](https://www.adsbexchange.com/)                | `feed_adsbexchange`  | `uuid` (or `adsbexchange_uuid`)                                          | `adsbexchange_mlat`  |
+| [adsb.one](https://adsb.one/)                                  | `feed_adsbone`       | `uuid` (or `adsbone_uuid`)                                               | `adsbone_mlat`       |
+| [HpRadar](https://hpradar.com/)                                | `feed_hpradar`       | `uuid` (or `hpradar_uuid`)                                               | `hpradar_mlat`       |
 
 > **ADS-B Exchange** shares your receiver statistics back to adsbexchange.com by
 > default when enabled. Add `ADSBX_STATS=disabled` via **Extra env**
@@ -317,11 +315,11 @@ These categories are published, toggled independently:
   discards rather than publishes).
 
   Only feeders whose client actually reports something get these. OpenSky,
-  ADSBHub, plane.watch, RadarVirtuel, sdrmap and 1090MHz UK run clients that
-  expose no status endpoint or file, and the community aggregators (adsb.lol,
-  adsb.fi, airplanes.live, …) are network connectors with no client process at
-  all — so for those there is no per-feeder view to publish, only the Connection
-  and Uptime sensors every feeder gets.
+  ADSBHub, plane.watch, sdrmap and 1090MHz UK run clients that expose no status
+  endpoint or file, and the community aggregators (adsb.lol, adsb.fi,
+  airplanes.live, …) are network connectors with no client process at all — so
+  for those there is no per-feeder view to publish, only the Connection and
+  Uptime sensors every feeder gets.
 
   "Feeding" is measured: community aggregators (adsb.lol, adsb.fi, ADS-B
   Exchange, …) report readsb's own connection state; feeders that hold an open
@@ -413,24 +411,16 @@ internals — see [DEVELOPING.md](DEVELOPING.md).
 
 ## Feeder identity and `/data`
 
-Two feeders generate an identity the first time they run and keep it on `/data`.
-If `/data` is ever lost — a wiped volume, or a reinstall (Home Assistant gives a
-new install a fresh `/data`) — they silently register again as a **brand-new
-site**, with no error to notice. Pin them in options instead, and `/data` then
+piaware generates an identity the first time it runs and keeps it on `/data`. If
+`/data` is ever lost — a wiped volume, or a reinstall (Home Assistant gives a
+new install a fresh `/data`) — it silently registers again as a **brand-new
+site**, with no error to notice. Pin it in options instead, and `/data` then
 holds no identity at all: only history, which simply rebuilds.
 
-| feeder       | option                     | generated value on `/data` |
-| ------------ | -------------------------- | -------------------------- |
-| piaware      | `piaware_feeder_id`        | `/data/piaware/feeder_id`  |
-| RadarVirtuel | `radarvirtuel_station_uid` | `/data/station_uid.txt`    |
+| feeder  | option              | generated value on `/data` |
+| ------- | ------------------- | -------------------------- |
+| piaware | `piaware_feeder_id` | `/data/piaware/feeder_id`  |
 
-RadarVirtuel keys the station off the **UID**: the feeder re-registers on every
-start, and its entrypoint takes `RV_STATION_UID` **above** the persisted file —
-so a pinned UID brings the same station back
-(`Registration: EXISTING — station <id>`) even on a fresh volume. While the
-option is empty the add-on logs the UID on every start, so you do not have to
-know to go looking for it.
-
-The UID must be at least 8 characters: the feeder silently ignores anything
-shorter and generates a new identity instead. The add-on warns if you set one
-that short.
+With `piaware_feeder_id` set, FlightAware ties the feed to that feeder ID
+regardless of what is on `/data`, so a reinstall or a wiped volume keeps the
+same site instead of registering a new one.

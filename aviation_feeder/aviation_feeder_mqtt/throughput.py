@@ -8,7 +8,7 @@ Only the persistent-TCP client feeders are measured this way (feeders.py's
 THROUGHPUT_KERNEL): their feed rides an ESTABLISHED TCP socket we can attribute
 by inode -> /proc/<pid>/fd. fr24 (UDP) and pfclient report their own throughput
 (app_reports.py); community aggregators aren't split per-connector by readsb and
-radarvirtuel/sdrmap POST over short-lived connections — none get a kernel byte
+sdrmap POSTs over short-lived connections — none get a kernel byte
 sensor.
 
 The kernel's tcpi_bytes_acked/received are per-SOCKET and restart at 0 when a

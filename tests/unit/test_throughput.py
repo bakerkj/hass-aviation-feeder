@@ -112,13 +112,13 @@ class Throughput(unittest.TestCase):
         self.assertNotIn("planewatch", out)
 
     def test_non_kernel_feeder_ignored(self):
-        # radarvirtuel is proc-mode (not in THROUGHPUT_KERNEL) -> no kernel bytes
+        # sdrmap is proc-mode (not in THROUGHPUT_KERNEL) -> no kernel bytes
         # even if it owns a socket.
         acc = ThroughputAccumulator()
         out = acc.update(
-            {"enable_radarvirtuel": True},
+            {"enable_sdrmap": True},
             socks=[SockStat("9.9.9.9", 443, 7, 500, 5)],
-            cmd_by_pid={200: "python3 /docker-entrypoint.py"},
+            cmd_by_pid={200: "/usr/bin/sdrmapfeeder"},
             inode_provider=lambda pids: {7},
         )
         self.assertEqual(out, {})

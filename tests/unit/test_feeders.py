@@ -174,12 +174,12 @@ class ComputeFeederStatus(unittest.TestCase):
     def test_proc_ignores_missing_socket(self):
         # proc-mode must NOT require an established socket.
         s = self._status(
-            {"enable_radarvirtuel": True},
-            cmd_by_pid={201: "python3 /docker-entrypoint.py"},
+            {"enable_sdrmap": True},
+            cmd_by_pid={201: "/usr/bin/sdrmapfeeder"},
             established=set(),
             inode_provider=lambda pids: set(),
         )
-        self.assertTrue(s["radarvirtuel"])
+        self.assertTrue(s["sdrmap"])
 
 
 class ComputeFeederUptime(unittest.TestCase):

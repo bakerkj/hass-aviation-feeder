@@ -63,10 +63,10 @@ class ReadMlatStats(unittest.TestCase):
     def test_half_written_file_skipped(self):
         with tempfile.TemporaryDirectory() as d:
             self._write(d, "sdrmap.json", "{ partial trunc")  # invalid JSON
-            self._write(d, "radarvirtuel.json", {"peer_count": 3})  # no sync field
+            self._write(d, "planewatch.json", {"peer_count": 3})  # no sync field
             out = mlat_stats.read_mlat_stats(directory=d)
             self.assertNotIn("sdrmap", out)  # unparsable -> skipped
-            self.assertEqual(out["radarvirtuel"], {"mlat_peers": 3})  # partial ok
+            self.assertEqual(out["planewatch"], {"mlat_peers": 3})  # partial ok
 
     def test_client_side_positions_and_aircraft(self):
         # positions/minute + aircraft-used (written client-side by our mlat-client

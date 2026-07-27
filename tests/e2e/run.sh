@@ -450,8 +450,6 @@ case_unconfig() {
   assert_log '\[rbfeeder\] disabled .*idling'
   assert_log '\[pw-feeder\] disabled .*idling'
   assert_log '\[planewatch-mlat\] disabled.*idling'
-  assert_log '\[radarvirtuel\] disabled .*idling'
-  assert_log '\[radarvirtuel-mlat\] disabled.*idling'
   assert_log '\[sdrmap\] disabled .*idling'
   assert_log '\[sdrmap-stunnel\] disabled.*idling'
   assert_log '\[sdrmap-mlat\] disabled.*idling'
@@ -516,13 +514,6 @@ case_allfeeders() {
   assert_log_within 90 'service rbfeeder successfully started'
   assert_log_within 90 'service pw-feeder successfully started'
   assert_log_within 90 'service planewatch-mlat successfully started'
-  assert_log_within 90 'service radarvirtuel successfully started'
-  assert_log_within 90 'service radarvirtuel-mlat successfully started'
-  # The station identity must live in OPTIONS, not in /data: RV_STATION_UID takes
-  # priority over the persisted /data/station_uid.txt in the feeder's entrypoint,
-  # so pinning it means a wiped /data (or a new add-on slug) still comes back as
-  # the SAME RadarVirtuel station instead of silently re-registering a new one.
-  assert_env_contains RV_STATION_UID 'E2E-PINNED-UID-0001'
   # Per-aggregator station name: the name an aggregator DISPLAYS is the MLAT
   # --user, which normally comes from site_name for every network alike. A
   # receiver registered under a different name on one network cannot be expressed
@@ -561,17 +552,6 @@ case_allfeeders() {
     ok "pw-feeder binary present + executable"
   else
     bad "pw-feeder binary missing"
-  fi
-  # RadarVirtuel is pure Python; assert the feeder + its requests dep are staged.
-  if docker exec "${CONTAINER}" test -f /docker-entrypoint.py 2>/dev/null; then
-    ok "radarvirtuel entrypoint staged"
-  else
-    bad "radarvirtuel /docker-entrypoint.py missing"
-  fi
-  if docker exec "${CONTAINER}" python3 -c 'import requests' 2>/dev/null; then
-    ok "python3-requests available for radarvirtuel feeder"
-  else
-    bad "python3-requests missing (feeder would exit)"
   fi
   assert_log_within 90 'service sdrmap successfully started'
   assert_log_within 90 'service sdrmap-stunnel successfully started'
@@ -1085,8 +1065,6 @@ pfclient
 piaware
 planewatch-mlat
 pw-feeder
-radarvirtuel
-radarvirtuel-mlat
 rbfeeder
 sdrmap
 sdrmap-mlat

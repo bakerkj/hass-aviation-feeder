@@ -31,13 +31,12 @@ dev = [
 # so put its parent on the mypy path too.
 mypy_path = ["aviation_feeder"]
 
-# paho-mqtt is the only third-party import the package reaches under test;
-# requests is imported lazily by the RadarVirtuel path. Silence import noise
-# from modules without bundled stubs without weakening checks on our own code.
+# paho-mqtt is the only third-party import the package reaches under test.
+# Silence import noise from modules without bundled stubs without weakening
+# checks on our own code.
 [[tool.mypy.overrides]]
 module = [
     "paho.*",
-    "requests.*",
 ]
 ignore_missing_imports = true
 

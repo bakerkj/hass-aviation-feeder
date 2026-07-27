@@ -6,7 +6,7 @@
 . /usr/local/bin/feeder-gate
 gate "[piaware]" ENABLE_PIAWARE
 
-# Identity discoverability, same trap as RadarVirtuel. With no piaware_feeder_id
+# Identity discoverability. With no piaware_feeder_id
 # in options, FlightAware issues one on first connect and piaware persists it to
 # /data (it does log "my feeder ID is ..."). But nothing tells you that value is
 # worth keeping -- so a wiped /data, or a reinstall (which gets a fresh /data),

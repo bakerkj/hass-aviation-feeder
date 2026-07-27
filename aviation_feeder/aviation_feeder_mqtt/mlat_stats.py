@@ -6,8 +6,8 @@
 Every mlat-client run with `--stats-json PATH` writes a small JSON status file
 (peer_count, good/bad sync %, outlier %) refreshed on `--stats-interval`. The
 ultrafeeder community mlat-clients already do this, writing
-`/run/mlat-client/<mlat_host>:<mlat_port>.json`; our three commercial-feeder
-mlat run scripts (planewatch/sdrmap/radarvirtuel) pass `--stats-json` with an
+`/run/mlat-client/<mlat_host>:<mlat_port>.json`; our two commercial-feeder
+mlat run scripts (planewatch/sdrmap) pass `--stats-json` with an
 explicit basename. This module reads those files and maps each back to its
 feeder key. (piaware uses fa-mlat-client, not this client, so its MLAT status
 comes from piaware's own status.json.)
@@ -53,7 +53,6 @@ MLAT_STATS_BASENAMES: dict[str, str] = {
     "hpradar": "skyfeed.hpradar.com:31090",
     "planewatch": "planewatch",
     "sdrmap": "sdrmap",
-    "radarvirtuel": "radarvirtuel",
     "radarbox": "radarbox",  # written by the rbfeeder-mlat shim's --stats-json
 }
 

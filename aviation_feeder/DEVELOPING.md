@@ -79,7 +79,7 @@ readsb then exposes that picture several ways; every consumer reads one:
   feeder and for the community `mlat-client`.
 - **SBS/BaseStation** on `localhost:30003` — consumed by ADSBHub (via socat).
 - **`aircraft.json`** at `/run/readsb/aircraft.json` — polled by tar1090, by the
-  RadarVirtuel and sdrmap feeders, and by the MQTT publisher's planes-near-me.
+  sdrmap feeder, and by the MQTT publisher's planes-near-me.
 - **`stats.json`** at `/run/readsb/stats.json` — the MQTT publisher's
   feeder-health source (`--write-json`).
 - **`stats.prom`** at `/run/readsb/stats.prom` — Prometheus text export; the
@@ -100,8 +100,8 @@ PNGs) never hit the SD/eMMC. `/run` itself is the overlay, not tmpfs — only
   reads Beast from readsb (`localhost:30005`) and returns results into `mlathub`
   (`beast,connect,localhost:31004`).
 - **Client-binary feeders** that do MLAT (piaware, rbfeeder, plane.watch,
-  RadarVirtuel, sdrmap) each run their **own** mlat-client on a **distinct**
-  results-listen port so their output tags don't collide (see the ports map).
+  sdrmap) each run their **own** mlat-client on a **distinct** results-listen
+  port so their output tags don't collide (see the ports map).
 
 ```
    rtlsdr mode:
@@ -126,7 +126,7 @@ PNGs) never hit the SD/eMMC. `/run` itself is the overlay, not tmpfs — only
    client-binary feeders ──────────┘          │             │
    (piaware, fr24feed, fr24uat, pfclient,     │             │
     opensky, rbfeeder, pw-feeder,             │             │
-    radarvirtuel, sdrmap)  ◄── Beast :30005 / SBS :30003 / aircraft.json
+    sdrmap)  ◄── Beast :30005 / SBS :30003 / aircraft.json
                                                │             │
    community aggregators ◄── readsb net-connectors (ULTRAFEEDER_CONFIG)
    (adsb.lol, adsb.fi, ADSB Exchange, …)       │             │
@@ -232,7 +232,7 @@ to `/tmp`, run with `python3`, `rm`'d, like `patch-mlat-client.py`) and
 validates the final image against two allowlists:
 
 - **Enrolled services** — `ls /etc/s6-overlay/s6-rc.d/user/contents.d` must
-  equal the 15 base units we keep + our 29 (44 total).
+  equal the 15 base units we keep + our 27 (42 total).
 - **Startup hooks** — `ls /etc/s6-overlay/startup.d` must equal the 9 base hooks
   we keep. These are iterated by the approved `startup` oneshot at boot; the
   aggregator auto-registration hooks (e.g. `52-adsbitalia-register`) live
@@ -525,26 +525,6 @@ the Dockerfile for live values).
   no extra shared libs). The gated s6 services (`pw-feeder`, `planewatch-mlat`)
   live in `rootfs/`. No extra apt.
 
-#### RadarVirtuel / adsbnetwork (radarvirtuel + radarvirtuel-mlat)
-
-- **What / how it runs.** `docker-entrypoint.py` (pure Python) reads readsb's
-  `aircraft.json` directly (its built-in `AIRCRAFT_SOURCES`; we do **not** set
-  `RV_AIRCRAFT_URL` because the entrypoint ignores localhost URLs) and POSTs to
-  RadarVirtuel, auto-registering the station from `RV_CONTRIB_NAME`/`EMAIL` and
-  persisting `station_id`/`station_uid` to `/data`.
-- **Gated on.** `ENABLE_RADARVIRTUEL` + `RV_CONTRIB_NAME` + `RV_CONTRIB_EMAIL`
-  (mlat also requires `LAT`/`LONG`/`ALT`). Note the bridge var mismatch handled
-  in the run scripts: the feeder wants `RV_LON`, our global is `LONG`.
-- **MLAT.** `radarvirtuel-mlat` waits for the `station_id`/`station_uid` files,
-  then runs a `mlat-client` to `${RV_MLAT_SERVER:-mlat.adsbnetwork.com:50000}`,
-  reading Beast :30005 and republishing results on **30109**, authed with the
-  persisted station id/uid.
-- **How it's built.** Stage
-  `FROM ghcr.io/sdr-enthusiasts/docker-radarvirtuel@sha256:1f6543…57bc34 AS radarvirtuel`.
-  `COPY --from=radarvirtuel` brings `/docker-entrypoint.py` and `/opt/feeder_rv`
-  (we do **not** copy its bundled readsb or s6 scripts — our `rootfs/` gates
-  it). apt: `python3-requests` (the feeder hard-exits without it).
-
 #### sdrmap (sdrmap + sdrmap-stunnel + sdrmap-mlat)
 
 - **What / how it runs.** Three cooperating longruns. `sdrmap` runs
@@ -613,7 +593,6 @@ per-feeder results ports are from our run scripts / `02-rbfeeder`.
 | 30053           | pfclient status/map UI (`null`/unpublished by default)    | `config.json`                        |
 | 30107           | rbfeeder mlat-client results (listen)                     | `scripts/02-rbfeeder`                |
 | 30108           | planewatch-mlat results (listen)                          | `planewatch-mlat/run`                |
-| 30109           | radarvirtuel-mlat results (listen)                        | `radarvirtuel-mlat/run`              |
 | 30110           | sdrmap-mlat results (listen)                              | `sdrmap-mlat/run`                    |
 | 30978           | dump978 raw UAT output (fed into readsb via `uat_in`)     | `config.json` / bridge               |
 | 31003–31006     | mlathub SBS/beast-in/beast-out/beast-reduce-out           | base `scripts/mlathub`               |
@@ -707,8 +686,8 @@ of localhost status endpoints. No outbound network calls to the aggregators.
     **UDP**, pfclient over its own path), so the feeder's own status endpoint is
     **authoritative** for connected-state (and throughput); falls back to
     "process running" only if the endpoint is unreachable.
-  - **`"proc"`** (radarvirtuel, sdrmap) → periodic-POST feeders that hold no
-    socket to probe, so the signal is "the binary is running".
+  - **`"proc"`** (sdrmap) → periodic-POST feeders that hold no socket to probe,
+    so the signal is "the binary is running".
 
     `running_cmdlines_by_pid()` **skips `s6-supervise …` processes** so an idled
     feeder (whose supervisor cmdline still embeds the service name) doesn't
@@ -736,14 +715,13 @@ of localhost status endpoints. No outbound network calls to the aggregators.
 - **`mlat_stats.py`** — reads the mlat-client `--stats-json` files under
   `/run/mlat-client/*.json` and maps each back to its feeder key
   (`MLAT_STATS_BASENAMES`): the community clients (ultrafeeder names them
-  `<mlat_host>:<mlat_port>`), the three commercial feeders (planewatch / sdrmap
-  / radarvirtuel, explicit basenames set in their run scripts), and **radarbox**
-  (written by the `rbfeeder-mlat` shim's own `--stats-json`). Exposes
-  `mlat_peers` (`peer_count`) and `mlat_sync`
-  (`good_sync_percentage_last_hour`). `MLAT_CAPABLE` is the set of keys with any
-  MLAT (avdelphi and adsbhub have none). piaware is **not** here — it uses
-  `fa-mlat-client`, so its MLAT health comes from its own `status.json`
-  (`app_reports.py`).
+  `<mlat_host>:<mlat_port>`), the two commercial feeders (planewatch / sdrmap,
+  explicit basenames set in their run scripts), and **radarbox** (written by the
+  `rbfeeder-mlat` shim's own `--stats-json`). Exposes `mlat_peers`
+  (`peer_count`) and `mlat_sync` (`good_sync_percentage_last_hour`).
+  `MLAT_CAPABLE` is the set of keys with any MLAT (avdelphi and adsbhub have
+  none). piaware is **not** here — it uses `fa-mlat-client`, so its MLAT health
+  comes from its own `status.json` (`app_reports.py`).
 - **`app_reports.py`** — per-feeder application self-reports, for the feeders
   the kernel socket path can't see or that carry semantic health: **piaware**
   `/run/piaware/status.json` (FlightAware/MLAT/radio `green|yellow|red` +
@@ -802,17 +780,17 @@ longer applies — e.g. dropped from an older build — is deleted, not left
   counters (`THROUGHPUT_METRICS`) are still published but
   `enabled_by_default: false`. Both apply only to the `THROUGHPUT_KERNEL`
   feeders (kernel per-socket counters) **plus pfclient** (its own
-  `master_server_bytes_*`); fr24 (UDP), radarvirtuel/sdrmap (short-lived POSTs),
-  and community aggregators (readsb doesn't split bytes per-connector) get none.
+  `master_server_bytes_*`); fr24 (UDP), sdrmap (short-lived POSTs), and
+  community aggregators (readsb doesn't split bytes per-connector) get none.
 - **Messages** — fr24 only: a **Message Rate** (msg/s) primary sensor
   (`MESSAGES_RATE_METRICS`) plus a disabled-by-default cumulative `Messages`
   counter, since UDP has no byte counter.
 - **MLAT Peers / MLAT Sync** — the `MLAT_SYNC_CAPABLE` feeders, i.e. every MLAT
   feeder except those in `MLAT_SYNC_INCAPABLE` (**RadarBox and sdrmap**, whose
   servers never push the sync stats): the community MLAT connectors + the
-  commercial clients plane.watch and radarvirtuel. For RadarBox and sdrmap,
-  **MLAT Positions / Aircraft Used** (client-side stats present for every MLAT
-  feeder) are their only MLAT signal.
+  commercial clients plane.watch. For RadarBox and sdrmap, **MLAT Positions /
+  Aircraft Used** (client-side stats present for every MLAT feeder) are their
+  only MLAT signal.
 - **piaware MLAT / Radio** — piaware isn't `MLAT_CAPABLE` (it uses
   `fa-mlat-client`, no peer_count), so its MLAT + radio health from
   `status.json` are surfaced as `binary_sensor`s (`REPORT_BINARY_SENSORS`, on
@@ -822,8 +800,8 @@ longer applies — e.g. dropped from an older build — is deleted, not left
 ### The MLAT `--stats-json` wiring
 
 The per-feeder MLAT sync numbers come from mlat-client's `--stats-json` output.
-The three commercial MLAT run scripts — `planewatch-mlat/run`,
-`sdrmap-mlat/run`, `radarvirtuel-mlat/run` — each pass
+The two commercial MLAT run scripts — `planewatch-mlat/run` and
+`sdrmap-mlat/run` — each pass
 `--stats-json /run/mlat-client/<name>.json --stats-interval 30`, and the
 `rbfeeder-mlat` shim appends the same flags onto rbfeeder's autostarted
 mlat-client (writing `/run/mlat-client/radarbox.json`). The community clients
