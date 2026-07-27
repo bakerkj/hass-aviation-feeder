@@ -14,8 +14,7 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "aviation_feeder")
 )
 
-from aviation_feeder_mqtt import feeders  # noqa: E402
-
+from aviation_feeder_mqtt import feeders
 
 # A tiny /proc/net/tcp sample: header + three sockets.
 #   inode 111111 — ESTABLISHED to 192.168.1.1:12345 (remote)   -> counts

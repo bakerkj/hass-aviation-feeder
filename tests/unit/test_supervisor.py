@@ -15,7 +15,7 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "aviation_feeder")
 )
 
-from aviation_feeder_mqtt import supervisor  # noqa: E402
+from aviation_feeder_mqtt import supervisor
 
 
 class _Resp:

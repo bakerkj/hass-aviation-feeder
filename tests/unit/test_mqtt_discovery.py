@@ -8,13 +8,14 @@ applicability sets are single-sourced."""
 import os
 import sys
 import unittest
+from typing import ClassVar
 
 sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "aviation_feeder")
 )
 
-from aviation_feeder_mqtt import mqtt  # noqa: E402
-from aviation_feeder_mqtt.metadata import (  # noqa: E402
+from aviation_feeder_mqtt import mqtt
+from aviation_feeder_mqtt.metadata import (
     FEEDERS_DEVICE_ID,
     MLAT_RESULT_METRICS,
 )
@@ -56,7 +57,7 @@ class FeederDeviceNesting(unittest.TestCase):
 
 
 class PayloadShape(unittest.TestCase):
-    REQUIRED = {
+    REQUIRED: ClassVar[set[str]] = {
         "name",
         "unique_id",
         "state_topic",
@@ -81,7 +82,7 @@ class PayloadShape(unittest.TestCase):
             UPTIME_METRICS,
             via_parent=True,
         )
-        ((topic, p),) = cfgs.items()
+        ((_topic, p),) = cfgs.items()
         self.assertTrue(self.REQUIRED <= set(p), self.REQUIRED - set(p))
         self.assertTrue(p["has_entity_name"])
         self.assertEqual(p["entity_category"], "diagnostic")

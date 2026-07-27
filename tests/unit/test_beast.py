@@ -16,7 +16,7 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "aviation_feeder")
 )
 
-from aviation_feeder_mqtt import beast  # noqa: E402
+from aviation_feeder_mqtt import beast
 
 ESC = 0x1A
 

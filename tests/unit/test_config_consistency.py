@@ -15,13 +15,14 @@ import os
 import re
 import sys
 import unittest
+from typing import ClassVar
 
 sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "aviation_feeder")
 )
 
-from aviation_feeder_mqtt.feeders import COMMUNITY_FEEDERS  # noqa: E402
-from aviation_feeder_mqtt.mlat_stats import MLAT_STATS_BASENAMES  # noqa: E402
+from aviation_feeder_mqtt.feeders import COMMUNITY_FEEDERS
+from aviation_feeder_mqtt.mlat_stats import MLAT_STATS_BASENAMES
 
 _HAOS = os.path.join(
     os.path.dirname(__file__),
@@ -114,7 +115,7 @@ class SensorGroupToggles(unittest.TestCase):
     )
     # ha_sensors is the master switch (guards the publisher as a whole) and
     # ha_near_me_radius is a value, not a group toggle.
-    _NOT_GROUP_TOGGLES = {"ha_sensors", "ha_near_me_radius"}
+    _NOT_GROUP_TOGGLES: ClassVar[set[str]] = {"ha_sensors", "ha_near_me_radius"}
 
     def _group_toggles(self):
         with open(self._CONFIG, encoding="utf-8") as f:
@@ -144,7 +145,9 @@ class SensorGroupToggles(unittest.TestCase):
         """The gate is the `any((...))` guarding the per-cycle state publish.
         Each toggle's variable must appear inside it."""
         src = self._app_source()
-        m = re.search(r"if health\.connected and any\(\s*\((.*?)\)\s*\)", src, re.S)
+        m = re.search(
+            r"if health\.connected and any\(\s*\((.*?)\)\s*\)", src, re.DOTALL
+        )
         self.assertIsNotNone(m, "could not locate the state-publish gate in app.py")
         gate = m.group(1)
         # map each option to the local variable app.py assigns it to

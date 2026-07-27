@@ -7,8 +7,9 @@ stats.json, plus its Home Assistant sensor metadata (name/unit/class/icon).
 This is the single source of truth for the metric set; the publisher iterates
 METRICS to build both the discovery payloads and the per-cycle state values."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from .util import num as _num
 

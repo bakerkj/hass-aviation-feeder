@@ -7,18 +7,19 @@ PlanefinderFeedState, and assemble_feeder_discovery (metric applicability)."""
 import os
 import sys
 import unittest
+from typing import ClassVar
 
 sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "aviation_feeder")
 )
 
-from aviation_feeder_mqtt import app  # noqa: E402
-from aviation_feeder_mqtt.feeders import ALL_FEEDER_KEYS  # noqa: E402
-from aviation_feeder_mqtt.mlat_stats import MLAT_CAPABLE  # noqa: E402
-from aviation_feeder_mqtt.metadata import (  # noqa: E402
+from aviation_feeder_mqtt import app
+from aviation_feeder_mqtt.feeders import ALL_FEEDER_KEYS
+from aviation_feeder_mqtt.metadata import (
     FEEDERS_DEVICE_ID,
     REPORT_BINARY_SENSORS,
 )
+from aviation_feeder_mqtt.mlat_stats import MLAT_CAPABLE
 
 
 class RateTracker(unittest.TestCase):
@@ -220,7 +221,14 @@ class MlatStates(unittest.TestCase):
     policy under test is that such a feeder reports 0 rather than nothing,
     because mlat-client writes its --stats-json only after establishing sync."""
 
-    ENABLED = {"adsbfi", "hpradar", "sdrmap", "radarbox", "piaware", "fr24"}
+    ENABLED: ClassVar[set[str]] = {
+        "adsbfi",
+        "hpradar",
+        "sdrmap",
+        "radarbox",
+        "piaware",
+        "fr24",
+    }
 
     def test_syncing_feeder_reports_real_values(self):
         stats = {

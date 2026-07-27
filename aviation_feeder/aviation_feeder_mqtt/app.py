@@ -17,6 +17,9 @@ from typing import Any
 import paho.mqtt.client as mqtt
 
 from . import __version__
+from .app_reports import filter_report, gather_reports
+from .beast import BeastDfCounter
+from .emergency import compute_emergency
 from .feeders import (
     ALL_FEEDER_KEYS,
     THROUGHPUT_KERNEL,
@@ -27,14 +30,13 @@ from .feeders import (
     running_cmdlines_by_pid,
 )
 from .metadata import (
+    DF_KEY_BY_NUMBER,
     EMERGENCY_SQUAWK_KEY,
     FEEDERS_DEVICE_ID,
     MESSAGES_METRICS,
-    UNIQUE_TODAY_KEY,
     MESSAGES_RATE_METRICS,
     MLAT_RESULT_METRICS,
     MLAT_SYNC_METRICS,
-    DF_KEY_BY_NUMBER,
     NEARBY_METRICS,
     NEARBY_STATE_KEY,
     PORTAL_AIRCRAFT_METRICS,
@@ -42,6 +44,7 @@ from .metadata import (
     REPORT_BINARY_SENSORS,
     THROUGHPUT_METRICS,
     THROUGHPUT_RATE_METRICS,
+    UNIQUE_TODAY_KEY,
     UPTIME_METRICS,
     compute_metrics,
     compute_performance_metrics,
@@ -49,11 +52,11 @@ from .metadata import (
     compute_sdr_metrics,
     compute_uat_metrics,
 )
-from .app_reports import filter_report, gather_reports
 from .mlat_stats import MLAT_CAPABLE, MLAT_SYNC_CAPABLE, read_mlat_stats
 from .mqtt import (
     MqttHealth,
     build_broker_discovery,
+    build_df_discovery,
     build_discovery_payloads,
     build_emergency_discovery,
     build_feeder_metrics_discovery,
@@ -61,20 +64,17 @@ from .mqtt import (
     build_nearby_discovery,
     build_report_binary_discovery,
     build_sdr_discovery,
-    build_df_discovery,
     build_uat_discovery,
     build_unique_discovery,
     connect_mqtt_with_retry,
     mqtt_publish,
 )
-from .beast import BeastDfCounter
-from .emergency import compute_emergency
 from .nearby import compute_nearby, read_aircraft
-from .unique_daily import UniqueDailyTracker
 from .stats import read_stats
-from .uat_stats import UAT_STATS_PATH, read_uat_stats
-from .throughput import ThroughputAccumulator
 from .supervisor import resolve_mqtt_service
+from .throughput import ThroughputAccumulator
+from .uat_stats import UAT_STATS_PATH, read_uat_stats
+from .unique_daily import UniqueDailyTracker
 from .util import log
 
 # Every per-feeder metric suffix that CAN exist, derived from the metric groups
@@ -983,7 +983,7 @@ def main() -> int:
                             mark_state=True,
                         )
 
-                    def _bytes(key, sent, recv):
+                    def _bytes(key, sent, recv, now=now):
                         # cumulative counters (disabled-by-default entities) + the
                         # primary per-second rates.
                         _pub("bytes_sent", key, sent)
@@ -1125,12 +1125,12 @@ def main() -> int:
                 health=health,
             )
             time.sleep(0.2)
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 -- best-effort last-will on shutdown
             pass
         try:
             client.loop_stop()
             client.disconnect()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 -- best-effort teardown on shutdown
             pass
 
     return 0

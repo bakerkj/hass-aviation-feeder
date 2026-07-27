@@ -16,7 +16,7 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "aviation_feeder")
 )
 
-from aviation_feeder_mqtt import netdiag  # noqa: E402
+from aviation_feeder_mqtt import netdiag
 
 
 def _one_ipv4_dump(ip="1.2.3.4", dport=12345, inode=99999, acked=1000, recv=2000):

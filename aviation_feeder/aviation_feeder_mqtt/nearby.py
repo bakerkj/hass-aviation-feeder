@@ -7,7 +7,8 @@ location: how many aircraft are within a radius, and details of the nearest."""
 import math
 from typing import Any
 
-from .util import num as _num, read_json_dict
+from .util import num as _num
+from .util import read_json_dict
 
 _EARTH_RADIUS_NM = 3440.065  # mean Earth radius in nautical miles
 

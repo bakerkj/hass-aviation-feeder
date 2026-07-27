@@ -13,9 +13,9 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "aviation_feeder")
 )
 
-from aviation_feeder_mqtt import netdiag  # noqa: E402
-from aviation_feeder_mqtt.netdiag import SockStat  # noqa: E402
-from aviation_feeder_mqtt.throughput import ThroughputAccumulator  # noqa: E402
+from aviation_feeder_mqtt import netdiag
+from aviation_feeder_mqtt.netdiag import SockStat
+from aviation_feeder_mqtt.throughput import ThroughputAccumulator
 
 
 class ParseTcpInfo(unittest.TestCase):
