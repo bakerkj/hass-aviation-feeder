@@ -38,7 +38,7 @@ _STALE_AFTER_S = 180.0
 
 # feeder_key -> the mlat-client --stats-json basename (no .json). Community
 # names are "<mlat_host>:<mlat_port>" exactly as ultrafeeder passes them (must
-# match the add_aggregator mlat host/port in 00-haos-options); the three
+# match the add_aggregator mlat host/port in 00-haos-options); the two
 # commercial feeders use our explicit names (set in their run scripts).
 MLAT_STATS_BASENAMES: dict[str, str] = {
     "adsblol": "in.adsb.lol:31090",
