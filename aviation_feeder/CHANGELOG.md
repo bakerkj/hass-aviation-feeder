@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.14](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.13...aviation_feeder-v0.0.14) (2026-07-27)
+
+
+### Features
+
+* remove the RadarVirtuel feeder ([#94](https://github.com/bakerkj/hass-aviation-feeder/issues/94)) ([7fb36b0](https://github.com/bakerkj/hass-aviation-feeder/commit/7fb36b03f8da41387ca867b428b6d7f5fe3a9228))
+
 ## [0.0.13](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.12...aviation_feeder-v0.0.13) (2026-07-24)
 
 
