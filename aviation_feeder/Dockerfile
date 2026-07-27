@@ -11,7 +11,7 @@
 #
 # All feeders are wired in: 978/UAT decode (dump978), the client-binary feeders
 # (piaware, flightradar24, planefinder, opensky, adsbhub, plane.watch,
-# radarvirtuel, sdrmap, rbfeeder) staged from their upstream images, plus the
+# sdrmap, rbfeeder) staged from their upstream images, plus the
 # community aggregators configured at runtime (no build artifact).
 # ---------------------------------------------------------------------------
 
@@ -31,7 +31,6 @@ FROM ghcr.io/sdr-enthusiasts/docker-planefinder:latest-build-540@sha256:b0521c92
 FROM ghcr.io/sdr-enthusiasts/docker-opensky-network:latest-build-843@sha256:dddfeb06f6723ec99d5d646cfc97973dbad577ab97ef5208440ce8d142e12398 AS opensky
 FROM ghcr.io/sdr-enthusiasts/docker-adsbhub:latest-build-529@sha256:8d9953dc6b759539b2f7b236d31b2c143d934d6280591458526dc2c6d1363345 AS adsbhub
 FROM ghcr.io/plane-watch/docker-plane-watch:v0.0.10@sha256:f8cc3254943c3f0cd8b97d448bee929c87f3c78b9ecf1a61a255343797e61745 AS planewatch
-FROM ghcr.io/sdr-enthusiasts/docker-radarvirtuel:latest-build-799@sha256:b5b4236e0aed6b06d4112a3669d775e8cd2be1bde19e9e6225d7aab8ea4f4ec0 AS radarvirtuel
 FROM ghcr.io/sdr-enthusiasts/docker-sdrmap:latest-build-98@sha256:8aab9e1c416f01f955a10d330016e1fc4b2d979e91249a9d7d15a062d3735212 AS sdrmap
 FROM ghcr.io/sdr-enthusiasts/docker-radarbox:latest-build-882@sha256:248ce194ba48cbfb0686cfb5b73c991c94a812594f6b6e3007c38fdad6df5146 AS radarbox
 # AirNav ships rbfeeder only for ARM. On arm64 the base image has a NATIVE
@@ -96,9 +95,6 @@ RUN apt-get update \
     # paho-mqtt for the Home Assistant sensor publisher (aviation_feeder_mqtt).
     # renovate: datasource=deb depName=python3-paho-mqtt
     python3-paho-mqtt=2.1.0-1 \
-    # requests for the RadarVirtuel Python feeder (feeder_radarvirtuel.py hard
-    # exits without it). renovate: datasource=deb depName=python3-requests
-    python3-requests=2.32.3+dfsg-5+deb13u1 \
     # stunnel for sdrmap's MLAT TLS tunnel (apt-installed rather than porting
     # their hand-built binary -- apt pulls its OpenSSL dep libssl3t64, the trixie
     # t64-transition name, too). renovate: datasource=deb depName=stunnel4
@@ -265,16 +261,6 @@ COPY --from=planewatch /usr/local/sbin/pw-feeder /usr/local/sbin/pw-feeder
 # server-provided intermediates") now builds the intermediates pool from the certs
 # the server presents and anchors in the system roots -- where ISRG Root X1 already
 # lives -- so the stock trust store validates and the workaround is gone.
-
-# --- RadarVirtuel / adsbnetwork (pure-Python feeder) ----------------------
-# No compiled binary: feeder_radarvirtuel.py reads our readsb's
-# /run/readsb/aircraft.json directly (its built-in AIRCRAFT_SOURCES; we do NOT set
-# RV_AIRCRAFT_URL -- the upstream entrypoint ignores a localhost URL anyway) and POSTs
-# to radarvirtuel, auto-registering the station from RV_CONTRIB_NAME/EMAIL
-# (station id/uid persisted to /data). We do NOT copy its bundled readsb (we have
-# our own) or its s6 scripts (our rootfs gates it). Needs python3-requests (apt).
-COPY --from=radarvirtuel /docker-entrypoint.py /docker-entrypoint.py
-COPY --from=radarvirtuel /opt/feeder_rv /opt/feeder_rv
 
 # --- sdrmap (shell feeder + stunnel MLAT) ---------------------------------
 # sdrmapfeeder.sh is a self-contained shell script (arch-independent): it scrapes

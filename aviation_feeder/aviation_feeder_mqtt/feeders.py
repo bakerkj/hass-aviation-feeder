@@ -12,7 +12,7 @@ Two classes of feeder, two signals — both read locally, no network calls:
   disconnected).
 
 * Client-binary feeders (piaware, FR24, PlaneFinder, OpenSky, RadarBox,
-  ADSBHub, plane.watch, RadarVirtuel, sdrmap) run as separate processes. The
+  ADSBHub, plane.watch, sdrmap) run as separate processes. The
   naive signal is "is the binary running", but a running binary can still be
   feeding *nothing* — e.g. plane.watch's pw-feeder stayed up the whole time it
   was failing TLS (x509) and shipping zero bytes, so a process check showed
@@ -22,9 +22,9 @@ Two classes of feeder, two signals — both read locally, no network calls:
   + /proc/<pid>/fd) — the same feeding vs. merely-running distinction readsb
   already gives us for the community connectors.
 
-  Two feeders (RadarVirtuel, sdrmap) POST over short-lived HTTPS rather than a
+  One feeder (sdrmap) POSTs over short-lived HTTPS rather than a
   held-open socket, so a point-in-time socket check would false-negative every
-  time it lands between POSTs. Those fall back to the process-running signal
+  time it lands between POSTs. It falls back to the process-running signal
   (mode "proc"); it's the honest best-effort for a periodic-POST feeder.
 
 Only feeders the user has enabled in options are reported.
@@ -105,16 +105,9 @@ PROPRIETARY_FEEDERS: list[tuple[str, str, str, str, str]] = [
     ("radarbox", "AirNav RadarBox", "enable_radarbox", "rbfeeder", "conn"),
     ("adsbhub", "ADSBHub", "enable_adsbhub", "adsbhub", "conn"),
     ("planewatch", "plane.watch", "enable_planewatch", "pw-feeder", "conn"),
-    (
-        "radarvirtuel",
-        "RadarVirtuel",
-        "enable_radarvirtuel",
-        "docker-entrypoint.py",
-        "proc",
-    ),
     ("sdrmap", "sdrmap", "enable_sdrmap", "sdrmapfeeder", "proc"),
     # radar1090: persistent Beast client to 1090MHz UK; token "sbin/radar" is
-    # specific (won't collide with radarvirtuel/radarbox cmdlines). ADS-B only.
+    # specific (won't collide with radarbox cmdlines). ADS-B only.
     ("uk1090", "1090MHz UK", "enable_uk1090", "sbin/radar", "conn"),
 ]
 
@@ -129,8 +122,8 @@ ALL_FEEDER_KEYS: frozenset[str] = frozenset(
 
 # Client feeders whose byte throughput comes from the kernel's per-socket
 # counters (persistent TCP, inode-attributed — the "conn"-mode feeders). fr24
-# and pfclient report their own throughput (app_reports); radarvirtuel/sdrmap
-# POST over short-lived connections and community aggregators aren't split
+# and pfclient report their own throughput (app_reports); sdrmap
+# POSTs over short-lived connections and community aggregators aren't split
 # per-connector by readsb, so neither gets a byte sensor.
 THROUGHPUT_KERNEL = frozenset(
     {"piaware", "planewatch", "opensky", "adsbhub", "radarbox", "uk1090"}

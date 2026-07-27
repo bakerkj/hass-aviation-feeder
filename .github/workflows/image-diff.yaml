@@ -281,7 +281,7 @@ jobs:
             proprietary feeders onto the docker-adsb-ultrafeeder base image, all
             in ONE container. readsb decodes 1090MHz ADS-B, dump978 decodes
             978MHz UAT; the aggregator feeders (piaware, fr24feed, pfclient,
-            rbfeeder, opensky, adsbhub, plane-watch, radarvirtuel, sdrmap,
+            rbfeeder, opensky, adsbhub, plane-watch, sdrmap,
             uk1090) are staged in from their own upstream images via
             `COPY --from` and pointed at the merged Beast stream. s6-overlay
             supervises everything.
@@ -294,7 +294,7 @@ jobs:
                filesystem, its ENV defaults, and its s6 service tree.
 
             b) THE EXTRACTION IMAGES (piaware, fr24feed, pfclient, rbfeeder,
-               opensky, adsbhub, plane-watch, radarvirtuel, sdrmap, uk1090,
+               opensky, adsbhub, plane-watch, sdrmap, uk1090,
                dump978...). We do NOT run these containers. We reach in and
                `COPY --from` SPECIFIC PATHS out of them -- binaries, entrypoint
                scripts, and upstream s6 scripts -- and then execute those files

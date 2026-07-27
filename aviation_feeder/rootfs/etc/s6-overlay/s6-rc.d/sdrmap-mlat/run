@@ -3,7 +3,7 @@
 # sdrmap MLAT: mlat-client reads Beast from our readsb, syncs to sdrmap THROUGH
 # the local stunnel tunnel (--server 127.0.0.1:3333, wrapped to
 # mlat.feed.sdrmap.org), and republishes results on 30110 (30105-30109 are taken
-# by rbfeeder/piaware/planewatch/radarvirtuel). Depends on sdrmap-stunnel so the
+# by rbfeeder/piaware/planewatch). Depends on sdrmap-stunnel so the
 # tunnel is up first. sdrmap authenticates the mlat-client with user:password.
 . /usr/local/bin/feeder-gate
 gate "[sdrmap-mlat]" ENABLE_SDRMAP SMUSERNAME SMPASSWORD LAT LONG ALT
