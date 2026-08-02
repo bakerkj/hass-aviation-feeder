@@ -154,20 +154,12 @@
       "automerge": true
     },
     {
-      "description": "Dev and test tooling only, scoped by depType: dependency-groups and tool.uv.dev-dependencies. Deliberately excludes project.dependencies, project.optional-dependencies and build-system.requires, so a runtime dependency added later defaults to manual review instead of inheriting auto-merge -- the pypi datasource is not in the denial above, so scoping here is the only guard. Repos that already ship runtime packages also deny them by name in the final rule. Both manager names are listed because sibling repos use each and both validate.",
-      "matchManagers": ["pep621", "uv"],
+      "description": "Dev and test tooling only, scoped by depType: dependency-groups and tool.uv.dev-dependencies. Deliberately excludes project.dependencies, project.optional-dependencies and build-system.requires, so a runtime dependency added later defaults to manual review instead of inheriting auto-merge -- the pypi datasource is not in the denial above, so scoping here is the only guard. Repos that already ship runtime packages also deny them by name in the final rule. Only pep621 is listed: renovate has no uv manager, uv is a processor inside pep621.",
+      "matchManagers": ["pep621"],
       "matchUpdateTypes": ["minor", "patch"],
       "minimumReleaseAge": "3 days",
       "automerge": true,
       "matchDepTypes": ["dependency-groups", "tool.uv.dev-dependencies"]
-    },
-    {
-      "description": "The uv required-version pin in [tool.uv], which comes from the custom regex manager rather than the native pep621/uv managers and so is not covered by the rule above. Scoped by depName so it does not sweep in the other custom.regex managers.",
-      "matchManagers": ["custom.regex"],
-      "matchDepNames": ["uv"],
-      "matchUpdateTypes": ["minor", "patch"],
-      "minimumReleaseAge": "3 days",
-      "automerge": true
     },
     {
       "description": "Majors always get a human. Must stay last to override every opt-in above.",
