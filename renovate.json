@@ -125,7 +125,7 @@
       "automerge": false
     },
     {
-      "description": "Actions are CI-only here: HACS ships the repo source, so nothing an action does reaches a user. Re-enables github-tags, denied above.",
+      "description": "Actions here run in lint, test and release jobs that never produce an image. The container users install is built only on a release tag, by home-assistant/builder, which is carved out below and stays manual. The docker/build-push-action uses in the test workflows build throwaway images with load:true and never push, so they cannot reach a user either.",
       "matchManagers": ["github-actions"],
       "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
       "minimumReleaseAge": "3 days",
@@ -154,11 +154,12 @@
       "automerge": true
     },
     {
-      "description": "Dev-group tooling (pytest-hacc, mypy) from the native manager. Safe only because manifest.json requirements is empty; repos that ship runtime deps deny those by name after this. Both manager names are listed because sibling repos use each and both validate.",
+      "description": "Dev and test tooling only, scoped by depType: dependency-groups and tool.uv.dev-dependencies. Deliberately excludes project.dependencies, project.optional-dependencies and build-system.requires, so a runtime dependency added later defaults to manual review instead of inheriting auto-merge -- the pypi datasource is not in the denial above, so scoping here is the only guard. Repos that already ship runtime packages also deny them by name in the final rule. Both manager names are listed because sibling repos use each and both validate.",
       "matchManagers": ["pep621", "uv"],
       "matchUpdateTypes": ["minor", "patch"],
       "minimumReleaseAge": "3 days",
-      "automerge": true
+      "automerge": true,
+      "matchDepTypes": ["dependency-groups", "tool.uv.dev-dependencies"]
     },
     {
       "description": "The uv required-version pin in [tool.uv], which comes from the custom regex manager rather than the native pep621/uv managers and so is not covered by the rule above. Scoped by depName so it does not sweep in the other custom.regex managers.",
