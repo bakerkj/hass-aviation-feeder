@@ -81,7 +81,7 @@
       "groupName": "pre-commit hooks"
     },
     {
-      "description": "The uv/pyproject unit-test deps (pyproject.toml + uv.lock) land in one PR. config:recommended enables the pep621 manager, which tracks the declared deps and maintains uv.lock.",
+      "description": "Dev and test tooling only, scoped by depType: dependency-groups and tool.uv.dev-dependencies. Deliberately excludes project.dependencies, project.optional-dependencies and build-system.requires, so a runtime dependency added later defaults to manual review instead of inheriting auto-merge -- the pypi datasource is not in the denial above, so scoping here is the only guard. Repos that already ship runtime packages also deny them by name in the final rule. Only pep621 is listed because renovate has no separate uv manager: pep621 is the manager that handles uv projects, covering pyproject.toml, uv.lock and uv workspaces, so naming uv here would match nothing.",
       "matchManagers": ["pep621"],
       "groupName": "python dependencies"
     },
@@ -154,7 +154,7 @@
       "automerge": true
     },
     {
-      "description": "Dev and test tooling only, scoped by depType: dependency-groups and tool.uv.dev-dependencies. Deliberately excludes project.dependencies, project.optional-dependencies and build-system.requires, so a runtime dependency added later defaults to manual review instead of inheriting auto-merge -- the pypi datasource is not in the denial above, so scoping here is the only guard. Repos that already ship runtime packages also deny them by name in the final rule. Only pep621 is listed: renovate has no uv manager, uv is a processor inside pep621.",
+      "description": "Dev and test tooling only, scoped by depType: dependency-groups and tool.uv.dev-dependencies. Deliberately excludes project.dependencies, project.optional-dependencies and build-system.requires, so a runtime dependency added later defaults to manual review instead of inheriting auto-merge -- the pypi datasource is not in the denial above, so scoping here is the only guard. Repos that already ship runtime packages also deny them by name in the final rule. Only pep621 is listed because renovate has no separate uv manager: pep621 is the manager that handles uv projects, covering pyproject.toml, uv.lock and uv workspaces, so naming uv here would match nothing.",
       "matchManagers": ["pep621"],
       "matchUpdateTypes": ["minor", "patch"],
       "minimumReleaseAge": "3 days",
