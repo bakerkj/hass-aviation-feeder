@@ -111,6 +111,80 @@
       "description": "Override the helpers:pinGitHubActionDigestsToSemver preset's semver versioning for home-assistant/builder, which moved from semver tags (1.x-7.x) to calver tags (2026.06.0+).",
       "matchPackageNames": ["home-assistant/builder"],
       "versioning": "loose"
+    },
+    {
+      "description": "Auto-merge rules below are order-dependent: renovate applies packageRules in array order and the last match wins. Deny anything that could reach a shipped artifact, so a future Dockerfile or runtime requirement defaults to manual review.",
+      "matchDatasources": [
+        "docker",
+        "deb",
+        "custom.aports",
+        "github-releases",
+        "git-refs",
+        "github-tags"
+      ],
+      "automerge": false
+    },
+    {
+      "description": "Actions are CI-only here: HACS ships the repo source, so nothing an action does reaches a user. Re-enables github-tags, denied above.",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "minimumReleaseAge": "3 days",
+      "automerge": true
+    },
+    {
+      "description": "Lint and format tooling. Never shipped.",
+      "matchManagers": ["pre-commit"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "minimumReleaseAge": "3 days",
+      "automerge": true
+    },
+    {
+      "description": "npm packages pinned in .pre-commit-config.yaml additional_dependencies. These come from the custom regex manager, which renovate names custom.regex, so the pre-commit rule above does not reach them.",
+      "matchManagers": ["custom.regex"],
+      "matchDatasources": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "minimumReleaseAge": "3 days",
+      "automerge": true
+    },
+    {
+      "description": "CI runner images.",
+      "matchDatasources": ["github-runners"],
+      "matchUpdateTypes": ["minor", "patch", "pin"],
+      "minimumReleaseAge": "3 days",
+      "automerge": true
+    },
+    {
+      "description": "Dev-group tooling (pytest-hacc, mypy) from the native manager. Safe only because manifest.json requirements is empty; repos that ship runtime deps deny those by name after this. Both manager names are listed because sibling repos use each and both validate.",
+      "matchManagers": ["pep621", "uv"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "minimumReleaseAge": "3 days",
+      "automerge": true
+    },
+    {
+      "description": "The uv required-version pin in [tool.uv], which comes from the custom regex manager rather than the native pep621/uv managers and so is not covered by the rule above. Scoped by depName so it does not sweep in the other custom.regex managers.",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["uv"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "minimumReleaseAge": "3 days",
+      "automerge": true
+    },
+    {
+      "description": "Majors always get a human. Must stay last to override every opt-in above.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
+      "description": "MANUAL REVIEW: home-assistant/builder builds the container users install. Also broken out of the github-actions group so a builder bump does not block auto-merge of every other action riding in the same PR.",
+      "matchPackageNames": ["home-assistant/builder"],
+      "groupName": "home-assistant builder",
+      "automerge": false
+    },
+    {
+      "description": "MANUAL REVIEW: paho-mqtt is pinned to == the version the image installs via apt (python3-paho-mqtt in the Dockerfile). It is a test dependency, but the exact-pin coupling to the shipped version is the point -- an automatic bump silently desyncs the test venv from what the add-on actually runs on.",
+      "matchPackageNames": ["paho-mqtt"],
+      "automerge": false
     }
-  ]
+  ],
+  "prConcurrentLimit": 5,
+  "automergeStrategy": "squash"
 }
