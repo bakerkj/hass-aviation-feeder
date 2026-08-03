@@ -101,10 +101,11 @@
       "allowedVersions": "<3.14"
     },
     {
-      "description": "sdr-enthusiasts images are pinned to their latest-build-NNN tag (they publish no semver). Track the build counter as a patch version — NOT major — so Renovate's maxMajorIncrement (500) doesn't cap large build-number jumps, and the PR shows a readable build-N -> build-M delta plus the resolved sourceUrl.",
+      "description": "sdr-enthusiasts images are pinned to their latest-build-NNN tag (they publish no semver). Track the build counter as a patch version — NOT major — so Renovate's maxMajorIncrement (500) doesn't cap large build-number jumps, and the PR shows a readable build-N -> build-M delta plus the resolved sourceUrl. commitMessageTopic strips the ghcr.io/sdr-enthusiasts/docker- prefix from the image name: the default full-path topic plus the squash-merge ' (#NN)' suffix pushes several of these headers past commitlint's 100-char header-max-length.",
       "matchManagers": ["dockerfile"],
       "matchPackageNames": ["/^ghcr\\.io/sdr-enthusiasts//"],
       "groupName": "sdr-enthusiasts base images",
+      "commitMessageTopic": "{{{replace 'ghcr\\.io/sdr-enthusiasts/docker-' '' depName}}} image",
       "versioning": "regex:^latest-build-(?<patch>\\d+)$"
     },
     {
