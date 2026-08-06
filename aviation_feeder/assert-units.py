@@ -19,9 +19,9 @@ future extension.
 Two surfaces are policed, because "what runs at boot" lives in two places:
   1. the `user` bundle's contents.d -- the enrolled s6 SERVICES. s6-overlay 3.2.3.2
      relocated the bundle definition from s6-rc.d/user/contents.d to
-     user-bundles.d/user/contents.d (old path deprecated-but-honored); the base's
-     units now use the new dir while ours stay at the old, so enrollment is the
-     UNION of both dirs.
+     user-bundles.d/user/contents.d (old path deprecated-but-honored). Base and our
+     units both ship in the new dir now; the guard checks the UNION of both so
+     anything still landing in the deprecated dir is caught too.
   2. startup.d/       -- one-shot HOOKS the approved `startup` service iterates at
      boot. The aggregator auto-registration hooks (e.g. 52-adsbitalia-register)
      live HERE, not in user/contents.d -- a services-only guard would miss a base
@@ -43,11 +43,11 @@ from pathlib import Path
 
 S6 = "/etc/s6-overlay/s6-rc.d"
 STARTUP = "/etc/s6-overlay/startup.d"
-# The `user` bundle's enrollment markers live in two dirs: s6-overlay 3.2.3.2
+# The `user` bundle's enrollment markers can live in two dirs: s6-overlay 3.2.3.2
 # relocated the bundle definition from s6-rc.d/user/contents.d to
-# user-bundles.d/user/contents.d (old path deprecated-but-honored). Base units
-# migrated to the new path; ours (shipped in rootfs) remain at the old one.
-# Enrollment is the UNION of both.
+# user-bundles.d/user/contents.d (old path deprecated-but-honored). Base and our
+# units both ship in the new dir now; the guard still checks the UNION so anything
+# landing in the deprecated dir is caught too.
 CONTENTS_DIRS = (
     f"{S6}/user/contents.d",
     "/etc/s6-overlay/user-bundles.d/user/contents.d",

@@ -1016,8 +1016,8 @@ assert_ls_equals() { # $1 label, $2 = newline-separated expected names, $3.. = d
   shift 2
   # -A (not plain -1) so hidden entries are listed too: the build-time guard uses
   # Python os.listdir() which includes dotfiles, so this runtime mirror must as well.
-  # Union across all dirs: enrollment markers now split between the deprecated
-  # s6-rc.d/user/contents.d (ours) and user-bundles.d/user/contents.d (base's).
+  # Union across both dirs: base and our markers live in user-bundles.d/user/
+  # contents.d now; the deprecated s6-rc.d/user/contents.d is unioned in too.
   got="$(for d in "$@"; do docker exec "${CONTAINER}" sh -c "ls -1A '${d}' 2>/dev/null"; done | sort -u)"
   if [ "${got}" = "${want}" ]; then
     ok "${label} matches allowlist"
