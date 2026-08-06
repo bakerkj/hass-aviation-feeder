@@ -367,19 +367,21 @@ def final_base_image(repo_path, rev, token):
     FLOATING (`:latest`), so this only NAMES the image -- the exact build-time
     digest comes from the base image's provenance (provenance_deps).
 
-    Returns the bare image name (no tag/digest), or None if the final FROM isn't a
-    literal registry image (an ARG we can't resolve one level up here) or the
-    Dockerfile can't be read.
+    Returns (image_name, None) on success, or (None, reason) explaining WHY the
+    runtime FROM couldn't be resolved -- the caller surfaces that reason as a note
+    rather than silently dropping the transitive analysis. Distinguishing the
+    reasons matters: an unreadable Dockerfile is a transient/tooling failure worth
+    flagging, whereas an ARG-based FROM is an expected can't-resolve-here.
     """
     data = gh_json(
         f"https://api.github.com/repos/{repo_path}/contents/Dockerfile?ref={rev}", token
     )
     if not data or "content" not in data:
-        return None
+        return None, f"could not fetch the base image's Dockerfile at `{rev[:7]}`"
     try:
         text = base64.b64decode(data["content"]).decode("utf-8", "replace")
     except (ValueError, TypeError):
-        return None
+        return None, "could not decode the base image's Dockerfile"
     final = None
     for m in FROM_ANY_RE.finditer(text):
         if m.group("stage"):
@@ -389,8 +391,12 @@ def final_base_image(repo_path, rev, token):
             continue  # ARG-based FROM or a bare stage alias -- not resolvable here
         final = ref
     if not final:
-        return None
-    return final.split("@", 1)[0].split(":", 1)[0]  # strip tag/digest -> bare name
+        return (
+            None,
+            "the base image's final `FROM` is not a literal registry image (ARG-based?)",
+        )
+    # strip tag/digest -> bare name
+    return final.split("@", 1)[0].split(":", 1)[0], None
 
 
 def transitive_base(image, old_digest, new_digest, repo_path, new_rev, token, out_dir):
@@ -408,9 +414,13 @@ def transitive_base(image, old_digest, new_digest, repo_path, new_rev, token, ou
     Returns markdown lines to append to the base image's section (empty when there
     is nothing to add), staging any patches under out_dir/<parent>/.
     """
-    tname = final_base_image(repo_path, new_rev, token)
+    tname, why = final_base_image(repo_path, new_rev, token)
     if not tname:
-        return []
+        # Consistent with every other branch below: surface WHY, never drop the
+        # section silently -- a silent [] would reproduce the exact invisible
+        # transitive change this analysis exists to catch (e.g. a transient GitHub
+        # API hiccup fetching the base's Dockerfile).
+        return [f":grey_question: Transitive base not analysed: {why}.", ""]
     tshort = tname.rsplit("/", 1)[-1]
     old_deps = provenance_deps(image, old_digest)
     new_deps = provenance_deps(image, new_digest)
