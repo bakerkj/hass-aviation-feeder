@@ -68,7 +68,13 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from renovate_image_diff import IMAGE_RE, labels_for, refs_in, run
+from renovate_image_diff import (
+    IMAGE_RE,
+    labels_for,
+    provenance_deps,
+    refs_in,
+    run,
+)
 
 DOCKERFILE = "aviation_feeder/Dockerfile"
 # Where we look to decide "do we set this env ourselves?"
@@ -345,6 +351,185 @@ def suffix_hits(extracted, upstream_files, statuses=None):
     return hits
 
 
+# FROM <ref> [AS <stage>] -- captures the ref and whether it names a build stage.
+FROM_ANY_RE = re.compile(
+    r"^FROM\s+(?P<ref>\S+)(?:\s+AS\s+(?P<stage>\S+))?\s*$",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+def final_base_image(repo_path, rev, token):
+    """The image named by the base's OWN final (runtime) `FROM`.
+
+    The last `FROM` with no `AS` is the layer we actually inherit; earlier
+    `FROM … AS <stage>` lines are build-only and never reach our container (e.g.
+    ultrafeeder's `docker-baseimage:mlatclient AS buildimage`). Its tag is usually
+    FLOATING (`:latest`), so this only NAMES the image -- the exact build-time
+    digest comes from the base image's provenance (provenance_deps).
+
+    Returns the bare image name (no tag/digest), or None if the final FROM isn't a
+    literal registry image (an ARG we can't resolve one level up here) or the
+    Dockerfile can't be read.
+    """
+    data = gh_json(
+        f"https://api.github.com/repos/{repo_path}/contents/Dockerfile?ref={rev}", token
+    )
+    if not data or "content" not in data:
+        return None
+    try:
+        text = base64.b64decode(data["content"]).decode("utf-8", "replace")
+    except (ValueError, TypeError):
+        return None
+    final = None
+    for m in FROM_ANY_RE.finditer(text):
+        if m.group("stage"):
+            continue  # build stage -- not inherited into the final image
+        ref = m.group("ref")
+        if ref.startswith("$") or "/" not in ref:
+            continue  # ARG-based FROM or a bare stage alias -- not resolvable here
+        final = ref
+    if not final:
+        return None
+    return final.split("@", 1)[0].split(":", 1)[0]  # strip tag/digest -> bare name
+
+
+def transitive_base(image, old_digest, new_digest, repo_path, new_rev, token, out_dir):
+    """Analyse the base's OWN floating `FROM …:latest` the same way we analyse the
+    base itself -- one level up, because its rootfs also lands in our container.
+
+    Our base is inherited whole and is itself built `FROM <sdr image>:latest`, a
+    floating tag no digest in our Dockerfile pins. A change one layer up is just as
+    live in our container but invisible to the top-level diff. We recover that
+    parent's EXACT old/new digests from the base image's provenance, resolve them
+    the same way (revision label -> compare), and run the same inherited-rootfs
+    intersection. Scoped to ONE level (the direct runtime FROM); it does NOT recurse
+    into that parent's own base.
+
+    Returns markdown lines to append to the base image's section (empty when there
+    is nothing to add), staging any patches under out_dir/<parent>/.
+    """
+    tname = final_base_image(repo_path, new_rev, token)
+    if not tname:
+        return []
+    tshort = tname.rsplit("/", 1)[-1]
+    old_deps = provenance_deps(image, old_digest)
+    new_deps = provenance_deps(image, new_digest)
+    if not old_deps or not new_deps:
+        return [
+            (
+                f":grey_question: Transitive base **`{tshort}`** not resolved: the base "
+                "image ships no SLSA provenance attestation, so its floating parent's "
+                "build-time digest is unrecoverable."
+            ),
+            "",
+        ]
+    t_old, t_new = old_deps.get(tname), new_deps.get(tname)
+    if not (t_old and t_new):
+        return [
+            (
+                f":grey_question: Transitive base **`{tshort}`** not found among the base "
+                "image's provenance dependencies; cannot resolve its range."
+            ),
+            "",
+        ]
+    if t_old == t_new:
+        return [f"_Transitive base `{tshort}` unchanged in this bump._", ""]
+
+    t_old_lab = labels_for(tname, t_old) or {}
+    t_new_lab = labels_for(tname, t_new) or {}
+    t_source = t_new_lab.get("org.opencontainers.image.source") or ""
+    t_old_rev = t_old_lab.get("org.opencontainers.image.revision")
+    t_new_rev = t_new_lab.get("org.opencontainers.image.revision")
+    t_repo = (
+        t_source[len("https://github.com/") :].rstrip("/")
+        if t_source.startswith("https://github.com/")
+        else None
+    )
+    if not (t_repo and t_old_rev and t_new_rev):
+        return [
+            (
+                f":warning: Transitive base **`{tshort}`** changed "
+                f"(`{t_old[7:14]}` → `{t_new[7:14]}`) but its revision could not be "
+                "resolved from OCI labels; range unavailable."
+            ),
+            "",
+        ]
+
+    patches, subjects = compare(t_repo, t_old_rev, t_new_rev, token)
+    if patches is None:
+        return [f":warning: Transitive base **`{tshort}`** compare API failed.", ""]
+    statuses = {f: m["status"] for f, m in patches.items()}
+    base_hits = inherited_hits(list(patches), statuses)
+
+    t_repo_url = f"https://github.com/{t_repo}"
+    t_compare = f"{t_repo_url}/compare/{t_old_rev}...{t_new_rev}"
+    td = out_dir / tshort
+    write(
+        td / "range.txt",
+        f"image:      {tname} (transitive base, one level up)\n"
+        f"repo:       {t_repo}\n"
+        f"old_rev:    {t_old_rev}\n"
+        f"new_rev:    {t_new_rev}\n"
+        f"compare:    {t_compare}\n"
+        "provenance: base image SLSA provenance -> OCI `revision` label\n",
+    )
+    write(td / "commits.md", "\n".join(f"- {s}" for s in subjects) or "(none)")
+    write(td / "changed-files.txt", "\n".join(patches) or "(none)")
+    for f, meta in patches.items():
+        if meta["patch"]:
+            write(
+                td / "patches" / f"{flat(f)}.diff",
+                f"# status: {meta['status']}\n{meta['patch']}",
+            )
+
+    lines = [
+        (
+            f"#### Transitive base: `{tshort}` "
+            f"([`{t_old_rev[:7]}…{t_new_rev[:7]}`]({t_compare}))"
+        ),
+        "",
+        (
+            f":rotating_light: **`{tshort}` is the base image's OWN floating "
+            "`FROM …:latest` — inherited into our container one layer up, and NOT "
+            "pinned by any digest in our Dockerfile.** It changed in this bump; its "
+            "`rootfs/` lands in our container exactly as the base's does."
+        ),
+        "",
+        f"- {len(patches)} upstream file(s) changed; {len(subjects)} commit(s)",
+        (
+            f"- prefetched: `{td}/` "
+            "(`range.txt`, `commits.md`, `changed-files.txt`, `patches/`)"
+        ),
+        "",
+    ]
+    if base_hits:
+        lines += [
+            "| runs in our container as | upstream file | change | do we override it? |",
+            "|---|---|---|---|",
+        ]
+        for container_path, f, overridden, status in base_hits:
+            if status == "removed":
+                verdict = "n/a — **file was DELETED upstream**, it no longer runs"
+            elif overridden:
+                verdict = "yes — our rootfs wins, no impact"
+            else:
+                verdict = ":rotating_light: **NO — theirs runs**"
+            lines.append(
+                f"| `{container_path}` | [`{f}`]({t_repo_url}/blob/{t_new_rev}/{f}) "
+                f"| `{status}` | {verdict} |"
+            )
+        lines += ["", f"Full diffs: `{td}/patches/`.", ""]
+    else:
+        lines += [
+            (
+                "No file in this transitive range lands in our container's `rootfs/` "
+                "(mechanically verified: no changed path is under `rootfs/`)."
+            ),
+            "",
+        ]
+    return lines
+
+
 def main():
     base, head = sys.argv[1], sys.argv[2]
     out = Path(sys.argv[3] if len(sys.argv) > 3 else "upstream")
@@ -573,6 +758,15 @@ def main():
                 ),
                 "",
             ]
+
+        # One level up: the base image is itself built `FROM <sdr>:latest`, a
+        # floating tag no digest here pins. That parent's rootfs is inherited into
+        # our container too, so analyse it the same way (only for the base image --
+        # a COPY --from stage has no inherited transitive base).
+        if not extracted:
+            body += transitive_base(
+                image, old_digest, new_digest, repo_path, new_rev, token, d
+            )
 
         # ENV defaults -- only meaningful for the repo that BUILDS the image.
         if go_provenance:
