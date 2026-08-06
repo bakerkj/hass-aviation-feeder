@@ -17,7 +17,11 @@ transitive `dependencies.d` pulls. A unit named only in a kept unit's
 future extension.
 
 Two surfaces are policed, because "what runs at boot" lives in two places:
-  1. user/contents.d/ -- the enrolled s6 SERVICES (the `user` bundle).
+  1. the `user` bundle's contents.d -- the enrolled s6 SERVICES. s6-overlay 3.2.3.2
+     relocated the bundle definition from s6-rc.d/user/contents.d to
+     user-bundles.d/user/contents.d (old path deprecated-but-honored); the base's
+     units now use the new dir while ours stay at the old, so enrollment is the
+     UNION of both dirs.
   2. startup.d/       -- one-shot HOOKS the approved `startup` service iterates at
      boot. The aggregator auto-registration hooks (e.g. 52-adsbitalia-register)
      live HERE, not in user/contents.d -- a services-only guard would miss a base
@@ -38,11 +42,21 @@ import sys
 from pathlib import Path
 
 S6 = "/etc/s6-overlay/s6-rc.d"
-CONTENTS = f"{S6}/user/contents.d"
 STARTUP = "/etc/s6-overlay/startup.d"
+# The `user` bundle's enrollment markers live in two dirs: s6-overlay 3.2.3.2
+# relocated the bundle definition from s6-rc.d/user/contents.d to
+# user-bundles.d/user/contents.d (old path deprecated-but-honored). Base units
+# migrated to the new path; ours (shipped in rootfs) remain at the old one.
+# Enrollment is the UNION of both.
+CONTENTS_DIRS = (
+    f"{S6}/user/contents.d",
+    "/etc/s6-overlay/user-bundles.d/user/contents.d",
+)
 
-# --- Approved ENROLLED services (user/contents.d) --------------------------
-# 15 base-provided units we consciously keep + our 27 add-on units (42 total).
+# --- Approved ENROLLED services (the `user` bundle) ------------------------
+# 14 base-provided units we consciously keep + our 27 add-on units (41 total).
+# (base build-951 dropped the libseccomp2 oneshot upstream -- unit dir, marker and
+# all -- so it is no longer part of the approved set.)
 BASE_SERVICES = {
     "adsbx-stats",
     "aggregator-urls",
@@ -51,7 +65,6 @@ BASE_SERVICES = {
     "collectd",
     "graphs1090",
     "graphs1090-writeback",
-    "libseccomp2",
     "mlat-client",
     "mlathub",
     "nginx",
@@ -133,9 +146,8 @@ def listdir(directory: str) -> set:
         return set()
 
 
-def check(label: str, approved: set, directory: str) -> bool:
-    """Return True if `directory` holds exactly `approved`; else report the drift."""
-    actual = listdir(directory)
+def check(label: str, approved: set, actual: set) -> bool:
+    """Return True if `actual` holds exactly `approved`; else report the drift."""
     unexpected = sorted(actual - approved)  # present in image, not approved
     missing = sorted(approved - actual)  # approved, absent from image
     if unexpected:
@@ -161,13 +173,15 @@ def check(label: str, approved: set, directory: str) -> bool:
 def main() -> int:
     # Prune the rejected base units first, so the assertions below see the final tree.
     for name in DROP_SERVICES:
-        rm(f"{CONTENTS}/{name}")
+        for contents in CONTENTS_DIRS:
+            rm(f"{contents}/{name}")
         rm(f"{S6}/{name}")
     for name in DROP_STARTUP:
         rm(f"{STARTUP}/{name}")
 
-    ok = check("enrolled services (user/contents.d)", APPROVED_SERVICES, CONTENTS)
-    ok = check("startup hooks (startup.d)", APPROVED_STARTUP, STARTUP) and ok
+    enrolled = set().union(*(listdir(contents) for contents in CONTENTS_DIRS))
+    ok = check("enrolled services (user bundle)", APPROVED_SERVICES, enrolled)
+    ok = check("startup hooks (startup.d)", APPROVED_STARTUP, listdir(STARTUP)) and ok
 
     if not ok:
         print(
