@@ -1010,16 +1010,19 @@ case_tmpfs() {
 # enrolled services AND the startup.d hooks -- and that the two pruned upstream
 # wrappers (telegraf, timelapse1090) are fully gone. Catches a broken prune or an
 # out-of-sync allowlist at runtime, in addition to the build-time check.
-assert_ls_equals() { # $1 label, $2 dir, $3 = newline-separated expected names
-  local want got
-  want="$(printf '%s\n' "$3" | sed '/^[[:space:]]*$/d' | sort)"
+assert_ls_equals() { # $1 label, $2 = newline-separated expected names, $3.. = dirs (unioned)
+  local label="$1" want got d
+  want="$(printf '%s\n' "$2" | sed '/^[[:space:]]*$/d' | sort -u)"
+  shift 2
   # -A (not plain -1) so hidden entries are listed too: the build-time guard uses
   # Python os.listdir() which includes dotfiles, so this runtime mirror must as well.
-  got="$(docker exec "${CONTAINER}" sh -c "ls -1A '$2' 2>/dev/null" | sort)"
+  # Union across all dirs: enrollment markers now split between the deprecated
+  # s6-rc.d/user/contents.d (ours) and user-bundles.d/user/contents.d (base's).
+  got="$(for d in "$@"; do docker exec "${CONTAINER}" sh -c "ls -1A '${d}' 2>/dev/null"; done | sort -u)"
   if [ "${got}" = "${want}" ]; then
-    ok "$1 matches allowlist"
+    ok "${label} matches allowlist"
   else
-    bad "$1 drift in $2:"
+    bad "${label} drift in $*:"
     diff <(printf '%s\n' "${want}") <(printf '%s\n' "${got}") | sed 's/^/      /' || true
   fi
 }
@@ -1030,7 +1033,7 @@ case_units() {
   start_container "${HERE}/fixtures/default.json"
   assert_running
 
-  assert_ls_equals "enrolled services" /etc/s6-overlay/s6-rc.d/user/contents.d "\
+  assert_ls_equals "enrolled services" "\
 adsbx-stats
 aggregator-urls
 autogain
@@ -1038,7 +1041,6 @@ cleanup_globe_history
 collectd
 graphs1090
 graphs1090-writeback
-libseccomp2
 mlat-client
 mlathub
 nginx
@@ -1072,9 +1074,11 @@ sdrmap-stunnel
 uat-stats
 uk1090
 wait-dump978
-wait-readsb"
+wait-readsb" \
+    /etc/s6-overlay/s6-rc.d/user/contents.d \
+    /etc/s6-overlay/user-bundles.d/user/contents.d
 
-  assert_ls_equals "startup hooks" /etc/s6-overlay/startup.d "\
+  assert_ls_equals "startup hooks" "\
 01-print-container-version
 01-sanity-check
 04-tar1090-configure
@@ -1083,14 +1087,17 @@ wait-readsb"
 08-graphs1090-init
 50-store-uuid
 52-adsbitalia-register
-99-prometheus-conf"
+99-prometheus-conf" \
+    /etc/s6-overlay/startup.d
 
   # Pruned units must be gone entirely: marker, unit dir, and startup hook.
   local p
   for p in \
     /etc/s6-overlay/s6-rc.d/user/contents.d/telegraf \
+    /etc/s6-overlay/user-bundles.d/user/contents.d/telegraf \
     /etc/s6-overlay/s6-rc.d/telegraf \
     /etc/s6-overlay/s6-rc.d/user/contents.d/timelapse1090 \
+    /etc/s6-overlay/user-bundles.d/user/contents.d/timelapse1090 \
     /etc/s6-overlay/s6-rc.d/timelapse1090 \
     /etc/s6-overlay/startup.d/10-telegraf-conf \
     /etc/s6-overlay/startup.d/11-timelapse1090; do
