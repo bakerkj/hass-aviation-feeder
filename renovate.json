@@ -62,6 +62,15 @@
     },
     {
       "customType": "regex",
+      "description": "uv tool required-version pin in pyproject.toml [tool.uv]",
+      "managerFilePatterns": ["/(^|/)pyproject\\.toml$/"],
+      "matchStrings": ["required-version\\s*=\\s*\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "uv",
+      "datasourceTemplate": "pypi",
+      "versioningTemplate": "pep440"
+    },
+    {
+      "customType": "regex",
       "description": "Pinned Debian apt package versions in Dockerfiles. Main trixie goes directly to deb.debian.org; the two trixie sub-suites (updates + security) resolve through a helper service that transforms Debian's .xz index into the .gz format the deb datasource requires. Full URL list lives on the matchDatasources: [deb] packageRule below (customManagers don't accept multi-URL fields).",
       "managerFilePatterns": ["/[^/]+/Dockerfile$/"],
       "matchStrings": [
@@ -161,6 +170,15 @@
       "minimumReleaseAge": "3 days",
       "automerge": true,
       "matchDepTypes": ["dependency-groups", "tool.uv.dev-dependencies"]
+    },
+    {
+      "description": "The uv required-version pin in [tool.uv], which comes from the custom regex manager rather than the native pep621 manager. Scoped by depName + pypi datasource so it does not sweep in other custom.regex managers or an apk `uv=` pin should one appear later.",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["uv"],
+      "matchDatasources": ["pypi"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "minimumReleaseAge": "3 days",
+      "automerge": true
     },
     {
       "description": "Majors always get a human. Must stay last to override every opt-in above.",

@@ -234,10 +234,10 @@ validates the final image against two allowlists:
 - **Enrolled services** — the `user` bundle's `contents.d` must equal the 14
   base units we keep + our 27 (41 total). s6-overlay 3.2.3.2 relocated the
   bundle definition from `s6-rc.d/user/contents.d` to
-  `user-bundles.d/user/contents.d` (old path deprecated-but-honored); the base's
-  units migrated to the new dir while ours stay at the old, so the guard checks
-  the **union** of both. (Base build-951 also dropped the `libseccomp2` oneshot
-  upstream — hence 14, not 15.)
+  `user-bundles.d/user/contents.d` (old path deprecated-but-honored); both the
+  base's units and ours now live in the new dir, and the guard checks the
+  **union** of both so anything still in the deprecated dir is caught too. (Base
+  build-951 also dropped the `libseccomp2` oneshot upstream — hence 14, not 15.)
 - **Startup hooks** — `ls /etc/s6-overlay/startup.d` must equal the 9 base hooks
   we keep. These are iterated by the approved `startup` oneshot at boot; the
   aggregator auto-registration hooks (e.g. `52-adsbitalia-register`) live
