@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 # ghcr.io/<org>/<repo>:<tag>@sha256:<64 hex>
@@ -111,6 +112,60 @@ def labels_for(image, digest):
             if lab:
                 return lab
     return {}
+
+
+def provenance_deps(image, digest):
+    """Input images recorded in the SLSA provenance attestation: {image_name: digest}.
+
+    BuildKit publishes a provenance attestation next to each image; its
+    buildDefinition.resolvedDependencies lists every input image PINNED to the
+    exact digest used at build time -- including a base pulled from a FLOATING tag
+    (`FROM ...:latest`), which no label and no digest in OUR Dockerfile records.
+    That is the only place the transitive base's true digest survives.
+
+    Returns {} (never None) when no provenance is attached or it can't be parsed
+    (older images, or a registry/tool that dropped it) -- the caller degrades to
+    "transitive base not resolvable" rather than treating absence as an error.
+    """
+    raw = run(
+        "docker",
+        "buildx",
+        "imagetools",
+        "inspect",
+        f"{image}@{digest}",
+        "--format",
+        "{{json .Provenance}}",
+    )
+    if raw is None:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    # Single-platform: {"SLSA": {...}}. Multi-arch: {"linux/amd64": {"SLSA": {...}}, …}
+    # -- any platform's dependency set will do (the base digest is arch-parallel).
+    slsa = data.get("SLSA")
+    if slsa is None:
+        slsa = next(
+            (v["SLSA"] for v in data.values() if isinstance(v, dict) and "SLSA" in v),
+            None,
+        )
+    if not isinstance(slsa, dict):
+        return {}
+    deps = (slsa.get("buildDefinition") or {}).get("resolvedDependencies") or []
+    out = {}
+    for dep in deps:
+        uri = dep.get("uri") or ""
+        if not uri.startswith("pkg:docker/"):
+            continue
+        ref = urllib.parse.unquote(uri[len("pkg:docker/") :].split("?", 1)[0])
+        name = ref.split("@", 1)[0]  # drop the @tag; keep the bare image name
+        sha = (dep.get("digest") or {}).get("sha256")
+        if name and sha:
+            out[name] = f"sha256:{sha}"
+    return out
 
 
 def gh_compare(repo_path, old, new, token):
