@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.0.15](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.14...aviation_feeder-v0.0.15) (2026-08-07)
+
+
+### Bug Fixes
+
+* gate uat-stats on both dump978 ports ([#98](https://github.com/bakerkj/hass-aviation-feeder/issues/98)) ([fe0c789](https://github.com/bakerkj/hass-aviation-feeder/commit/fe0c789fc4e5b70347dfe7034ab4c772573ae3b6))
+
+
+### Miscellaneous Chores
+
+* **deps:** update ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder docker tag to latest-build-947 ([#96](https://github.com/bakerkj/hass-aviation-feeder/issues/96)) ([240341c](https://github.com/bakerkj/hass-aviation-feeder/commit/240341c9036825586901e575ec66e1ccb2d56c95))
+* **deps:** update ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder docker tag to latest-build-949 ([#106](https://github.com/bakerkj/hass-aviation-feeder/issues/106)) ([541f973](https://github.com/bakerkj/hass-aviation-feeder/commit/541f9738ca217a26c640224252f221ac72d13987))
+* **deps:** update sdr-enthusiasts base images ([#108](https://github.com/bakerkj/hass-aviation-feeder/issues/108)) ([985c9ae](https://github.com/bakerkj/hass-aviation-feeder/commit/985c9ae7628f3c029d14d454d91b1043d3f22baa))
+* **s6:** move our enrollment markers to user-bundles.d ([#113](https://github.com/bakerkj/hass-aviation-feeder/issues/113)) ([707dbdc](https://github.com/bakerkj/hass-aviation-feeder/commit/707dbdcb708225f2582b94a388f8a676ee34f588))
+
 ## [0.0.14](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.13...aviation_feeder-v0.0.14) (2026-07-27)
 
 
