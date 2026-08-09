@@ -24,6 +24,7 @@ ARG BUILD_FROM=ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest-build-952@
 # --- Feeder source stages -------------------------------------------------
 # Images pinned to tag@digest so Renovate's dockerfile manager (grouped as
 # "sdr-enthusiasts base images") tracks and bumps them.
+FROM ghcr.io/astral-sh/uv:0.12.3@sha256:2d890623d310b57771ce840f0da5eed5fc6d657da05ffaa45d82797b53fa3abc AS uv
 FROM ghcr.io/sdr-enthusiasts/docker-dump978:latest-build-802@sha256:27a6596cfb68e93c430985ccb4c78d6114079084875a9604e9ead7a51c7bbea8 AS dump978
 FROM ghcr.io/sdr-enthusiasts/docker-piaware:latest-build-666@sha256:3b6772353a562f3d6ac1ba6a2281f96b173a43b822fda14c7f0218a459c225aa AS piaware
 FROM ghcr.io/sdr-enthusiasts/docker-flightradar24:latest-build-859@sha256:998a80cc35b2db150843d1dece7dc99cb985d136503de9b46bc98c2f836030c5 AS fr24
@@ -93,6 +94,7 @@ RUN apt-get update \
     # renovate: datasource=deb depName=libboost-program-options1.83.0
     libboost-program-options1.83.0=1.83.0-4.2 \
     # paho-mqtt for the Home Assistant sensor publisher (aviation_feeder_mqtt).
+    # aiomqtt wraps it; both are needed, and only this half is packaged.
     # renovate: datasource=deb depName=python3-paho-mqtt
     python3-paho-mqtt=2.1.0-1 \
     # stunnel for sdrmap's MLAT TLS tunnel (apt-installed rather than porting
@@ -174,6 +176,17 @@ RUN printf '#!/bin/sh\nexport PYTHONPATH=/opt/fa-mlat${PYTHONPATH:+:$PYTHONPATH}
   && chmod +x /usr/local/bin/fa-mlat-client \
   && PYTHONPATH=/opt/fa-mlat python3 -c "import flightaware.client.cli, mlat; assert mlat.__file__.startswith('/opt/fa-mlat'), mlat.__file__" \
   && python3 -c "import inspect; from mlat.client.coordinator import Coordinator; assert 'stats_interval' in inspect.signature(Coordinator.__init__).parameters"
+# aiomqtt is not packaged in Debian, so it comes from PyPI -- via uv, which is
+# what this repo pins and locks with everywhere else, rather than dragging in
+# pip just for one wheel. --break-system-packages because trixie marks the
+# system interpreter externally managed (PEP 668); this is a single-purpose
+# image, so there is no other environment to break.
+COPY --from=uv /uv /usr/local/bin/uv
+# renovate: datasource=pypi depName=aiomqtt
+RUN uv pip install --system --no-cache --break-system-packages aiomqtt==2.5.1 \
+  && python3 -c "import aiomqtt; print('aiomqtt', aiomqtt.__version__)" \
+  && rm -f /usr/local/bin/uv
+
 COPY --from=piaware /usr/bin/tcllauncher /usr/bin/tcllauncher
 COPY --from=piaware /usr/lib/Tcllauncher1.10 /usr/lib/Tcllauncher1.10
 # s6 longrun + its config-writing oneshot + their wrapper scripts.
