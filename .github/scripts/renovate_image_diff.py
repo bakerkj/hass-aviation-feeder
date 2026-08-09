@@ -169,7 +169,11 @@ def provenance_deps(image, digest):
 
 
 def gh_compare(repo_path, old, new, token):
-    """GitHub compare API -> (commit_count, [subjects]). ([], []) on failure."""
+    """GitHub compare API -> (commit_count, [commit dicts], {file: meta}).
+    (None, [], {}) on failure. Each commit dict is {sha, subject, body}: the BODY
+    carries linked-issue refs (e.g. `…#280`) the subject line drops, so the
+    briefing can stage them and the reviewer needn't call this API again just to
+    read a commit message."""
     url = f"https://api.github.com/repos/{repo_path}/compare/{old}...{new}"
     req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
     if token:
@@ -179,7 +183,14 @@ def gh_compare(repo_path, old, new, token):
             data = json.load(r)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
         return None, [], {}
-    subjects = [c["commit"]["message"].splitlines()[0] for c in data.get("commits", [])]
+    commits = [
+        {
+            "sha": (c.get("sha") or "")[:7],
+            "subject": c["commit"]["message"].splitlines()[0],
+            "body": "\n".join(c["commit"]["message"].splitlines()[1:]).strip(),
+        }
+        for c in data.get("commits", [])
+    ]
     # The SAME response already carries every changed file and its patch. Return
     # them so the briefing step does not have to make this call a second time.
     # Keep the STATUS too (added / modified / removed / renamed). Discarding it made
@@ -193,7 +204,7 @@ def gh_compare(repo_path, old, new, token):
         }
         for f in data.get("files", [])
     }
-    return data.get("total_commits"), subjects, files
+    return data.get("total_commits"), commits, files
 
 
 def main():
@@ -249,16 +260,18 @@ def main():
 
         if source.startswith("https://github.com/") and old_rev and new_rev:
             repo_path = source[len("https://github.com/") :].rstrip("/")
-            count, subjects, files = gh_compare(repo_path, old_rev, new_rev, token)
-            entry.update(repo_path=repo_path, subjects=subjects, files=files)
+            count, commits, files = gh_compare(repo_path, old_rev, new_rev, token)
+            entry.update(repo_path=repo_path, commits=commits, files=files)
             link = f"{source}/compare/{old_rev}...{new_rev}"
             rows.append(
                 f"| `{name}` | {change} | {count if count is not None else '?'} "
                 f"| [{old_rev[:7]}…{new_rev[:7]}]({link}) |"
             )
-            if subjects:
-                body = "\n".join(f"- {s}" for s in subjects[:20])
-                more = "\n- …" if len(subjects) > 20 else ""
+            if commits:
+                # PR-comment summary stays subject-only for scannability; the full
+                # bodies live in the staged commits.md the briefing writes.
+                body = "\n".join(f"- {c['subject']}" for c in commits[:20])
+                more = "\n- …" if len(commits) > 20 else ""
                 details.append(
                     f"<details><summary><code>{name}</code> — "
                     f"{count} commit(s)</summary>\n\n{body}{more}\n\n</details>"
