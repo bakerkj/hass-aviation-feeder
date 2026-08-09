@@ -57,12 +57,29 @@ def mqtt_publish(
     log_level: str,
     health: MqttHealth,
     mark_state: bool = False,
+    flush_timeout: float | None = None,
 ) -> bool:
+    """Publish once, best-effort.
+
+    ``flush_timeout`` waits that long for the broker to acknowledge before
+    returning. Only the shutdown farewell needs it: paho's network thread is the
+    only one that drains the outbound queue, so a qos=1 message published and
+    then abandoned at process exit may never reach the socket, leaving the
+    broker to fall back to the last will. Bounded, because the whole point is
+    not to outlast the supervisor's stop grace.
+    """
     try:
         info = client.publish(topic, payload=payload, qos=qos, retain=retain)
         if info.rc == mqtt.MQTT_ERR_SUCCESS:
             if mark_state:
                 health.last_state_publish_ok = time.time()
+            if flush_timeout is not None:
+                try:
+                    info.wait_for_publish(timeout=flush_timeout)
+                except (RuntimeError, ValueError):
+                    # paho raises if the loop is not running or the broker has
+                    # dropped -- best-effort, and the will covers that case.
+                    pass
             return True
         log("WARNING", f"MQTT publish rc={info.rc} topic={topic}", log_level)
     except Exception as e:  # noqa: BLE001 -- never let a publish error kill the loop
