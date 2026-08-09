@@ -529,9 +529,6 @@ async def _run() -> int:
     for signum in EXIT_SIGNALS:
         event_loop.add_signal_handler(signum, stop.set)
 
-    if df_counter is not None:
-        df_counter.start()
-
     last_stats_ok = 0.0
 
     async def publish_loop(mq: Client) -> int:
@@ -545,20 +542,13 @@ async def _run() -> int:
         while not stop.is_set():
             now = time.time()
 
-            if (
-                not health.connected
-                and health.last_disconnect > 0
-                and (now - health.last_disconnect) > disconnect_timeout
-            ):
-                log(
-                    "ERROR",
-                    f"MQTT disconnected for {now - health.last_disconnect:.0f}s "
-                    f"(> {disconnect_timeout}s). Exiting for supervisor restart.",
-                    log_level,
-                )
-                return EXIT_DISCONNECTED
-
-            stats = read_stats(args.stats)
+            # No disconnect check here: broker faults now propagate out of
+            # mqtt_publish, so this loop has already exited by the time
+            # health.connected can go False. The 300s watchdog lives in the
+            # reconnect loop below, which is the only place that sees an
+            # outage. Under paho this had to be here, because its network
+            # thread could flip the flag while this loop kept running.
+            stats = await asyncio.to_thread(read_stats, args.stats)
             if stats is None:
                 log("WARNING", f"stats.json not readable at {args.stats}", log_level)
             else:
@@ -783,7 +773,7 @@ async def _run() -> int:
                 # UAT stats.json is written by the uat-stats service ~once/minute;
                 # absent until then (or in remote mode) -> read returns None, skip.
                 if feeder_health and uat_present:
-                    ustats = read_uat_stats(args.uat_stats)
+                    ustats = await asyncio.to_thread(read_uat_stats, args.uat_stats)
                     if ustats is not None:
                         for key, val in compute_uat_metrics(ustats).items():
                             if val is None:
@@ -854,7 +844,11 @@ async def _run() -> int:
                     and station_lon is not None
                 )
                 want_acj = want_nearby or emergency_on or unique_on
-                acj = read_aircraft(args.aircraft) if want_acj else None
+                acj = (
+                    await asyncio.to_thread(read_aircraft, args.aircraft)
+                    if want_acj
+                    else None
+                )
                 if want_acj and acj is None:
                     log(
                         "WARNING",
@@ -988,8 +982,12 @@ async def _run() -> int:
                     # results into every consumer (status, throughput, uptime), so
                     # we don't re-scan 2-3x and can't get a mid-cycle-inconsistent
                     # view between them.
-                    cmd_by_pid = running_cmdlines_by_pid()
-                    connectors = read_connector_status()
+                    # Off-loop: this opens /proc/<pid>/cmdline for every
+                    # running process, and stats.prom on top. On one loop that
+                    # stalls MQTT keepalive, the birth watcher and the shutdown
+                    # signal for as long as the scan takes.
+                    cmd_by_pid = await asyncio.to_thread(running_cmdlines_by_pid)
+                    connectors = await asyncio.to_thread(read_connector_status)
                     enabled_keys = set()
                     for key, _name, connected in compute_feeder_status(
                         opts,
@@ -1022,9 +1020,11 @@ async def _run() -> int:
                             await _pub("bytes_received_rate", key, round(rr, 1))
 
                     # Byte throughput: kernel per-socket counters (TCP feeders)...
-                    for key, (sent, recv) in throughput.update(
-                        opts, cmd_by_pid=cmd_by_pid
-                    ).items():
+                    # Off-loop: reads /proc/net/tcp via NETLINK_INET_DIAG.
+                    throughput_by_key = await asyncio.to_thread(
+                        throughput.update, opts, cmd_by_pid=cmd_by_pid
+                    )
+                    for key, (sent, recv) in throughput_by_key.items():
                         await _bytes(key, sent, recv)
                     # ...plus pfclient's own byte counters (feeds off-TCP).
                     pf = reports.get("planefinder")
@@ -1055,14 +1055,21 @@ async def _run() -> int:
                     # advertised sensor gets a value each cycle -- 0 when the
                     # feeder is not syncing -- rather than being left to expire
                     # to "unavailable", which hid a known state.
+                    mlat_raw = await asyncio.to_thread(read_mlat_stats)
                     for (key, suffix), val in mlat_states(
-                        read_mlat_stats(), enabled_keys
+                        mlat_raw, enabled_keys
                     ).items():
                         await _pub(suffix, key, val)
                     # Per-feeder uptime (aggregator connect-seconds / process age).
-                    for key, secs in compute_feeder_uptime(
-                        opts, connectors=connectors, cmd_by_pid=cmd_by_pid
-                    ).items():
+                    # Off-loop: opens /proc/uptime plus /proc/<pid>/stat
+                    # for each feeder.
+                    uptime_by_key = await asyncio.to_thread(
+                        compute_feeder_uptime,
+                        opts,
+                        connectors=connectors,
+                        cmd_by_pid=cmd_by_pid,
+                    )
+                    for key, secs in uptime_by_key.items():
                         if key not in enabled_keys:
                             continue
                         await _pub("uptime", key, secs)

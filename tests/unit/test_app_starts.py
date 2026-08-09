@@ -82,16 +82,7 @@ async def _spawn(tmp: str, port: int):
     aircraft = Path(tmp) / "aircraft.json"
     aircraft.write_text('{"aircraft": []}')
     options = Path(tmp) / "options.json"
-    options.write_text(
-        json.dumps(
-            {
-                "mqtt_host": "127.0.0.1",
-                "mqtt_port": port,
-                "interval_seconds": 1,
-                "log_level": "INFO",
-            }
-        )
-    )
+    options.write_text(json.dumps({**_TEST_OPTIONS, "mqtt_port": port}))
     return await asyncio.create_subprocess_exec(
         sys.executable,
         "-m",
@@ -107,6 +98,39 @@ async def _spawn(tmp: str, port: int):
         stderr=asyncio.subprocess.STDOUT,
         env={**os.environ, "PYTHONUNBUFFERED": "1"},
     )
+
+
+# The options this file writes, kept in one place so the guard below can check
+# them against what the add-on actually ships.
+_TEST_OPTIONS = {
+    "mqtt_host": "127.0.0.1",
+    "mqtt_port": 0,
+    "mqtt_interval_seconds": 1,
+    "mqtt_log_level": "INFO",
+}
+
+
+class OptionsFixtureMatchesTheSchema(unittest.TestCase):
+    def test_every_key_this_file_sets_is_one_the_addon_declares(self) -> None:
+        """A fixture key the add-on never reads is silently ignored.
+
+        That is not hypothetical: this file first used ``interval_seconds`` and
+        ``log_level``, which config.json does not declare, so the intended 1s
+        interval quietly fell back to the 30s default and the test read as
+        though it were configuring something it was not.
+        """
+        declared = set(
+            json.loads((REPO / "aviation_feeder" / "config.json").read_text())[
+                "options"
+            ]
+        )
+        self.assertTrue(declared, "config.json declared no options")
+        unknown = sorted(set(_TEST_OPTIONS) - declared)
+        self.assertEqual(
+            unknown,
+            [],
+            f"options.json fixture sets keys the add-on never reads: {unknown}",
+        )
 
 
 class AddonStarts(unittest.IsolatedAsyncioTestCase):
