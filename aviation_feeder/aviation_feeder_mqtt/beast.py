@@ -24,17 +24,17 @@ produces a roughly uniform spread across DF0..DF31 -- which is physically
 impossible, since real traffic is dominated by DF17/DF11/DF0. If a change here
 ever yields a flat distribution, that is the bug.
 
-Reading is done on a daemon thread because the Beast stream is continuous while
-the publisher works on a timer: the thread keeps a running tally, and the publish
-loop takes a snapshot each cycle and converts it to per-second rates.
+Reading runs as its own asyncio task because the Beast stream is continuous
+while the publisher works on a timer: the task keeps a running tally, and the
+publish loop takes a snapshot each cycle and converts it to per-second rates.
 
 Summed across all DFs these rates equal readsb's own ``last1min.messages``, so
 this is a breakdown of the same message population readsb reports -- not a
 separate or partial view of the stream.
 """
 
-import socket
-import threading
+import asyncio
+import contextlib
 import time
 from typing import Any
 
@@ -48,6 +48,10 @@ _HEADER_LEN = 6 + 1  # MLAT timestamp + signal level
 
 # Mode A/C frames carry no DF, so they are tallied under this key instead.
 MODEAC_KEY = "modeac"
+
+_CONNECT_TIMEOUT_S = 10.0
+_CLOSE_TIMEOUT_S = 5.0
+_MAX_BUFFER_BYTES = 1 << 20
 
 
 def parse_frames(buf: bytes) -> tuple[list[tuple[int, bytes]], int]:
@@ -123,8 +127,11 @@ class BeastDfCounter:
     output. Start it once; call snapshot() each publish cycle.
 
     Everything is best-effort: if readsb is not listening yet, or the connection
-    drops, the thread retries and snapshot() simply reports nothing new. It never
+    drops, the task retries and snapshot() simply reports nothing new. It never
     raises into the publish loop and never blocks it.
+
+    No lock: this and its consumer both run on the one event loop, and neither
+    awaits between reading and writing the tally.
     """
 
     def __init__(
@@ -136,68 +143,92 @@ class BeastDfCounter:
         self._host = host
         self._port = port
         self._reconnect_delay_s = reconnect_delay_s
-        self._lock = threading.Lock()
         self._counts: dict[Any, int] = {}
         self._last_snapshot_at: float | None = None
         self._connected = False
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._stop = asyncio.Event()
+        self._task: asyncio.Task | None = None
 
     # -- lifecycle ---------------------------------------------------------
     def start(self) -> None:
-        if self._thread is not None:
+        if self._task is not None:
             return
-        self._thread = threading.Thread(target=self._run, name="beast-df", daemon=True)
-        self._thread.start()
+        self._task = asyncio.create_task(self._run(), name="beast-df")
 
     def stop(self) -> None:
+        """Ask the reader to wind up. Idempotent, and safe before start()."""
         self._stop.set()
+
+    async def aclose(self) -> None:
+        """Stop and await the reader, so its socket is closed before we exit."""
+        self.stop()
+        task, self._task = self._task, None
+        if task is None:
+            return
+        # TimeoutError as well as CancelledError: wait_for cancels the task and
+        # raises on expiry, and shutdown must not raise on the way out.
+        with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+            await asyncio.wait_for(task, timeout=_CLOSE_TIMEOUT_S)
 
     @property
     def connected(self) -> bool:
-        with self._lock:
-            return self._connected
+        return self._connected
 
     # -- reader ------------------------------------------------------------
-    def _run(self) -> None:
-        buf = b""
+    async def _read_or_stop(self, reader: asyncio.StreamReader) -> bytes | None:
+        """Next chunk, or None once shutdown is requested.
+
+        Raced against the stop event rather than polled on a timeout: a quiet
+        Beast stream is normal, and waiting on the read alone would leave a
+        shutdown request sitting until traffic happened to arrive.
+        """
+        read = asyncio.create_task(reader.read(65536), name="beast-read")
+        stopped = asyncio.create_task(self._stop.wait(), name="beast-stop")
+        try:
+            await asyncio.wait({read, stopped}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            stopped.cancel()
+        if not read.done():
+            read.cancel()
+            return None
+        return read.result()
+
+    async def _run(self) -> None:
         while not self._stop.is_set():
-            sock = None
+            writer: asyncio.StreamWriter | None = None
             try:
-                sock = socket.create_connection((self._host, self._port), timeout=10.0)
-                sock.settimeout(5.0)
-                with self._lock:
-                    self._connected = True
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(self._host, self._port),
+                    timeout=_CONNECT_TIMEOUT_S,
+                )
+                self._connected = True
                 buf = b""
                 while not self._stop.is_set():
-                    try:
-                        chunk = sock.recv(65536)
-                    except TimeoutError:
-                        continue  # quiet stream is not an error
+                    chunk = await self._read_or_stop(reader)
                     if not chunk:
-                        break  # readsb closed the connection
+                        break  # readsb closed the connection, or we are stopping
                     buf += chunk
                     frames, consumed = parse_frames(buf)
                     if consumed:
                         buf = buf[consumed:]
                     # Guard against unbounded growth if we never resync.
-                    if len(buf) > 1 << 20:
+                    if len(buf) > _MAX_BUFFER_BYTES:
                         buf = b""
                     if frames:
-                        with self._lock:
-                            count_dfs(frames, self._counts)
-            except OSError:
+                        count_dfs(frames, self._counts)
+            except (OSError, TimeoutError):
                 pass  # readsb down / restarting -- retry below
             finally:
-                with self._lock:
-                    self._connected = False
-                if sock is not None:
-                    try:
-                        sock.close()
-                    except OSError:
-                        pass
+                self._connected = False
+                if writer is not None:
+                    writer.close()
+                    with contextlib.suppress(OSError, asyncio.CancelledError):
+                        await writer.wait_closed()
             if not self._stop.is_set():
-                self._stop.wait(self._reconnect_delay_s)
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(
+                        self._stop.wait(), timeout=self._reconnect_delay_s
+                    )
 
     # -- consumer ----------------------------------------------------------
     def snapshot(self, now: float | None = None) -> dict[Any, float]:
@@ -208,11 +239,10 @@ class BeastDfCounter:
         """
         if now is None:
             now = time.monotonic()
-        with self._lock:
-            counts = self._counts
-            self._counts = {}
-            prev = self._last_snapshot_at
-            self._last_snapshot_at = now
+        counts = self._counts
+        self._counts = {}
+        prev = self._last_snapshot_at
+        self._last_snapshot_at = now
         if prev is None:
             return {}
         elapsed = now - prev

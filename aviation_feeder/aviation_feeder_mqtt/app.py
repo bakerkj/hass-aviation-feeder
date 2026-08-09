@@ -8,13 +8,15 @@ stall watchdogs that exit for the supervisor to restart, and graceful
 offline-on-shutdown. Targets paho-mqtt 2.x."""
 
 import argparse
+import asyncio
+import contextlib
 import json
 import os
 import signal
 import time
 from typing import Any
 
-import paho.mqtt.client as mqtt
+import aiomqtt
 
 from . import __version__
 from .app_reports import filter_report, gather_reports
@@ -54,6 +56,7 @@ from .metadata import (
 )
 from .mlat_stats import MLAT_CAPABLE, MLAT_SYNC_CAPABLE, read_mlat_stats
 from .mqtt import (
+    Client,
     MqttHealth,
     build_broker_discovery,
     build_df_discovery,
@@ -66,7 +69,6 @@ from .mqtt import (
     build_sdr_discovery,
     build_uat_discovery,
     build_unique_discovery,
-    connect_mqtt_with_retry,
     mqtt_publish,
 )
 from .nearby import compute_nearby, read_aircraft
@@ -117,6 +119,61 @@ _MESSAGE_FEEDERS = frozenset({"fr24"})
 _PORTAL_AIRCRAFT_FEEDERS = frozenset({"fr24", "adsbexchange"})
 # Feeders whose client reports its own per-second decode rates.
 _PORTAL_RATE_FEEDERS = frozenset({"planefinder"})
+
+
+EXIT_SIGNALS = (signal.SIGTERM, signal.SIGINT)
+
+# Broker reconnect backoff, doubling to a cap. Capped rather than flat: a broker
+# down for hours would otherwise draw a fresh TCP connect -- and a fresh DNS
+# lookup, when mqtt_host is a name -- every few seconds for the whole outage.
+_RECONNECT_MIN_SECONDS = 3
+_RECONNECT_MAX_SECONDS = 60
+
+# Ceiling on any single aiomqtt operation. aiomqtt defaults to 10s, which is the
+# whole budget the supervisor gives us to stop: a qos=1 publish awaiting a PUBACK
+# and the disconnect in __aexit__ can each burn the full 10s, so a broker holding
+# the connection open without acking would push us past SIGKILL.
+_MQTT_TIMEOUT_SECONDS = 5
+
+# SUBSCRIBE needs a SUBACK too, and runs at session start where a signal cannot
+# shorten it -- so it stays inside the stop budget rather than outside it.
+_SUBSCRIBE_TIMEOUT_SECONDS = 2
+
+# The farewell is best-effort on an even shorter leash: if the broker is not
+# acking we are being killed regardless, and the retained will already says
+# "offline", which is precisely the case it exists for.
+_FAREWELL_TIMEOUT_SECONDS = 2
+
+
+def _read_options(path: str) -> dict[str, Any]:
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise TypeError("options file must contain a JSON object")
+    return data
+
+
+async def _wait_or_stop(stop: asyncio.Event, seconds: float) -> None:
+    """Sleep, but return early once shutdown is requested."""
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(stop.wait(), timeout=seconds)
+
+
+async def _watch_birth(
+    mq: aiomqtt.Client, need_discovery: dict[str, bool], log_level: str
+) -> None:
+    """Republish discovery when HA announces it has restarted."""
+    async for message in mq.messages:
+        if (
+            message.payload
+            and bytes(message.payload).decode(errors="replace").strip() == "online"
+        ):
+            log(
+                "INFO",
+                "HA birth message received — will republish discovery",
+                log_level,
+            )
+            need_discovery["v"] = True
 
 
 class RateTracker:
@@ -294,8 +351,8 @@ def _coord(opt_val: Any, env_val: str | None) -> float | None:
     return None
 
 
-def _publish_toggleable_discovery(
-    client: mqtt.Client,
+async def _publish_toggleable_discovery(
+    client: Client,
     disc: dict[str, dict[str, Any]],
     enabled: bool,
     *,
@@ -309,7 +366,7 @@ def _publish_toggleable_discovery(
     (SDR, UAT, unique-today, emergency-squawk)."""
     for topic, cfg in disc.items():
         body = json.dumps(cfg, separators=(",", ":")) if enabled else ""
-        mqtt_publish(
+        await mqtt_publish(
             client,
             topic,
             body,
@@ -335,7 +392,7 @@ DISCONNECT_TIMEOUT_S = 300  # exit for supervisor restart if MQTT is down this l
 EXPIRE_AFTER_MULTIPLIER = 4  # HA expire_after = interval * this (floored at 60s)
 
 
-def main() -> int:
+async def _run() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--options", required=True)
     ap.add_argument("--stats", default=STATS_PATH)
@@ -343,8 +400,10 @@ def main() -> int:
     ap.add_argument("--uat-stats", default=UAT_STATS_PATH)
     args = ap.parse_args()
 
-    with open(args.options, "r", encoding="utf-8") as f:
-        opts = json.load(f)
+    # Off-loop like the other blocking reads, for one rule rather than an
+    # exception to it -- even though this one runs once, before anything else
+    # is scheduled.
+    opts = await asyncio.to_thread(_read_options, args.options)
 
     log_level = (opts.get("mqtt_log_level") or "INFO").upper()
     log("INFO", f"Aviation Feeder MQTT v{__version__} starting", log_level)
@@ -363,7 +422,9 @@ def main() -> int:
     # declares services: [mqtt:want]), so an authenticated Mosquitto add-on works
     # with no manual host/user/pass. Falls back to anonymous core-mosquitto.
     if not mqtt_host:
-        svc = resolve_mqtt_service(log_level)
+        # Off-loop: a Supervisor that is slow to answer must not delay
+        # installing the signal handlers below.
+        svc = await asyncio.to_thread(resolve_mqtt_service, log_level)
         if svc and svc.get("host"):
             mqtt_host = str(svc["host"])
             mqtt_port = int(svc.get("port") or mqtt_port)
@@ -454,73 +515,25 @@ def main() -> int:
     pf_state = PlanefinderFeedState()
     unique_tracker = UniqueDailyTracker()
 
-    client = mqtt.Client(
-        mqtt.CallbackAPIVersion.VERSION2,
-        client_id=client_id,
-        clean_session=True,
-    )
-    if mqtt_username:
-        client.username_pw_set(mqtt_username, mqtt_password)
-    client.will_set(availability_topic, "offline", qos=1, retain=True)
-    client.reconnect_delay_set(min_delay=1, max_delay=30)
+    stop = asyncio.Event()
+    event_loop = asyncio.get_running_loop()
+    for signum in EXIT_SIGNALS:
+        event_loop.add_signal_handler(signum, stop.set)
 
-    def on_connect(_client, _userdata, _flags, reason_code, _properties):
-        if not reason_code.is_failure:
-            health.connected = True
-            health.last_connect_ok = time.time()
-            health.connect_count += 1
-            log("INFO", f"MQTT connected to {mqtt_host}:{mqtt_port}", log_level)
-            # HA republishes "online" on restart; resubscribe so we re-send
-            # discovery when it comes back.
-            _client.subscribe(f"{discovery_prefix}/status", qos=1)
-            need_discovery["v"] = True
-            mqtt_publish(
-                _client,
-                availability_topic,
-                "online",
-                qos=1,
-                retain=True,
-                log_level=log_level,
-                health=health,
-            )
-        else:
-            health.connected = False
-            log("ERROR", f"MQTT connect failed: {reason_code}", log_level)
-
-    def on_disconnect(_client, _userdata, _flags, reason_code, _properties):
-        health.connected = False
-        health.last_disconnect = time.time()
-        log("WARNING", f"MQTT disconnected ({reason_code})", log_level)
-
-    def on_message(_client, _userdata, msg):
-        if msg.payload.decode(errors="replace").strip() == "online":
-            log(
-                "INFO",
-                "HA birth message received — will republish discovery",
-                log_level,
-            )
-            need_discovery["v"] = True
-
-    client.on_connect = on_connect
-    client.on_disconnect = on_disconnect
-    client.on_message = on_message
-
-    log("INFO", f"Connecting MQTT to {mqtt_host}:{mqtt_port}", log_level)
-    connect_mqtt_with_retry(client, mqtt_host, mqtt_port, log_level)
-    client.loop_start()
-
-    stop = {"v": False}
-
-    def handle(_sig, _frame):
-        stop["v"] = True
-
-    signal.signal(signal.SIGINT, handle)
-    signal.signal(signal.SIGTERM, handle)
+    if df_counter is not None:
+        df_counter.start()
 
     last_stats_ok = 0.0
 
-    try:
-        while not stop["v"]:
+    async def publish_loop(mq: Client) -> int:
+        """One connected session's worth of publishing.
+
+        Nested so it closes over this function's configuration rather than
+        taking thirty parameters. Broker faults propagate so the caller
+        reconnects rather than treating them as fatal.
+        """
+        nonlocal last_stats_ok
+        while not stop.is_set():
             now = time.time()
 
             if (
@@ -557,8 +570,8 @@ def main() -> int:
                     body = (
                         json.dumps(cfg, separators=(",", ":")) if feeder_health else ""
                     )
-                    mqtt_publish(
-                        client,
+                    await mqtt_publish(
+                        mq,
                         topic,
                         body,
                         qos=1,
@@ -571,8 +584,8 @@ def main() -> int:
                     body = (
                         json.dumps(cfg, separators=(",", ":")) if planes_near_me else ""
                     )
-                    mqtt_publish(
-                        client,
+                    await mqtt_publish(
+                        mq,
                         topic,
                         body,
                         qos=1,
@@ -595,8 +608,8 @@ def main() -> int:
                         feeder_health,
                     )
                     for topic, cfg in feeders_disc.items():
-                        mqtt_publish(
-                            client,
+                        await mqtt_publish(
+                            mq,
                             topic,
                             json.dumps(cfg, separators=(",", ":")),
                             qos=1,
@@ -608,8 +621,8 @@ def main() -> int:
                     # Retract anything this cycle did not publish -- including
                     # every entity of a feeder the user has since disabled.
                     for topic in stale_feeder_topics(discovery_prefix, feeders_disc):
-                        mqtt_publish(
-                            client,
+                        await mqtt_publish(
+                            mq,
                             topic,
                             "",
                             qos=1,
@@ -624,8 +637,8 @@ def main() -> int:
                 # _publish_toggleable_discovery (returns the live-config count).
                 sdr_on = feeder_health and sdr_present
                 uat_on = feeder_health and uat_present
-                published += _publish_toggleable_discovery(
-                    client,
+                published += await _publish_toggleable_discovery(
+                    mq,
                     build_sdr_discovery(
                         discovery_prefix, sdr_topic, availability_topic, expire_after_s
                     ),
@@ -633,8 +646,8 @@ def main() -> int:
                     log_level=log_level,
                     health=health,
                 )
-                published += _publish_toggleable_discovery(
-                    client,
+                published += await _publish_toggleable_discovery(
+                    mq,
                     build_unique_discovery(
                         discovery_prefix, base_topic, availability_topic, expire_after_s
                     ),
@@ -642,8 +655,8 @@ def main() -> int:
                     log_level=log_level,
                     health=health,
                 )
-                published += _publish_toggleable_discovery(
-                    client,
+                published += await _publish_toggleable_discovery(
+                    mq,
                     build_emergency_discovery(
                         discovery_prefix, base_topic, availability_topic, expire_after_s
                     ),
@@ -651,8 +664,8 @@ def main() -> int:
                     log_level=log_level,
                     health=health,
                 )
-                published += _publish_toggleable_discovery(
-                    client,
+                published += await _publish_toggleable_discovery(
+                    mq,
                     build_uat_discovery(
                         discovery_prefix, uat_topic, availability_topic, expire_after_s
                     ),
@@ -660,8 +673,8 @@ def main() -> int:
                     log_level=log_level,
                     health=health,
                 )
-                published += _publish_toggleable_discovery(
-                    client,
+                published += await _publish_toggleable_discovery(
+                    mq,
                     build_df_discovery(
                         discovery_prefix, df_topic, availability_topic, expire_after_s
                     ),
@@ -677,8 +690,8 @@ def main() -> int:
                     body = (
                         json.dumps(cfg, separators=(",", ":")) if feeder_health else ""
                     )
-                    mqtt_publish(
-                        client,
+                    await mqtt_publish(
+                        mq,
                         topic,
                         body,
                         qos=1,
@@ -687,8 +700,8 @@ def main() -> int:
                         health=health,
                     )
                     published += 1 if feeder_health else 0
-                mqtt_publish(
-                    client,
+                await mqtt_publish(
+                    mq,
                     availability_topic,
                     "online",
                     qos=1,
@@ -730,8 +743,8 @@ def main() -> int:
                     for key, val in metrics.items():
                         if val is None:
                             continue
-                        mqtt_publish(
-                            client,
+                        await mqtt_publish(
+                            mq,
                             f"{base_topic}/{key}/state",
                             str(val),
                             qos=0,
@@ -747,8 +760,8 @@ def main() -> int:
                     for key, val in compute_sdr_metrics(stats).items():
                         if val is None:
                             continue
-                        mqtt_publish(
-                            client,
+                        await mqtt_publish(
+                            mq,
                             f"{sdr_topic}/{key}/state",
                             str(val),
                             qos=0,
@@ -766,8 +779,8 @@ def main() -> int:
                         for key, val in compute_uat_metrics(ustats).items():
                             if val is None:
                                 continue
-                            mqtt_publish(
-                                client,
+                            await mqtt_publish(
+                                mq,
                                 f"{uat_topic}/{key}/state",
                                 str(val),
                                 qos=0,
@@ -785,8 +798,8 @@ def main() -> int:
                         df_key = DF_KEY_BY_NUMBER.get(df_num)
                         if df_key is None:
                             continue  # a DF we do not publish a sensor for
-                        mqtt_publish(
-                            client,
+                        await mqtt_publish(
+                            mq,
                             f"{df_topic}/{df_key}/state",
                             f"{rate:.2f}",
                             qos=0,
@@ -802,8 +815,8 @@ def main() -> int:
                         if health.last_connect_ok
                         else 0
                     )
-                    mqtt_publish(
-                        client,
+                    await mqtt_publish(
+                        mq,
                         f"{base_topic}/mqtt_uptime/state",
                         str(uptime_s),
                         qos=0,
@@ -812,8 +825,8 @@ def main() -> int:
                         health=health,
                         mark_state=True,
                     )
-                    mqtt_publish(
-                        client,
+                    await mqtt_publish(
+                        mq,
                         f"{base_topic}/mqtt_reconnects/state",
                         str(max(0, health.connect_count - 1)),
                         qos=0,
@@ -851,8 +864,8 @@ def main() -> int:
                         v = nb.get(m.key)
                         if v is None:
                             continue
-                        mqtt_publish(
-                            client,
+                        await mqtt_publish(
+                            mq,
                             f"{nearby_topic}/{m.key}/state",
                             str(v),
                             qos=0,
@@ -863,8 +876,8 @@ def main() -> int:
                         )
                     nearest = nb.get("nearest")
                     if nearest:
-                        mqtt_publish(
-                            client,
+                        await mqtt_publish(
+                            mq,
                             f"{nearby_topic}/{NEARBY_STATE_KEY}/state",
                             str(nearest.get("flight") or ""),
                             qos=0,
@@ -873,8 +886,8 @@ def main() -> int:
                             health=health,
                             mark_state=True,
                         )
-                        mqtt_publish(
-                            client,
+                        await mqtt_publish(
+                            mq,
                             f"{nearby_topic}/{NEARBY_STATE_KEY}/attributes",
                             json.dumps(nearest, separators=(",", ":")),
                             qos=0,
@@ -890,8 +903,8 @@ def main() -> int:
 
                 if emergency_on and acj is not None:
                     em = compute_emergency(acj)
-                    mqtt_publish(
-                        client,
+                    await mqtt_publish(
+                        mq,
                         f"{base_topic}/{EMERGENCY_SQUAWK_KEY}/state",
                         "on" if em["active"] else "off",
                         qos=0,
@@ -900,8 +913,8 @@ def main() -> int:
                         health=health,
                         mark_state=True,
                     )
-                    mqtt_publish(
-                        client,
+                    await mqtt_publish(
+                        mq,
                         f"{base_topic}/{EMERGENCY_SQUAWK_KEY}/attributes",
                         json.dumps(
                             {"count": em["count"], "aircraft": em["aircraft"]},
@@ -921,8 +934,8 @@ def main() -> int:
 
                 if unique_on and acj is not None:
                     count = unique_tracker.update(acj, time.localtime()[:3])
-                    mqtt_publish(
-                        client,
+                    await mqtt_publish(
+                        mq,
                         f"{base_topic}/{UNIQUE_TODAY_KEY}/state",
                         str(count),
                         qos=0,
@@ -935,7 +948,11 @@ def main() -> int:
                 if feeder_status:
                     # Gather the app self-reports once: authoritative feeding-state
                     # + throughput for the TCP-invisible feeders (fr24 UDP, pfclient).
-                    reports = gather_reports(opts, _truthy)
+                    # Off-loop: gather_reports shells out to HTTP endpoints
+                    # (and a netlink socket) with their own timeouts, and this
+                    # loop now owns MQTT I/O and the shutdown signal. Blocking
+                    # here would stall both for seconds every cycle.
+                    reports = await asyncio.to_thread(gather_reports, opts, _truthy)
                     # pfclient feeding = its master-server bytes INCREASED since the
                     # last cycle (the raw counter is cumulative, so >0 is true
                     # forever). First cycle has no baseline -> optimistic if it has
@@ -946,9 +963,9 @@ def main() -> int:
                             pf_rep.get("bytes_sent")
                         )
 
-                    def _pub(suffix, key, val):
-                        mqtt_publish(
-                            client,
+                    async def _pub(suffix, key, val):
+                        await mqtt_publish(
+                            mq,
                             f"{feeders_topic}/{key}/{suffix}/state",
                             str(val),
                             qos=0,
@@ -972,8 +989,8 @@ def main() -> int:
                         reports=reports,
                     ):
                         enabled_keys.add(key)
-                        mqtt_publish(
-                            client,
+                        await mqtt_publish(
+                            mq,
                             f"{feeders_topic}/{key}/state",
                             "on" if connected else "off",
                             qos=0,
@@ -983,36 +1000,36 @@ def main() -> int:
                             mark_state=True,
                         )
 
-                    def _bytes(key, sent, recv, now=now):
+                    async def _bytes(key, sent, recv, now=now):
                         # cumulative counters (disabled-by-default entities) + the
                         # primary per-second rates.
-                        _pub("bytes_sent", key, sent)
-                        _pub("bytes_received", key, recv)
+                        await _pub("bytes_sent", key, sent)
+                        await _pub("bytes_received", key, recv)
                         rs = rates.rate(key, "bytes_sent", sent, now)
                         if rs is not None:
-                            _pub("bytes_sent_rate", key, round(rs, 1))
+                            await _pub("bytes_sent_rate", key, round(rs, 1))
                         rr = rates.rate(key, "bytes_received", recv, now)
                         if rr is not None:
-                            _pub("bytes_received_rate", key, round(rr, 1))
+                            await _pub("bytes_received_rate", key, round(rr, 1))
 
                     # Byte throughput: kernel per-socket counters (TCP feeders)...
                     for key, (sent, recv) in throughput.update(
                         opts, cmd_by_pid=cmd_by_pid
                     ).items():
-                        _bytes(key, sent, recv)
+                        await _bytes(key, sent, recv)
                     # ...plus pfclient's own byte counters (feeds off-TCP).
                     pf = reports.get("planefinder")
                     if pf and "planefinder" in enabled_keys and "bytes_sent" in pf:
-                        _bytes(
+                        await _bytes(
                             "planefinder", pf["bytes_sent"], pf.get("bytes_received", 0)
                         )
                     # fr24 message count (UDP feed has no byte counter) + msg/s.
                     fr = reports.get("fr24")
                     if fr and "fr24" in enabled_keys and "messages" in fr:
-                        _pub("messages", "fr24", fr["messages"])
+                        await _pub("messages", "fr24", fr["messages"])
                         mr = rates.rate("fr24", "messages", fr["messages"], now)
                         if mr is not None:
-                            _pub("messages_rate", "fr24", round(mr, 1))
+                            await _pub("messages_rate", "fr24", round(mr, 1))
                     # Per-portal aircraft counts (the aggregator's own view).
                     for feeder_set, group in (
                         (_PORTAL_AIRCRAFT_FEEDERS, PORTAL_AIRCRAFT_METRICS),
@@ -1024,7 +1041,7 @@ def main() -> int:
                                 continue
                             for pm in group:
                                 if pm.suffix in rep:
-                                    _pub(pm.suffix, fkey, rep[pm.suffix])
+                                    await _pub(pm.suffix, fkey, rep[pm.suffix])
                     # Per-feeder MLAT (mlat-client --stats-json files). Every
                     # advertised sensor gets a value each cycle -- 0 when the
                     # feeder is not syncing -- rather than being left to expire
@@ -1032,14 +1049,14 @@ def main() -> int:
                     for (key, suffix), val in mlat_states(
                         read_mlat_stats(), enabled_keys
                     ).items():
-                        _pub(suffix, key, val)
+                        await _pub(suffix, key, val)
                     # Per-feeder uptime (aggregator connect-seconds / process age).
                     for key, secs in compute_feeder_uptime(
                         opts, connectors=connectors, cmd_by_pid=cmd_by_pid
                     ).items():
                         if key not in enabled_keys:
                             continue
-                        _pub("uptime", key, secs)
+                        await _pub("uptime", key, secs)
                     # App self-reports -> attributes (semantic health: piaware
                     # MLAT/radio, fr24 feed status, …). Re-apply the publish
                     # allowlist here: reports are enriched above (pfclient's
@@ -1049,8 +1066,8 @@ def main() -> int:
                     for key, attrs in reports.items():
                         if key not in enabled_keys:
                             continue
-                        mqtt_publish(
-                            client,
+                        await mqtt_publish(
+                            mq,
                             f"{feeders_topic}/{key}/attributes",
                             json.dumps(
                                 filter_report(key, attrs), separators=(",", ":")
@@ -1064,7 +1081,9 @@ def main() -> int:
                     for key, suffix, _n, field, _icon in REPORT_BINARY_SENSORS:
                         rep = reports.get(key)
                         if key in enabled_keys and rep and field in rep:
-                            _pub(suffix, key, "on" if rep[field] == "green" else "off")
+                            await _pub(
+                                suffix, key, "on" if rep[field] == "green" else "off"
+                            )
 
             # Heartbeat (diagnostic; not an HA entity).
             hb = {
@@ -1072,8 +1091,8 @@ def main() -> int:
                 "connected": health.connected,
                 "stats_age_s": round(now - last_stats_ok, 1) if last_stats_ok else None,
             }
-            mqtt_publish(
-                client,
+            await mqtt_publish(
+                mq,
                 heartbeat_topic,
                 json.dumps(hb, separators=(",", ":")),
                 qos=0,
@@ -1099,47 +1118,131 @@ def main() -> int:
                 )
                 return EXIT_PUBLISH_STALL
 
-            # Responsive sleep so SIGTERM is handled promptly.
-            deadline = time.time() + interval
-            while not stop["v"] and time.time() < deadline:
-                time.sleep(0.2)
+            # Waits on the stop event rather than polling, so a signal ends
+            # the cycle at once instead of at the next 0.2s tick.
+            await _wait_or_stop(stop, interval)
 
+        # Shutdown was requested; a clean stop is not a failure.
+        return 0
+
+    log("INFO", f"Connecting MQTT to {mqtt_host}:{mqtt_port}", log_level)
+    delay = _RECONNECT_MIN_SECONDS
+    try:
+        while not stop.is_set():
+            connected_at = health.last_connect_ok
+            try:
+                async with aiomqtt.Client(
+                    hostname=mqtt_host,
+                    port=mqtt_port,
+                    username=mqtt_username or None,
+                    password=mqtt_password or None,
+                    identifier=client_id,
+                    will=aiomqtt.Will(
+                        topic=availability_topic, payload=b"offline", qos=1, retain=True
+                    ),
+                    keepalive=60,
+                    timeout=_MQTT_TIMEOUT_SECONDS,
+                ) as mq:
+                    health.connected = True
+                    health.last_connect_ok = time.time()
+                    health.connect_count += 1
+                    log("INFO", f"MQTT connected to {mqtt_host}:{mqtt_port}", log_level)
+                    # Every session rediscovers: a broker restart drops retained
+                    # config, and HA needs it back before any state lands.
+                    need_discovery["v"] = True
+                    try:
+                        await mq.subscribe(
+                            f"{discovery_prefix}/status",
+                            qos=1,
+                            timeout=_SUBSCRIBE_TIMEOUT_SECONDS,
+                        )
+                    except (ValueError, aiomqtt.MqttError) as e:
+                        # A malformed prefix is a config typo; MqttError is the
+                        # broker refusing, which an ACL granting publish but not
+                        # subscribe will do. Neither may end the session, or we
+                        # would reconnect and die here every time and never
+                        # publish at all. Costs only birth-triggered rediscovery.
+                        log(
+                            "ERROR",
+                            f"cannot subscribe to {discovery_prefix}/status: {e}; "
+                            "HA restart will not trigger rediscovery",
+                            log_level,
+                        )
+                    await mqtt_publish(
+                        mq,
+                        availability_topic,
+                        "online",
+                        qos=1,
+                        retain=True,
+                        log_level=log_level,
+                        health=health,
+                    )
+                    birth = asyncio.create_task(
+                        _watch_birth(mq, need_discovery, log_level), name="birth"
+                    )
+                    try:
+                        return await publish_loop(mq)
+                    finally:
+                        birth.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await birth
+                        # Supersede the will while the session is still up, on a
+                        # short leash so an unresponsive broker cannot spend the
+                        # whole stop budget here.
+                        with contextlib.suppress(Exception):
+                            await asyncio.wait_for(
+                                mqtt_publish(
+                                    mq,
+                                    availability_topic,
+                                    "offline",
+                                    qos=1,
+                                    retain=True,
+                                    log_level=log_level,
+                                    health=health,
+                                ),
+                                timeout=_FAREWELL_TIMEOUT_SECONDS,
+                            )
+            except aiomqtt.MqttError as e:
+                health.connected = False
+                # Stamp the *start* of an outage, not each retry: restamping
+                # would reset the clock the disconnect check below reads, and
+                # since retries cap well inside the timeout it could never fire.
+                if (
+                    health.last_disconnect == 0.0
+                    or health.last_connect_ok != connected_at
+                ):
+                    health.last_disconnect = time.time()
+                if health.last_connect_ok != connected_at:
+                    delay = _RECONNECT_MIN_SECONDS  # a real session; start over
+                log("WARNING", f"MQTT: {e}; reconnecting in {delay}s", log_level)
+                down_for = time.time() - health.last_disconnect
+                if down_for > disconnect_timeout:
+                    log(
+                        "ERROR",
+                        f"MQTT disconnected for {down_for:.0f}s "
+                        f"(> {disconnect_timeout}s). Exiting for supervisor restart.",
+                        log_level,
+                    )
+                    return EXIT_DISCONNECTED
+                await _wait_or_stop(stop, delay)
+                delay = min(delay * 2, _RECONNECT_MAX_SECONDS)
     except Exception as e:  # noqa: BLE001 - last-resort guard, logged + restarted
         log("ERROR", f"Main loop exception: {e}", log_level)
         return EXIT_LOOP_ERROR
     finally:
-        stop["v"] = True
-        # Ask the Beast reader to stop. It is a daemon thread, so it cannot hold
-        # the process open, but signalling lets it close its socket promptly
-        # instead of leaving readsb a dangling client until the process exits.
+        stop.set()
+        # Wind the Beast reader up so its socket closes now, rather than leaving
+        # readsb a dangling client until the process exits.
         if df_counter is not None:
-            df_counter.stop()
-        try:
-            mqtt_publish(
-                client,
-                availability_topic,
-                "offline",
-                qos=1,
-                retain=True,
-                log_level=log_level,
-                health=health,
-                # Bounded wait for the ack, rather than a fixed sleep that is
-                # both too long for a healthy broker and too short for a slow
-                # one. Without it the farewell can be abandoned unsent and the
-                # broker falls back to the will.
-                flush_timeout=2.0,
-            )
-        except Exception:  # noqa: BLE001, S110 -- best-effort last-will on shutdown
-            pass
-        try:
-            # Never loop_stop(): paho documents it as blocking until the network
-            # thread finishes, and that thread only exits once _out_packet and
-            # _out_messages are both empty. A qos=1 message the broker never
-            # acks keeps _out_messages non-empty, so the join is unbounded --
-            # >75s measured, well past the supervisor's SIGKILL grace. The
-            # thread is a daemon, so the OS reaps it when we exit.
-            client.disconnect()
-        except Exception:  # noqa: BLE001, S110 -- best-effort teardown on shutdown
-            pass
+            await df_counter.aclose()
 
     return 0
+
+
+def main() -> int:
+    """Sync entry point: run the whole add-on on one event loop."""
+    try:
+        return asyncio.run(_run())
+    except Exception as e:  # noqa: BLE001 - supervisor safety net
+        print(f"[ERROR] Main loop exception: {e!r}", flush=True)
+        return EXIT_LOOP_ERROR

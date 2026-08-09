@@ -1,13 +1,18 @@
 # Copyright (c) 2026 Kenneth Baker <bakerkj@umich.edu>
 # All rights reserved.
 
-"""MQTT client helpers: health tracking, a publish wrapper, connect-with-retry,
-and Home Assistant discovery payloads. Targets paho-mqtt 2.x."""
+"""MQTT helpers: health tracking, an async publish wrapper, and Home Assistant
+discovery payloads.
+
+Publishes are awaitable against an ``aiomqtt.Client``: the add-on runs on one
+event loop, so a synchronous send would stall the loop that drains the Beast
+stream. Session lifetime belongs to app.py -- this publishes into whatever
+session it is handed. Everything below ``_device`` is pure payload construction
+and needs no broker to test.
+"""
 
 import time
-from typing import Any
-
-import paho.mqtt.client as mqtt
+from typing import Any, Protocol
 
 from .metadata import (
     BROKER_METRICS,
@@ -35,7 +40,6 @@ from .metadata import (
     UNIQUE_METRICS,
     Metric,
 )
-from .util import log
 
 
 class MqttHealth:
@@ -47,8 +51,24 @@ class MqttHealth:
         self.connect_count: int = 0  # successful connects; reconnects = count - 1
 
 
-def mqtt_publish(
-    client: mqtt.Client,
+class Client(Protocol):
+    """Anything with an awaitable ``publish``.
+
+    A Protocol so the discovery tests can record what would go on the wire
+    without standing up a broker.
+    """
+
+    async def publish(
+        self,
+        topic: str,
+        payload: bytes | str = "",
+        qos: int = 0,
+        retain: bool = False,
+    ) -> Any: ...
+
+
+async def mqtt_publish(
+    client: Client,
     topic: str,
     payload: str,
     *,
@@ -57,56 +77,21 @@ def mqtt_publish(
     log_level: str,
     health: MqttHealth,
     mark_state: bool = False,
-    flush_timeout: float | None = None,
-) -> bool:
-    """Publish once, best-effort.
-
-    ``flush_timeout`` waits that long for the broker to acknowledge before
-    returning. Only the shutdown farewell needs it: paho's network thread is the
-    only one that drains the outbound queue, so a qos=1 message published and
-    then abandoned at process exit may never reach the socket, leaving the
-    broker to fall back to the last will. Bounded, because the whole point is
-    not to outlast the supervisor's stop grace.
-    """
-    try:
-        info = client.publish(topic, payload=payload, qos=qos, retain=retain)
-        if info.rc == mqtt.MQTT_ERR_SUCCESS:
-            if mark_state:
-                health.last_state_publish_ok = time.time()
-            if flush_timeout is not None:
-                try:
-                    info.wait_for_publish(timeout=flush_timeout)
-                except (RuntimeError, ValueError):
-                    # paho raises if the loop is not running or the broker has
-                    # dropped -- best-effort, and the will covers that case.
-                    pass
-            return True
-        log("WARNING", f"MQTT publish rc={info.rc} topic={topic}", log_level)
-    except Exception as e:  # noqa: BLE001 -- never let a publish error kill the loop
-        log("WARNING", f"MQTT publish failed topic={topic}: {e}", log_level)
-    return False
-
-
-def connect_mqtt_with_retry(
-    client: mqtt.Client,
-    mqtt_host: str,
-    mqtt_port: int,
-    log_level: str,
 ) -> None:
-    delay = 5
-    while True:
-        try:
-            client.connect(mqtt_host, mqtt_port, keepalive=60)
-            return
-        except Exception as e:  # noqa: BLE001 -- retry on any broker connect failure
-            log(
-                "WARNING",
-                f"Cannot connect to MQTT broker {mqtt_host}:{mqtt_port}: {e} "
-                f"— retrying in {delay}s",
-                log_level,
-            )
-            time.sleep(delay)
-            delay = min(delay * 2, 60)
+    """Publish one message, stamping the health clock on success.
+
+    Broker faults are deliberately left to propagate: aiomqtt reports them as
+    ``MqttError``, and the session loop above uses that to tear down and
+    reconnect. Swallowing it here would leave the publisher cycling against a
+    dead session with every sensor silently frozen.
+
+    The stamp sits after the await, so a publish that never landed cannot
+    refresh the clock the stall watchdog reads.
+    """
+    await client.publish(topic, payload, qos=qos, retain=retain)
+    if mark_state:
+        health.last_state_publish_ok = time.time()
+    del log_level  # kept for call-site symmetry; failures now raise instead
 
 
 def _device(device_id: str, name: str) -> dict[str, Any]:

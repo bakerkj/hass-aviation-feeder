@@ -3,6 +3,12 @@
 
 """The shutdown path must not be able to outlast the supervisor's stop grace.
 
+The add-on runs on aiomqtt now, so there is no paho network thread to join; the
+loop_stop invariant below is kept as a regression guard against reintroducing
+one. What replaces the old flush test is the publish contract the session loop
+depends on: state publishes stamp the health clock, others do not, and broker
+faults propagate rather than being swallowed.
+
 paho documents ``loop_stop()`` as blocking until the network thread finishes,
 and that thread only exits once ``_out_packet`` and ``_out_messages`` are both
 empty. A qos=1 message the broker never acknowledges -- the retained "offline"
@@ -26,6 +32,7 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "aviation_feeder")
 )
 
+import aiomqtt
 from aviation_feeder_mqtt.mqtt import MqttHealth, mqtt_publish
 
 PACKAGE = (
@@ -74,78 +81,73 @@ class LoopStopInvariant(unittest.TestCase):
                 )
 
 
-class _Info:
-    """Stands in for paho's MQTTMessageInfo."""
+class _Recorder:
+    """Stands in for aiomqtt.Client, recording what would go on the wire."""
 
-    def __init__(self, rc: int = 0, raises: Exception | None = None) -> None:
-        self.rc = rc
-        self.waited: list[float] = []
-        self._raises = raises
+    def __init__(self, error: Exception | None = None) -> None:
+        self.sent: list[tuple] = []
+        self.error = error
 
-    def wait_for_publish(self, timeout: float | None = None) -> None:
-        if self._raises is not None:
-            raise self._raises
-        self.waited.append(timeout)
-
-
-class _Client:
-    def __init__(self, info: _Info) -> None:
-        self.info = info
-
-    def publish(self, topic, payload="", qos=0, retain=False):
-        return self.info
+    async def publish(self, topic, payload="", qos=0, retain=False):
+        if self.error is not None:
+            raise self.error
+        self.sent.append((topic, payload, qos, retain))
 
 
-class FarewellFlush(unittest.TestCase):
-    """The farewell must be flushed, and the flush must be bounded."""
+class PublishSemantics(unittest.IsolatedAsyncioTestCase):
+    """What the session loop above depends on mqtt_publish doing."""
 
-    def test_flush_timeout_waits_for_the_broker(self) -> None:
-        """Unflushed, a qos=1 farewell can be abandoned before paho's network
-        thread drains it, and the broker falls back to the last will."""
-        info = _Info()
-        ok = mqtt_publish(
-            _Client(info),
-            "t/availability",
-            "offline",
-            qos=1,
-            retain=True,
-            log_level="ERROR",
-            health=MqttHealth(),
-            flush_timeout=2.0,
-        )
-        self.assertTrue(ok)
-        self.assertEqual(info.waited, [2.0])
-
-    def test_no_flush_by_default(self) -> None:
-        """Steady-state publishes must not pay an ack wait each time."""
-        info = _Info()
-        mqtt_publish(
-            _Client(info),
+    async def test_a_state_publish_stamps_the_health_clock(self) -> None:
+        health = MqttHealth()
+        mq = _Recorder()
+        await mqtt_publish(
+            mq,
             "t/x/state",
             "1",
             qos=0,
             retain=False,
             log_level="ERROR",
-            health=MqttHealth(),
+            health=health,
+            mark_state=True,
         )
-        self.assertEqual(info.waited, [])
+        self.assertEqual(mq.sent, [("t/x/state", "1", 0, False)])
+        self.assertGreater(health.last_state_publish_ok, 0)
 
-    def test_a_raising_flush_is_survivable(self) -> None:
-        """paho raises if the loop is not running or the broker has dropped.
-        Shutdown must not turn that into an exception on the way out."""
-        for exc in (RuntimeError("loop not running"), ValueError("bad state")):
-            with self.subTest(exc=type(exc).__name__):
-                ok = mqtt_publish(
-                    _Client(_Info(raises=exc)),
-                    "t/availability",
-                    "offline",
-                    qos=1,
-                    retain=True,
-                    log_level="ERROR",
-                    health=MqttHealth(),
-                    flush_timeout=2.0,
-                )
-                self.assertTrue(ok, "a failed flush must not report the publish failed")
+    async def test_a_non_state_publish_leaves_the_clock_alone(self) -> None:
+        """Only real state publishes may refresh the stall watchdog's clock."""
+        health = MqttHealth()
+        await mqtt_publish(
+            _Recorder(),
+            "t/availability",
+            "online",
+            qos=1,
+            retain=True,
+            log_level="ERROR",
+            health=health,
+        )
+        self.assertEqual(health.last_state_publish_ok, 0.0)
+
+    async def test_a_broker_fault_propagates_so_the_session_reconnects(self) -> None:
+        """Swallowed here, the loop would cycle against a dead session with
+        every sensor silently frozen. The session loop catches MqttError to
+        tear down and reconnect, so it has to get there."""
+        health = MqttHealth()
+        with self.assertRaises(aiomqtt.MqttError):
+            await mqtt_publish(
+                _Recorder(aiomqtt.MqttError("broker went away")),
+                "t/x/state",
+                "1",
+                qos=0,
+                retain=False,
+                log_level="ERROR",
+                health=health,
+                mark_state=True,
+            )
+        self.assertEqual(
+            health.last_state_publish_ok,
+            0.0,
+            "a publish that never landed must not stamp the clock",
+        )
 
 
 if __name__ == "__main__":

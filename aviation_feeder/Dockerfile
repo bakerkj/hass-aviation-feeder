@@ -93,8 +93,12 @@ RUN apt-get update \
     # renovate: datasource=deb depName=libboost-program-options1.83.0
     libboost-program-options1.83.0=1.83.0-4.2 \
     # paho-mqtt for the Home Assistant sensor publisher (aviation_feeder_mqtt).
+    # aiomqtt wraps it; both are needed, and only this half is packaged.
     # renovate: datasource=deb depName=python3-paho-mqtt
     python3-paho-mqtt=2.1.0-1 \
+    # pip, purely to bring in aiomqtt below -- see the RUN that follows.
+    # renovate: datasource=deb depName=python3-pip
+    python3-pip=25.2+dfsg-1 \
     # stunnel for sdrmap's MLAT TLS tunnel (apt-installed rather than porting
     # their hand-built binary -- apt pulls its OpenSSL dep libssl3t64, the trixie
     # t64-transition name, too). renovate: datasource=deb depName=stunnel4
@@ -158,6 +162,13 @@ COPY --from=piaware /usr/lib/piaware-status /usr/lib/piaware-status
 # as the default for everyone else. Sharing one `mlat` breaks one side or the other
 # (ModuleNotFoundError, or a Coordinator "missing stats_interval" TypeError).
 COPY --from=piaware /usr/local/bin/fa-mlat-client /opt/fa-mlat/fa-mlat-client.py
+# aiomqtt is not packaged in Debian, so it comes from PyPI. --break-system-packages
+# because trixie marks the system interpreter externally managed (PEP 668); this
+# is a single-purpose container image, so there is no other environment to break.
+# renovate: datasource=pypi depName=aiomqtt
+RUN pip3 install --no-cache-dir --break-system-packages aiomqtt==2.5.1 \
+  && python3 -c "import aiomqtt; print('aiomqtt', aiomqtt.__version__)"
+
 # NB: the `python3.13` / `-313-` below are pinned to the piaware base's Python
 # minor version. When the piaware base bumps to a new Python minor these COPY
 # steps fail the build (missing source path) -- bump 3.13/313 here to match. (The .so
