@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.0.16](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.15...aviation_feeder-v0.0.16) (2026-08-09)
+
+
+### Bug Fixes
+
+* **aviation_feeder:** never join paho's network thread on shutdown ([#123](https://github.com/bakerkj/hass-aviation-feeder/issues/123)) ([bf4b422](https://github.com/bakerkj/hass-aviation-feeder/commit/bf4b4228644393b1dd3e0325137d9bd50b63d613))
+
+
+### Miscellaneous Chores
+
+* **deps:** update adsb-ultrafeeder image to latest-build-952 ([#118](https://github.com/bakerkj/hass-aviation-feeder/issues/118)) ([07f525b](https://github.com/bakerkj/hass-aviation-feeder/commit/07f525be8c97b0e555935bf21299f0e0537b2853))
+
+
+### Code Refactoring
+
+* **aviation_feeder:** asyncio + aiomqtt ([#127](https://github.com/bakerkj/hass-aviation-feeder/issues/127)) ([97b2545](https://github.com/bakerkj/hass-aviation-feeder/commit/97b254592bccbae07cd20dca055b301c3ae9756a))
+
 ## [0.0.15](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.14...aviation_feeder-v0.0.15) (2026-08-07)
 
 
