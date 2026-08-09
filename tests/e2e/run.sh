@@ -1085,7 +1085,6 @@ wait-readsb" \
 06-range-outline
 07-nginx-configure
 08-graphs1090-init
-50-store-uuid
 52-adsbitalia-register
 99-prometheus-conf" \
     /etc/s6-overlay/startup.d

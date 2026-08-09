@@ -238,10 +238,12 @@ validates the final image against two allowlists:
   base's units and ours now live in the new dir, and the guard checks the
   **union** of both so anything still in the deprecated dir is caught too. (Base
   build-951 also dropped the `libseccomp2` oneshot upstream — hence 14, not 15.)
-- **Startup hooks** — `ls /etc/s6-overlay/startup.d` must equal the 9 base hooks
+- **Startup hooks** — `ls /etc/s6-overlay/startup.d` must equal the 8 base hooks
   we keep. These are iterated by the approved `startup` oneshot at boot; the
   aggregator auto-registration hooks (e.g. `52-adsbitalia-register`) live
   _here_, not in `user/contents.d`, so a services-only guard would miss them.
+  (Base build-952 dropped the `50-store-uuid` hook upstream — readsb now reads
+  `UUID` directly from the env instead of via `/run/uuid` — hence 8, not 9.)
 
 The script also **prunes** the two dead upstream wrappers we reject — `telegraf`
 (exporter whose binary isn't in the base) and `timelapse1090` (whose program
