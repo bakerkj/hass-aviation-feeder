@@ -618,32 +618,43 @@ authoritative here.
 
 ## 5. The MQTT / HA-sensor publisher (`aviation_feeder_mqtt/`)
 
-An optional paho-mqtt Python package run as the **`ha-mqtt`** longrun. Its run
+An optional asyncio Python package run as the **`ha-mqtt`** longrun. Its run
 script gates on `HA_SENSORS` (from the `ha_sensors` option), sets
 `PYTHONPATH=/opt`, and execs
 `python3 -m aviation_feeder_mqtt --options /data/options.json`. **How it's
 built:** no stage — the `aviation_feeder_mqtt` package is `COPY`d to
-`/opt/aviation_feeder_mqtt` and `compileall`'d; apt: `python3-paho-mqtt`.
+`/opt/aviation_feeder_mqtt` and `compileall`'d; apt: `python3-paho-mqtt`, plus
+`aiomqtt` from PyPI (unpackaged in Debian) installed with `uv` from its own
+digest-pinned build stage.
 
 Everything the publisher reports is read **locally** — readsb's JSON/Prometheus
 files, `/proc`, `NETLINK_INET_DIAG`, the mlat-client stats files, and a couple
 of localhost status endpoints. No outbound network calls to the aggregators.
 
+**Concurrency.** Everything runs on one asyncio loop: `aiomqtt` for the broker,
+an asyncio task for readsb's Beast stream (`beast.py`), and `asyncio.to_thread`
+for the few calls that still block (`gather_reports`' HTTP, the Supervisor
+lookup, the options read). There are no threads of our own and no
+`signal.signal`; `add_signal_handler` rides `set_wakeup_fd`, so a signal cannot
+be lost between bytecodes. Every broker wait is bounded — client 5s, subscribe
+2s, the shutdown farewell 2s — because the supervisor allows ten seconds to stop
+and then sends SIGKILL.
+
 ### Module layout
 
 - **`app.py`** — the orchestrator. Parses `/data/options.json`; resolves the
   MQTT broker (blank host → Supervisor `mqtt` service via `supervisor.py`, else
-  `core-mosquitto`); builds a paho 2.x client with an LWT
-  (`<base_topic>/availability` retained `offline`); connects with retry; then
-  loops every `mqtt_interval_seconds`. Each cycle: read `stats.json`;
-  (re)publish HA **discovery** when needed; publish state for the enabled
-  categories; publish a diagnostic heartbeat. It subscribes to
-  `<discovery_prefix>/status` and re-sends discovery on HA's `online` birth
-  message. Three watchdogs exit non-zero for s6 to restart it:
-  `EXIT_DISCONNECTED` (11, MQTT down > 300 s), `EXIT_PUBLISH_STALL` (12,
-  connected but state publishes stopped landing within the expire window), and
-  `EXIT_LOOP_ERROR` (14, unhandled exception in the loop); a `finally` publishes
-  retained `offline` on shutdown.
+  `core-mosquitto`); opens an `aiomqtt` session with an LWT
+  (`<base_topic>/availability` retained `offline`); reconnects with a capped
+  3s→60s backoff that resets once a session really connects; then loops every
+  `mqtt_interval_seconds`. Each cycle: read `stats.json`; (re)publish HA
+  **discovery** when needed; publish state for the enabled categories; publish a
+  diagnostic heartbeat. It subscribes to `<discovery_prefix>/status` and
+  re-sends discovery on HA's `online` birth message. Three watchdogs exit
+  non-zero for s6 to restart it: `EXIT_DISCONNECTED` (11, MQTT down > 300 s),
+  `EXIT_PUBLISH_STALL` (12, connected but state publishes stopped landing within
+  the expire window), and `EXIT_LOOP_ERROR` (14, unhandled exception in the
+  loop); a `finally` publishes retained `offline` on shutdown.
 - **`mqtt.py`** — `MqttHealth` (connection/publish timestamps +
   `connect_count`), `mqtt_publish` (marks `last_state_publish_ok` for the stall
   watchdog), `connect_mqtt_with_retry` (exponential backoff), and the

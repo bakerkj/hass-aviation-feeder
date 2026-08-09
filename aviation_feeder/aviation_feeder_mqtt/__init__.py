@@ -2,7 +2,7 @@
 # All rights reserved.
 
 """Publish aviation_feeder (readsb) feeder-health metrics to Home Assistant
-over MQTT using paho-mqtt."""
+over MQTT, on a single asyncio loop via aiomqtt."""
 
 import os
 

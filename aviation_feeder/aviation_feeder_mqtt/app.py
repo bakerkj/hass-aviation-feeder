@@ -2,10 +2,19 @@
 # All rights reserved.
 
 """Entry-point orchestration: option parsing, MQTT lifecycle, and the
-stats.json read/publish loop. Built around MqttHealth, connect-with-retry,
-LWT availability, HA discovery + birth-message resubscribe, disconnect/publish-
-stall watchdogs that exit for the supervisor to restart, and graceful
-offline-on-shutdown. Targets paho-mqtt 2.x."""
+stats.json read/publish loop. Built around MqttHealth, a reconnect loop with
+capped backoff, LWT availability, HA discovery + birth-message resubscribe,
+disconnect/publish-stall watchdogs that exit for the supervisor to restart, and
+a bounded graceful offline-on-shutdown.
+
+One asyncio loop drives all of it: aiomqtt for the broker, an asyncio task for
+readsb's Beast stream, and to_thread for the few calls that still block. There
+are no threads of our own and no ``signal.signal``, so a signal cannot be lost
+-- ``add_signal_handler`` rides ``set_wakeup_fd``, which wakes the selector when
+the signal lands rather than needing the main thread to be between bytecodes.
+
+Every wait is bounded and every teardown is on a leash, because the supervisor
+gives us ten seconds to stop and takes SIGKILL after."""
 
 import argparse
 import asyncio
@@ -465,9 +474,9 @@ async def _run() -> int:
     uat_topic = f"{base_topic}/uat"
     df_topic = f"{base_topic}/message_types"
     # Mode S downlink-format rates: readsb publishes no per-DF breakdown, so a
-    # daemon thread counts them off its Beast stream and the loop below samples
-    # the tally each cycle (see beast.py). Separate toggle because it holds a
-    # persistent socket, which the other sensor groups do not.
+    # dedicated task counts them off its Beast stream and the loop below
+    # samples the tally each cycle (see beast.py). Separate toggle because it
+    # holds a persistent socket, which the other sensor groups do not.
     df_on = bool(opts.get("ha_message_types", True))
     df_counter = BeastDfCounter() if df_on else None
     if df_counter is not None:

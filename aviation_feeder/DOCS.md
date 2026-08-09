@@ -268,8 +268,9 @@ These categories are published, toggled independently:
   are near an interrogating radar.
 
   readsb does not report this itself, so the add-on counts it directly from
-  readsb's Beast output on a background thread. **DF5**, **DF21** and **DF18**
-  ship hidden, since they are typically a fraction of a message per second.
+  readsb's Beast output on a dedicated asyncio task. **DF5**, **DF21** and
+  **DF18** ship hidden, since they are typically a fraction of a message per
+  second.
 
 - **Per-feeder status** (`ha_feeder_status`) → **one device per enabled feeder**
   (each grouped under the main Aviation Feeder device). Every feeder device has
