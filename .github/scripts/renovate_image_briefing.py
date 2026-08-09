@@ -21,13 +21,15 @@
 #      under rootfs/, so `rootfs/etc/s6-overlay/scripts/pfclient` is the source
 #      of the container's `/etc/s6-overlay/scripts/pfclient`.
 #
-#   2. WHICH UPSTREAM ENV DEFAULTS CHANGED, AND WHETHER WE INHERIT THEM.
-#      An ENV default that changes upstream is invisible: nothing errors, the
-#      container just behaves differently. Diff the ENV lines of the upstream
-#      Dockerfile between the two revisions, then check whether WE set that same
-#      variable anywhere. If we set it, we override and it cannot bite us. If we
-#      do NOT, we silently inherit the new value -- which is exactly the class of
-#      bug that hides.
+#   2. WHICH UPSTREAM ENV DEFAULTS CHANGED OR WERE ADDED, AND WHETHER WE INHERIT
+#      THEM. An ENV default that changes upstream is invisible: nothing errors,
+#      the container just behaves differently. Diff the ENV lines of the upstream
+#      Dockerfile between the two revisions -- surfacing NEW vars (no prior
+#      default) on their own, not folded into the "changed" table -- then check
+#      whether WE set that same variable anywhere. If we set it, we override and
+#      it cannot bite us. If we do NOT, we silently inherit the new value -- which
+#      is exactly the class of bug that hides. This runs for the transitive base
+#      too (its Dockerfile ENV is inherited the same way).
 #
 # It does NOT inline the bulk. Everything heavy is PRE-FETCHED into a directory
 # that is handed to the agent, and the briefing is just the index into it:
@@ -36,7 +38,7 @@
 #     briefing.md                     <- small, high-signal: ranges, hits, ENV table
 #     <image>/
 #       range.txt                     repo, old/new rev, compare URL, provenance
-#       commits.md                    every commit subject in the range
+#       commits.md                    every commit's subject + body (linked issues)
 #       changed-files.txt             every file the range touched
 #       patches/<flat-path>.diff      the FULL patch per changed file (unclipped)
 #       extracted/<flat-path>.before  whole file at the OLD rev  } for files WE
@@ -92,6 +94,9 @@ COPY_RE = re.compile(
 ENV_RE = re.compile(
     r"^\s*ENV\s+(?P<key>[A-Z_][A-Z0-9_]*)[=\s]+(?P<val>.*)$", re.MULTILINE
 )
+# Issue/PR refs in a commit message: `#280`, `owner/repo#280`. The trailing \b
+# drops a hex-colour false positive like `#280fff` (letters after the digits).
+ISSUE_RE = re.compile(r"#(\d+)\b")
 
 
 def go_buildinfo(image, digest, candidate_paths):
@@ -204,13 +209,17 @@ def stages_and_extracts(dockerfile_text):
 
 
 def compare(repo_path, old, new, token):
-    """-> ({filename: patch}, [commit subjects]). (None, []) if the compare failed.
+    """-> ({filename: patch}, [commit dicts]). (None, []) if the compare failed.
 
     Keeps the PATCH, not just the filename: the compare API already returns the
     diff of every changed file, so fetching the filename list and then making the
     agent go back for the diffs would be paying for the same data twice. Handing
     over the actual changed lines is the whole point -- it is what the agent has
     to exercise judgement on.
+
+    Each commit dict is {sha, subject, body}: the BODY carries linked-issue refs
+    (e.g. `…#280`) the subject line drops. Staging it here saves the reviewer a
+    round-trip to the compare API just to read a commit message.
     """
     data = gh_json(
         f"https://api.github.com/repos/{repo_path}/compare/{old}...{new}", token
@@ -224,8 +233,15 @@ def compare(repo_path, old, new, token):
         }
         for f in data.get("files", [])
     }
-    subjects = [c["commit"]["message"].splitlines()[0] for c in data.get("commits", [])]
-    return patches, subjects
+    commits = [
+        {
+            "sha": (c.get("sha") or "")[:7],
+            "subject": c["commit"]["message"].splitlines()[0],
+            "body": "\n".join(c["commit"]["message"].splitlines()[1:]).strip(),
+        }
+        for c in data.get("commits", [])
+    ]
+    return patches, commits
 
 
 def file_at(repo_path, path, rev, token):
@@ -251,6 +267,34 @@ def flat(path):
 def write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def format_commits(commits):
+    """Render commits.md: subject, any linked issues, then the indented body.
+
+    The body is where a commit says WHY (and links the issue, e.g. `…#280`) --
+    dropping it to the subject line alone was a documented gap: the reviewer had to
+    call the compare API again just to read one message. Bodies are indented so
+    they read as a block under their subject.
+    """
+    if not commits:
+        return "(none)"
+    blocks = []
+    for c in commits:
+        sha = c.get("sha") or ""
+        head = f"- {c['subject']}" + (f"  (`{sha}`)" if sha else "")
+        block = [head]
+        body = (c.get("body") or "").strip()
+        refs = sorted(
+            {int(m.group(1)) for m in ISSUE_RE.finditer(c["subject"] + "\n" + body)}
+        )
+        if refs:
+            block.append("  linked: " + ", ".join(f"#{n}" for n in refs))
+        if body:
+            block.append("")
+            block += [f"      {ln}" for ln in body.splitlines()]
+        blocks.append("\n".join(block))
+    return "\n\n".join(blocks)
 
 
 def env_at(repo_path, rev, token):
@@ -302,6 +346,75 @@ def we_set(key):
         if proc.returncode == 0:
             return how
     return None
+
+
+def env_diff_lines(env_old, env_new, source=""):
+    """Markdown lines for the ENV delta between two Dockerfile revisions.
+
+    Splits the delta three ways so a BRAND-NEW upstream var is surfaced on its own.
+    The old single "changed" table folded new vars into a `(unset) -> value` row,
+    which is why a genuinely new default (GRAPHS1090_ETHERNET_DEVICE=eth0, added in
+    the transitive base) slipped past the reviewer -- it read as noise among value
+    changes instead of a new default we now silently inherit. `source` names the
+    layer (e.g. a transitive base) for the headings; empty for the built image.
+    """
+    added = sorted(k for k in env_new if k not in env_old)
+    changed = sorted(k for k in env_new if k in env_old and env_new[k] != env_old[k])
+    removed = sorted(k for k in env_old if k not in env_new)
+    label = f"`{source}` " if source else ""
+    if not (added or changed or removed):
+        return [
+            f"No {label}upstream ENV default added, changed, or removed in this range.",
+            "",
+        ]
+
+    def verdict(key):
+        how = we_set(key)
+        return (
+            f"yes, via {how} — we override it, no impact"
+            if how
+            else ":rotating_light: **NO — we INHERIT it**"
+        )
+
+    lines = []
+    if added:
+        lines += [
+            f"**New {label}upstream ENV vars (no prior default — we inherit unless we set it):**",
+            "",
+            "| env | new default | do we set it? |",
+            "|---|---|---|",
+        ]
+        for key in added:
+            lines.append(
+                f"| `{key}` | `{env_new[key] or '(empty)'}` | {verdict(key)} |"
+            )
+        lines.append("")
+    if changed:
+        lines += [
+            f"**{label}upstream ENV defaults that changed:**",
+            "",
+            "| env | before | after | do we set it? |",
+            "|---|---|---|---|",
+        ]
+        for key in changed:
+            lines.append(
+                f"| `{key}` | `{env_old[key] or '(empty)'}` | "
+                f"`{env_new[key] or '(empty)'}` | {verdict(key)} |"
+            )
+        lines.append("")
+    if removed:
+        lines += [
+            f"**{label}upstream ENV vars removed (default no longer set upstream):**",
+            "",
+            "| env | was | do we set it? |",
+            "|---|---|---|",
+        ]
+        for key in removed:
+            lines.append(
+                f"| `{key}` | `{env_old[key] or '(empty)'}` | {verdict(key)} |"
+            )
+        lines.append("")
+    return lines
 
 
 OUR_ROOTFS = Path("aviation_feeder/rootfs")
@@ -465,7 +578,7 @@ def transitive_base(image, old_digest, new_digest, repo_path, new_rev, token, ou
             "",
         ]
 
-    patches, subjects = compare(t_repo, t_old_rev, t_new_rev, token)
+    patches, commits = compare(t_repo, t_old_rev, t_new_rev, token)
     if patches is None:
         return [f":warning: Transitive base **`{tshort}`** compare API failed.", ""]
     statuses = {f: m["status"] for f, m in patches.items()}
@@ -483,7 +596,7 @@ def transitive_base(image, old_digest, new_digest, repo_path, new_rev, token, ou
         f"compare:    {t_compare}\n"
         "provenance: base image SLSA provenance -> OCI `revision` label\n",
     )
-    write(td / "commits.md", "\n".join(f"- {s}" for s in subjects) or "(none)")
+    write(td / "commits.md", format_commits(commits))
     write(td / "changed-files.txt", "\n".join(patches) or "(none)")
     for f, meta in patches.items():
         if meta["patch"]:
@@ -505,7 +618,7 @@ def transitive_base(image, old_digest, new_digest, repo_path, new_rev, token, ou
             "`rootfs/` lands in our container exactly as the base's does."
         ),
         "",
-        f"- {len(patches)} upstream file(s) changed; {len(subjects)} commit(s)",
+        f"- {len(patches)} upstream file(s) changed; {len(commits)} commit(s)",
         (
             f"- prefetched: `{td}/` "
             "(`range.txt`, `commits.md`, `changed-files.txt`, `patches/`)"
@@ -537,6 +650,25 @@ def transitive_base(image, old_digest, new_digest, repo_path, new_rev, token, ou
             ),
             "",
         ]
+
+    # ENV defaults declared in the transitive base's Dockerfile are inherited into
+    # our container just like the top-level base's are, and were previously NOT
+    # compared here -- a new default (e.g. GRAPHS1090_ETHERNET_DEVICE=eth0) only
+    # surfaced by hand-reading the raw Dockerfile diff. Diff them the same way.
+    t_env_old, t_env_new = (
+        env_at(t_repo, t_old_rev, token),
+        env_at(t_repo, t_new_rev, token),
+    )
+    if t_env_old is None or t_env_new is None:
+        lines += [
+            (
+                f":grey_question: Could not read `{tshort}`'s Dockerfile at both "
+                "revisions, so its ENV defaults were NOT compared."
+            ),
+            "",
+        ]
+    else:
+        lines += env_diff_lines(t_env_old, t_env_new, source=tshort)
     return lines
 
 
@@ -622,9 +754,9 @@ def main():
 
         # The compare payload is in the cache when the resolve step ran first.
         if cached.get("files") is not None and cached.get("repo_path") == repo_path:
-            patches, subjects = cached["files"], cached.get("subjects", [])
+            patches, commits = cached["files"], cached.get("commits", [])
         else:
-            patches, subjects = compare(repo_path, old_rev, new_rev, token)
+            patches, commits = compare(repo_path, old_rev, new_rev, token)
         if patches is None:
             sections.append(f"### `{name}`\n\n:warning: compare API failed.\n")
             continue
@@ -642,7 +774,7 @@ def main():
             f"compare:    {compare_url}\n"
             f"provenance: {provenance}\n",
         )
-        write(d / "commits.md", "\n".join(f"- {s}" for s in subjects) or "(none)")
+        write(d / "commits.md", format_commits(commits))
         write(d / "changed-files.txt", "\n".join(patches) or "(none)")
         for f, meta in patches.items():
             if meta["patch"]:
@@ -679,7 +811,7 @@ def main():
             f"- provenance: {provenance}",
             (
                 f"- {len(patches)} upstream file(s) changed; "
-                f"{len(subjects)} commit(s); we `COPY --from` {len(extracted)} path(s)"
+                f"{len(commits)} commit(s); we `COPY --from` {len(extracted)} path(s)"
             ),
             (
                 f"- prefetched: `{d}/` "
@@ -801,31 +933,7 @@ def main():
                     "",
                 ]
             else:
-                rows = []
-                for key in sorted(set(env_old) | set(env_new)):
-                    before, after = env_old.get(key), env_new.get(key)
-                    if before != after:
-                        rows.append((key, before, after, we_set(key)))
-                if rows:
-                    body += [
-                        "**Upstream ENV defaults that changed:**",
-                        "",
-                        "| env | before | after | do we set it? |",
-                        "|---|---|---|---|",
-                    ]
-                    for key, before, after, how in rows:
-                        verdict = (
-                            f"yes, via {how} — we override it, no impact"
-                            if how
-                            else ":rotating_light: **NO — we INHERIT the new value**"
-                        )
-                        body.append(
-                            f"| `{key}` | `{before or '(unset)'}` | "
-                            f"`{after or '(removed)'}` | {verdict} |"
-                        )
-                    body.append("")
-                else:
-                    body += ["No upstream ENV default changed in this range.", ""]
+                body += env_diff_lines(env_old, env_new)
 
         sections.append("\n".join(body))
 

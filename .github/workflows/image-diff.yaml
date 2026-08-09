@@ -215,7 +215,8 @@ jobs:
                                                   table, the ENV table
                 upstream/<image>/range.txt        repo, old/new rev, compare URL,
                                                   how provenance was established
-                upstream/<image>/commits.md       every commit subject in range
+                upstream/<image>/commits.md       every commit's subject + body
+                                                  (with any linked issue refs)
                 upstream/<image>/changed-files.txt every file the range touched
                 upstream/<image>/patches/*.diff   the FULL patch, per changed file
                 upstream/<image>/extracted/*.before
@@ -236,11 +237,14 @@ jobs:
                                     the upstream range (the intersection)
                                   * THE ACTUAL DIFFS of those changed files,
                                     inlined -- you do not need to fetch them
-                                  * which upstream ENV defaults changed, and for
-                                    each, whether WE set it (we override -> no
-                                    impact) or do NOT (we silently inherit the
-                                    new value)
-                                  * every commit subject in the range
+                                  * which upstream ENV defaults CHANGED or were
+                                    newly ADDED (new vars listed on their own, not
+                                    hidden among value changes), and for each,
+                                    whether WE set it (we override -> no impact) or
+                                    do NOT (we silently inherit the new value) --
+                                    computed for the transitive base too
+                                  * every commit's subject AND body (the body
+                                    carries the linked issue, e.g. `...#280`)
                                   * for a COMPILED binary we extract (e.g.
                                     pw-feeder), the source repo it was built from
                                     -- recovered from the binary's own Go build
