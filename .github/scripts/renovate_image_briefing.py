@@ -368,11 +368,22 @@ def env_diff_lines(env_old, env_new, source=""):
             "",
         ]
 
-    def verdict(key):
+    def verdict(key, removed=False):
         how = we_set(key)
+        if how:
+            # We set it ourselves either way -- so a changed/added upstream default
+            # is overridden, and a removed one never mattered to us.
+            tail = (
+                "we set it ourselves, upstream's removal has no impact"
+                if removed
+                else "we override it, no impact"
+            )
+            return f"yes, via {how} — {tail}"
+        # We do NOT set it. For added/changed we silently inherit the new value; for
+        # removed there is nothing left to inherit -- the default simply disappears.
         return (
-            f"yes, via {how} — we override it, no impact"
-            if how
+            ":rotating_light: **NO — the default disappears; falls back to the app/lower-layer default**"
+            if removed
             else ":rotating_light: **NO — we INHERIT it**"
         )
 
@@ -411,7 +422,7 @@ def env_diff_lines(env_old, env_new, source=""):
         ]
         for key in removed:
             lines.append(
-                f"| `{key}` | `{env_old[key] or '(empty)'}` | {verdict(key)} |"
+                f"| `{key}` | `{env_old[key] or '(empty)'}` | {verdict(key, removed=True)} |"
             )
         lines.append("")
     return lines
