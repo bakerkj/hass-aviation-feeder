@@ -105,9 +105,12 @@ OUR_SERVICES = {
 APPROVED_SERVICES = BASE_SERVICES | OUR_SERVICES
 
 # --- Approved STARTUP hooks (startup.d) ------------------------------------
-# 9 base hooks (the 11 shipped, minus the two we prune below). All are gated and
+# 8 base hooks (the 10 shipped, minus the two we prune below). All are gated and
 # self-noop unless their feature is enabled; 52-adsbitalia-register is the
 # aggregator auto-register we now consciously approve.
+# (base build-952 dropped the 50-store-uuid hook upstream: readsb switched from
+# --uuid-file=/run/uuid to --uuid=${UUID}, so the hook that wrote /run/uuid is
+# gone. We already export UUID as a plain env var, so this is behavior-neutral.)
 APPROVED_STARTUP = {
     "01-print-container-version",
     "01-sanity-check",
@@ -115,7 +118,6 @@ APPROVED_STARTUP = {
     "06-range-outline",
     "07-nginx-configure",
     "08-graphs1090-init",
-    "50-store-uuid",
     "52-adsbitalia-register",
     "99-prometheus-conf",
 }
