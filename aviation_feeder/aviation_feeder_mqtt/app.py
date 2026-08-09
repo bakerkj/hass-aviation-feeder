@@ -1123,12 +1123,21 @@ def main() -> int:
                 retain=True,
                 log_level=log_level,
                 health=health,
+                # Bounded wait for the ack, rather than a fixed sleep that is
+                # both too long for a healthy broker and too short for a slow
+                # one. Without it the farewell can be abandoned unsent and the
+                # broker falls back to the will.
+                flush_timeout=2.0,
             )
-            time.sleep(0.2)
         except Exception:  # noqa: BLE001, S110 -- best-effort last-will on shutdown
             pass
         try:
-            client.loop_stop()
+            # Never loop_stop(): paho documents it as blocking until the network
+            # thread finishes, and that thread only exits once _out_packet and
+            # _out_messages are both empty. A qos=1 message the broker never
+            # acks keeps _out_messages non-empty, so the join is unbounded --
+            # >75s measured, well past the supervisor's SIGKILL grace. The
+            # thread is a daemon, so the OS reaps it when we exit.
             client.disconnect()
         except Exception:  # noqa: BLE001, S110 -- best-effort teardown on shutdown
             pass
