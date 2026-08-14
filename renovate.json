@@ -181,9 +181,10 @@
       "automerge": true
     },
     {
-      "description": "Group the two lockstep uv bumps (ghcr.io/astral-sh/uv image + [tool.uv] required-version pin) into one PR. Stays manual review: the docker half ships in the image (shipped-artifact deny rule above), and grouping doesn't grant auto-merge.",
+      "description": "Group the two lockstep uv bumps (ghcr.io/astral-sh/uv image + [tool.uv] required-version pin) into one PR. The shared 3-day release-age gate makes both members eligible on the same run so they land together — the pin already has it, this extends it to the docker half (which otherwise has none). Stays manual review: the docker half ships in the image (shipped-artifact deny rule above), and grouping doesn't grant auto-merge.",
       "matchPackageNames": ["uv", "ghcr.io/astral-sh/uv"],
-      "groupName": "uv"
+      "groupName": "uv",
+      "minimumReleaseAge": "3 days"
     },
     {
       "description": "Majors always get a human. Must stay last to override every opt-in above.",
