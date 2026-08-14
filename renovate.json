@@ -181,6 +181,11 @@
       "automerge": true
     },
     {
+      "description": "Group the two lockstep uv bumps (ghcr.io/astral-sh/uv image + [tool.uv] required-version pin) into one PR. Stays manual review: the docker half ships in the image (shipped-artifact deny rule above), and grouping doesn't grant auto-merge.",
+      "matchPackageNames": ["uv", "ghcr.io/astral-sh/uv"],
+      "groupName": "uv"
+    },
+    {
       "description": "Majors always get a human. Must stay last to override every opt-in above.",
       "matchUpdateTypes": ["major"],
       "automerge": false
