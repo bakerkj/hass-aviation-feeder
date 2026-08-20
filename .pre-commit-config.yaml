@@ -151,7 +151,7 @@ repos:
           - --regex-variant
           - python
           - --schemafile
-          - https://raw.githubusercontent.com/frenck/action-addon-linter/v2.21.0/src/config.schema.json
+          - https://raw.githubusercontent.com/frenck/action-addon-linter/v2.21.1/src/config.schema.json
       - id: check-jsonschema
         name: Validate Home Assistant add-on build schema
         files: ^[^/]+/build\.ya?ml$
@@ -159,7 +159,7 @@ repos:
           - --regex-variant
           - python
           - --schemafile
-          - https://raw.githubusercontent.com/frenck/action-addon-linter/v2.21.0/src/build.schema.json
+          - https://raw.githubusercontent.com/frenck/action-addon-linter/v2.21.1/src/build.schema.json
 
   - repo: local
     hooks:
