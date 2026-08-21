@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.17](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.16...aviation_feeder-v0.0.17) (2026-08-21)
+
+
+### Miscellaneous Chores
+
+* **deps:** update adsb-ultrafeeder image to latest-build-953 ([#128](https://github.com/bakerkj/hass-aviation-feeder/issues/128)) ([c754554](https://github.com/bakerkj/hass-aviation-feeder/commit/c754554b2f6d3706386147f5db9f8046c5bbf9b0))
+* **deps:** update adsb-ultrafeeder image to latest-build-954 ([#138](https://github.com/bakerkj/hass-aviation-feeder/issues/138)) ([316f126](https://github.com/bakerkj/hass-aviation-feeder/commit/316f1267abd308bf00bb918e10c80971a13c1b8f))
+* **deps:** update uv to v0.12.4 ([#133](https://github.com/bakerkj/hass-aviation-feeder/issues/133)) ([0f89298](https://github.com/bakerkj/hass-aviation-feeder/commit/0f89298c9353dfdeaa2aef6fa656a2253d390fe8))
+* **deps:** update uv to v0.12.5 ([#137](https://github.com/bakerkj/hass-aviation-feeder/issues/137)) ([f6af198](https://github.com/bakerkj/hass-aviation-feeder/commit/f6af198c30f729ac9f0dc24645808d3565398e3f))
+
 ## [0.0.16](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.15...aviation_feeder-v0.0.16) (2026-08-09)
 
 
