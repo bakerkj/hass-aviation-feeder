@@ -29,7 +29,7 @@ FROM ghcr.io/sdr-enthusiasts/docker-dump978:latest-build-802@sha256:27a6596cfb68
 FROM ghcr.io/sdr-enthusiasts/docker-piaware:latest-build-666@sha256:3b6772353a562f3d6ac1ba6a2281f96b173a43b822fda14c7f0218a459c225aa AS piaware
 FROM ghcr.io/sdr-enthusiasts/docker-flightradar24:latest-build-859@sha256:998a80cc35b2db150843d1dece7dc99cb985d136503de9b46bc98c2f836030c5 AS fr24
 FROM ghcr.io/sdr-enthusiasts/docker-planefinder:latest-build-541@sha256:1554ef9a9e34ea38c7765a4871afda9736cf85a47a60edb59e7eb43c4fc895c7 AS planefinder
-FROM ghcr.io/sdr-enthusiasts/docker-opensky-network:latest-build-844@sha256:3db40e3942781387711ef08696112e0ff5f398bb86406023c1734d5aef3a92b7 AS opensky
+FROM ghcr.io/sdr-enthusiasts/docker-opensky-network:latest-build-845@sha256:b50bc8c2e7fc9b6c7048592915c1203caaf267dcf5f8d4a180622d1e98920fc2 AS opensky
 FROM ghcr.io/sdr-enthusiasts/docker-adsbhub:latest-build-530@sha256:ca7615a577deb94be5b3a004c80fc291f325ec767802edf057ad0944596cf01a AS adsbhub
 FROM ghcr.io/plane-watch/docker-plane-watch:v0.0.10@sha256:f8cc3254943c3f0cd8b97d448bee929c87f3c78b9ecf1a61a255343797e61745 AS planewatch
 FROM ghcr.io/sdr-enthusiasts/docker-sdrmap:latest-build-99@sha256:d53cede29cf07e607fa06ac8fe86deb53b2bdf8cdc22783aa2db3de33c886fb3 AS sdrmap
