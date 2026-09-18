@@ -90,7 +90,7 @@ RUN apt-get update \
     # renovate: datasource=deb depName=tclx8.4
     tclx8.4=8.4.1-5 \
     # renovate: datasource=deb depName=socat
-    socat=1.8.0.3-1 \
+    socat=1.8.0.3-1+deb13u1 \
     # renovate: datasource=deb depName=libboost-program-options1.83.0
     libboost-program-options1.83.0=1.83.0-4.2 \
     # paho-mqtt for the Home Assistant sensor publisher (aviation_feeder_mqtt).
