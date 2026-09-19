@@ -50,7 +50,7 @@ jobs:
     name: Upstream image diff
     # Renovate PRs only.
     if: github.event.pull_request.user.login == 'renovate[bot]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     outputs:
       has_diff: ${{ steps.diff.outputs.has_diff }}
@@ -161,7 +161,7 @@ jobs:
     # Nothing to review on a retag-only bump (same image, new tag) -- skip rather
     # than pay for a Claude run with no upstream commits to look at.
     if: needs.image-diff.outputs.has_diff == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: read

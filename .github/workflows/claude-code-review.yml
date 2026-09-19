@@ -20,7 +20,7 @@ jobs:
       github.event.pull_request.user.login != 'renovate[bot]' &&
       github.event.pull_request.user.login != 'dependabot[bot]' &&
       !startsWith(github.head_ref, 'release-please--')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read

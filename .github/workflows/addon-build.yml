@@ -16,7 +16,7 @@ permissions:
 jobs:
   discover:
     name: Discover addons
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       mode: ${{ steps.matrix.outputs.mode }}
@@ -136,9 +136,9 @@ jobs:
             arches=$(python3 -c "import json; print(' '.join(json.load(open('$cfg'))['arch']))")
             for arch in $arches; do
               if [ "$arch" = "amd64" ]; then
-                runner="ubuntu-24.04"
+                runner="ubuntu-26.04"
               elif [ "$arch" = "aarch64" ]; then
-                runner="ubuntu-24.04-arm"
+                runner="ubuntu-26.04-arm"
               else
                 continue
               fi
