@@ -15,11 +15,10 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "GitHub runner versions in shell scripts and YAML within workflows",
+      "description": "Shell-style `runner=\"ubuntu-24.04\"` inside workflow steps. The `runs-on:` form is intentionally NOT matched here — the built-in github-actions manager already tracks it and having both fire produces duplicate dashboard entries.",
       "managerFilePatterns": ["/.github/workflows/.+\\.ya?ml$/"],
       "matchStrings": [
-        "runner=\"(?<depName>ubuntu|macos|windows)-(?<currentValue>[\\w.-]+)\"",
-        "runs-on:\\s*(?<depName>ubuntu|macos|windows)-(?<currentValue>[\\w.-]+)"
+        "runner=\"(?<depName>ubuntu|macos|windows)-(?<currentValue>[\\w.-]+)\""
       ],
       "datasourceTemplate": "github-runners"
     },
