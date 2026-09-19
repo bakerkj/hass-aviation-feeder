@@ -85,6 +85,12 @@
       "groupName": "github-actions"
     },
     {
+      "description": "Shell-defined matrix runner values (`runner=\"ubuntu-24.04\"`) come from the custom regex manager but describe the same GitHub runner image as the built-in github-actions manager's `runs-on:` detections. Group them together so a runner bump lands as one grouped PR instead of two dashboard entries (`major-github-actions` grouped + `ubuntu-<N>.x` ungrouped).",
+      "matchManagers": ["custom.regex"],
+      "matchDatasources": ["github-runners"],
+      "groupName": "github-actions"
+    },
+    {
       "matchManagers": ["pre-commit"],
       "groupName": "pre-commit hooks"
     },
