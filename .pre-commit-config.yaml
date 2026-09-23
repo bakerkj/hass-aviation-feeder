@@ -47,7 +47,7 @@ repos:
         args: ["--ignore-words-list", "hass"]
 
   - repo: https://github.com/rbubley/mirrors-prettier
-    rev: v3.9.8
+    rev: v3.9.9
     hooks:
       - id: prettier
         types_or: [yaml, json, markdown]
@@ -128,7 +128,7 @@ repos:
         additional_dependencies: ["@commitlint/config-conventional@21"]
 
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.38.0
+    rev: 0.38.2
     hooks:
       - id: check-jsonschema
         name: Validate pre-commit config schema
