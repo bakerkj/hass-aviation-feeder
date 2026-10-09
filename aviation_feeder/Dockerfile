@@ -24,7 +24,7 @@ ARG BUILD_FROM=ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest-build-969@
 # --- Feeder source stages -------------------------------------------------
 # Images pinned to tag@digest so Renovate's dockerfile manager (grouped as
 # "sdr-enthusiasts base images") tracks and bumps them.
-FROM ghcr.io/astral-sh/uv:0.12.22@sha256:f513a91fc62fe7c17567eee97230dd198e43edb8a9fbecca843714a4358fe1bc AS uv
+FROM ghcr.io/astral-sh/uv:0.12.24@sha256:3af4716e991d6956a41e573eab705d0ee08500cd829ed30293eb8472f372c65a AS uv
 FROM ghcr.io/sdr-enthusiasts/docker-dump978:latest-build-804@sha256:f260ad4b6abe9cc549a26c8a9ea6cb17ecfe155510051c4283455b10b1b03ecd AS dump978
 FROM ghcr.io/sdr-enthusiasts/docker-piaware:latest-build-668@sha256:8c51da8fba1a1035b4a06608a064d71b6678556f68e9b72020ca61d67586405d AS piaware
 FROM ghcr.io/sdr-enthusiasts/docker-flightradar24:latest-build-861@sha256:3e0fbd0274eb9d10f5506cd8bcbff5714476ae39b571400153f9aab264017b34 AS fr24
