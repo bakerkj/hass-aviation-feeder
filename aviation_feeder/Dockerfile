@@ -26,7 +26,7 @@ ARG BUILD_FROM=ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest-build-971@
 # "sdr-enthusiasts base images") tracks and bumps them.
 FROM ghcr.io/astral-sh/uv:0.12.24@sha256:3af4716e991d6956a41e573eab705d0ee08500cd829ed30293eb8472f372c65a AS uv
 FROM ghcr.io/sdr-enthusiasts/docker-dump978:latest-build-805@sha256:303ec7c50e0442d71a012edb669bce68ce44b03540559d0fe452b28c3d73806c AS dump978
-FROM ghcr.io/sdr-enthusiasts/docker-piaware:latest-build-669@sha256:1b9c47a83c8009c8ca511b0b6b5e87b0493151e96028e1e2473f41cee122b568 AS piaware
+FROM ghcr.io/sdr-enthusiasts/docker-piaware:latest-build-670@sha256:576da5db3f82a9153c64b1aff856a1e3da9040a8d9999e0c19e4b4f3362bfebe AS piaware
 FROM ghcr.io/sdr-enthusiasts/docker-flightradar24:latest-build-862@sha256:b0b6b96adaa35f1670c324dbed071f68c025690ccc01d52a040ea8a3e102fb72 AS fr24
 FROM ghcr.io/sdr-enthusiasts/docker-planefinder:latest-build-544@sha256:f5b460366fbc54d083b965efcfb60437aec37c984224a39ee1256e3a72fb439b AS planefinder
 FROM ghcr.io/sdr-enthusiasts/docker-opensky-network:latest-build-849@sha256:1b596f102a8d346a119de124c0fac95240f698cab021f88e0d4113d673f76ae4 AS opensky
