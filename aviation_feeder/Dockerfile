@@ -19,7 +19,7 @@
 # FROM so it is usable as a global build arg in the final-stage FROM. Builds
 # (local and CI) use this pinned default -- we intentionally do NOT ship a
 # build.yaml / let the HA builder override BUILD_FROM, so the digest stays fixed.
-ARG BUILD_FROM=ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest-build-973@sha256:4955d6ef02c86e58a83919c4a1ef6d18c5f6007f18dd4dbb962331f3b5bba779
+ARG BUILD_FROM=ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest-build-974@sha256:2febecc764c4a06e47741da3feb772c87643a6028711a7b53fe4378a3fdfc7ca
 
 # --- Feeder source stages -------------------------------------------------
 # Images pinned to tag@digest so Renovate's dockerfile manager (grouped as
