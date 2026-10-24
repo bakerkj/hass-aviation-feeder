@@ -22,10 +22,16 @@ package = false
 required-version = "==0.13.5"
 
 [dependency-groups]
+test = [
+    "pytest>=9.0.3",
+]
+# The tests job runs both pytest and mypy against the dev env, so dev is a
+# strict superset of test (via include-group) and carries mypy + aiomqtt
+# (consumed by scripts outside the pytest surface).
 dev = [
+    { include-group = "test" },
     "aiomqtt>=2.5.1",
     "mypy>=2.1.0",
-    "pytest>=9.0.3",
 ]
 
 [tool.mypy]
