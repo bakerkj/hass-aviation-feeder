@@ -29,14 +29,16 @@ jobs:
           # the same setup-uv cache key (the reservation race logs "Failed to
           # save: Unable to reserve cache with key setup-uv-…").
           cache-suffix: tests
+      - name: Verify uv.lock matches pyproject.toml
+        run: uv lock --check
       - name: Sync dev dependencies
         run: uv sync --group dev --frozen
       - name: Run pytest
-        run: uv run pytest --junit-xml=test-results/junit.xml
+        run: uv run --no-sync pytest --junit-xml=test-results/junit.xml
       # Enforce the mypy hook in CI: prek.yml skips it (that job has no uv),
       # so type-check here where uv + the dev deps (incl. mypy) are set up.
       - name: Type-check with mypy
-        run: uv run mypy aviation_feeder
+        run: uv run --no-sync mypy aviation_feeder
       - name: Upload unit-test results
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
