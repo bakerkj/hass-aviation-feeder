@@ -29,6 +29,8 @@ jobs:
           # the same setup-uv cache key (the reservation race logs "Failed to
           # save: Unable to reserve cache with key setup-uv-…").
           cache-suffix: tests
+      - name: Verify uv.lock matches pyproject.toml
+        run: uv lock --check
       - name: Sync dev dependencies
         run: uv sync --group dev --frozen
       - name: Run pytest
