@@ -464,14 +464,25 @@ def suffix_hits(extracted, upstream_files, statuses=None):
 
     Upstream repos stage the container tree under rootfs/, so
     rootfs/etc/s6-overlay/scripts/pfclient -> /etc/s6-overlay/scripts/pfclient.
+
+    A path we extract may be a DIRECTORY (`COPY --from=piaware
+    /usr/lib/piaware_packages ...`), so any upstream file UNDER it is a hit too,
+    reported at its own container path. Exact-path matching alone reported "no
+    file we extract changed" when a file inside a copied directory was deleted.
     """
     statuses = statuses or {}
     hits = []
     for path in extracted:
-        tail = path.lstrip("/")
+        tail = path.lstrip("/").rstrip("/")
         for f in upstream_files:
             if f == tail or f.endswith("/" + tail):
                 hits.append((path, f, statuses.get(f, "modified")))
+                continue
+            anchored = "/" + f
+            i = anchored.find("/" + tail + "/")
+            if i != -1:
+                rest = anchored[i + 1 + len(tail) :]  # "/<file under the dir>"
+                hits.append((path.rstrip("/") + rest, f, statuses.get(f, "modified")))
     return hits
 
 
@@ -908,6 +919,21 @@ def main():
                     "No file we extract was touched in this range (mechanically "
                     "verified: the extracted paths do not intersect the upstream "
                     "changed-file list)."
+                ),
+                "",
+            ]
+
+        # RUN steps in the upstream Dockerfile build the filesystem we COPY from
+        # (e.g. a `rm` of a binary, a `sed` over a file we extract) without
+        # touching rootfs/, so no path intersection can see them.
+        if extracted and "Dockerfile" in patches:
+            body += [
+                (
+                    ":warning: **The upstream `Dockerfile` changed in this range.** "
+                    "Its RUN steps can add, remove or rewrite files under paths we "
+                    "`COPY --from`, or change what that image relied on, without "
+                    "touching `rootfs/`. Read "
+                    f"`{d}/patches/{flat('Dockerfile')}.diff` beyond its ENV lines."
                 ),
                 "",
             ]
