@@ -19,7 +19,7 @@
 # FROM so it is usable as a global build arg in the final-stage FROM. Builds
 # (local and CI) use this pinned default -- we intentionally do NOT ship a
 # build.yaml / let the HA builder override BUILD_FROM, so the digest stays fixed.
-ARG BUILD_FROM=ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest-build-975@sha256:e31566bc8d42119b1703a18bdf6a2a57876a40c805ef92d122fb46992acc5996
+ARG BUILD_FROM=ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest-build-979@sha256:c58e4b6541d3d35babc6590012682c6ef3c964589ac59ddd3ac8783bec9d29e9
 
 # --- Feeder source stages -------------------------------------------------
 # Images pinned to tag@digest so Renovate's dockerfile manager (grouped as
@@ -32,8 +32,8 @@ FROM ghcr.io/sdr-enthusiasts/docker-planefinder:latest-build-545@sha256:7abd0bf5
 FROM ghcr.io/sdr-enthusiasts/docker-opensky-network:latest-build-850@sha256:3411f0cb0f66e1da23f4bba60eb44d5bd83143acac070761771d0d4228e1bd52 AS opensky
 FROM ghcr.io/sdr-enthusiasts/docker-adsbhub:latest-build-534@sha256:fbfefa7b344b0468d269acdc79d58bda7f1803058fe5928b167114a9760acf59 AS adsbhub
 FROM ghcr.io/plane-watch/docker-plane-watch:v0.0.11@sha256:e0f0f5e55847273bae1b9b1c6a8962e74065f38659bd180e97d7da9d0a2865c3 AS planewatch
-FROM ghcr.io/sdr-enthusiasts/docker-sdrmap:latest-build-104@sha256:aea937c3b21f8193aff3c4265a85710e32186c319fa979a6a406ffc57cef3cb4 AS sdrmap
-FROM ghcr.io/sdr-enthusiasts/docker-radarbox:latest-build-888@sha256:4cddd64971dfe971d5c539e8a075597106367f6e14eea72a6a8e3bacedd2a363 AS radarbox
+FROM ghcr.io/sdr-enthusiasts/docker-sdrmap:latest-build-107@sha256:f5533d4667b0d2c9e79b0efa04d22ef6ace2a63b4061884c562251ce318acfec AS sdrmap
+FROM ghcr.io/sdr-enthusiasts/docker-radarbox:latest-build-891@sha256:930be0e551409e160bb4f035fbf5bcbf706d46da62f8d9dc9dcdacee49165e34 AS radarbox
 # AirNav ships rbfeeder only for ARM. On arm64 the base image has a NATIVE
 # rbfeeder (and no qemu); on amd64 it has the armhf binary + qemu-arm-static.
 # Stage exactly the runtime this arch needs into /rbx so the final image can copy
