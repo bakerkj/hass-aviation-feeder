@@ -31,7 +31,7 @@ FROM ghcr.io/sdr-enthusiasts/docker-flightradar24:latest-build-863@sha256:1de9e5
 FROM ghcr.io/sdr-enthusiasts/docker-planefinder:latest-build-545@sha256:7abd0bf5583c71185093d6ff1dbe2fa000104c72ec651270f829519bc9867f5a AS planefinder
 FROM ghcr.io/sdr-enthusiasts/docker-opensky-network:latest-build-850@sha256:3411f0cb0f66e1da23f4bba60eb44d5bd83143acac070761771d0d4228e1bd52 AS opensky
 FROM ghcr.io/sdr-enthusiasts/docker-adsbhub:latest-build-534@sha256:fbfefa7b344b0468d269acdc79d58bda7f1803058fe5928b167114a9760acf59 AS adsbhub
-FROM ghcr.io/plane-watch/docker-plane-watch:v0.0.11@sha256:24562527ff8ecd1b99f439646596bb9d4e2ee575d8dc09cafb663180767695d6 AS planewatch
+FROM ghcr.io/plane-watch/docker-plane-watch:v0.0.11@sha256:e0f0f5e55847273bae1b9b1c6a8962e74065f38659bd180e97d7da9d0a2865c3 AS planewatch
 FROM ghcr.io/sdr-enthusiasts/docker-sdrmap:latest-build-104@sha256:aea937c3b21f8193aff3c4265a85710e32186c319fa979a6a406ffc57cef3cb4 AS sdrmap
 FROM ghcr.io/sdr-enthusiasts/docker-radarbox:latest-build-888@sha256:4cddd64971dfe971d5c539e8a075597106367f6e14eea72a6a8e3bacedd2a363 AS radarbox
 # AirNav ships rbfeeder only for ARM. On arm64 the base image has a NATIVE
