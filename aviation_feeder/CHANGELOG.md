@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.0.19](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.18...aviation_feeder-v0.0.19) (2026-10-31)
+
+
+### Miscellaneous Chores
+
+* **deps:** update ghcr.io/plane-watch/docker-plane-watch:v0.0.11 docker digest to e0f0f5e ([#263](https://github.com/bakerkj/hass-aviation-feeder/issues/263)) ([d799b24](https://github.com/bakerkj/hass-aviation-feeder/commit/d799b245b30a50cb74ce79596c6d8f7dd1b28f25))
+* **deps:** update radar1090 image to latest-build-331 ([#276](https://github.com/bakerkj/hass-aviation-feeder/issues/276)) ([e96dc2c](https://github.com/bakerkj/hass-aviation-feeder/commit/e96dc2c36f10819c20b3cab4893eba3ae127ad70))
+* **deps:** update sdr-enthusiasts base images ([#264](https://github.com/bakerkj/hass-aviation-feeder/issues/264)) ([404755a](https://github.com/bakerkj/hass-aviation-feeder/commit/404755a87b499fa2b27aa89592e788a308ee6cb8))
+* **deps:** update sdr-enthusiasts base images ([#266](https://github.com/bakerkj/hass-aviation-feeder/issues/266)) ([fa041e8](https://github.com/bakerkj/hass-aviation-feeder/commit/fa041e8564055ab79452cf8917f38074bcc5e362))
+* **deps:** update uv to v0.13.6 ([#270](https://github.com/bakerkj/hass-aviation-feeder/issues/270)) ([37af499](https://github.com/bakerkj/hass-aviation-feeder/commit/37af4994a4670284bea0a0f8398d2edd69989b91))
+
 ## [0.0.18](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.17...aviation_feeder-v0.0.18) (2026-10-25)
 
 
