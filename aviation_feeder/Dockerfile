@@ -59,7 +59,7 @@ RUN set -eu; mkdir -p /rbx/usr/bin; \
     fi
 
 # 1090MHz UK feeder source: just the self-contained `radar` binary (glibc-only).
-FROM ghcr.io/sdr-enthusiasts/docker-radar1090:latest-build-330@sha256:d6e921db32e9c97f6bcda3580bad0f22d1ef3c62549a7c435851c6567d25e581 AS radar1090
+FROM ghcr.io/sdr-enthusiasts/docker-radar1090:latest-build-331@sha256:52886dafeb97e988117753ac15a2b4a5c51b8b6a6313f25806575f1f9ea116ec AS radar1090
 
 # --- Final image ----------------------------------------------------------
 FROM ${BUILD_FROM}
