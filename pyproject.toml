@@ -12,7 +12,7 @@ dependencies = [
     # requests (the other runtime dep) is imported lazily and never reached by
     # the tests, so it is intentionally not a test dependency here — it stays
     # tracked only via the Dockerfile deb pin.
-    "paho-mqtt==2.1.0",
+    "paho-mqtt==2.2.0",
 ]
 
 [tool.uv]
