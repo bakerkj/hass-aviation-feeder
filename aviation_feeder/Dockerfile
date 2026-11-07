@@ -188,7 +188,7 @@ RUN uv pip install --system --no-cache --break-system-packages aiomqtt==2.5.1 \
   && rm -f /usr/local/bin/uv
 
 COPY --from=piaware /usr/bin/tcllauncher /usr/bin/tcllauncher
-COPY --from=piaware /usr/lib/Tcllauncher1.10 /usr/lib/Tcllauncher1.10
+COPY --from=piaware /usr/lib/Tcllauncher1.11 /usr/lib/Tcllauncher1.11
 # s6 longrun + its config-writing oneshot + their wrapper scripts.
 COPY --from=piaware /etc/s6-overlay/s6-rc.d/piaware /etc/s6-overlay/s6-rc.d/piaware
 COPY --from=piaware /etc/s6-overlay/s6-rc.d/01-piaware /etc/s6-overlay/s6-rc.d/01-piaware

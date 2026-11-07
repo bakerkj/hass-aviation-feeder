@@ -404,7 +404,7 @@ the Dockerfile for live values).
 - **How it's built.** Stage
   `FROM ghcr.io/sdr-enthusiasts/docker-piaware@sha256:8d3298…143015 AS piaware`.
   `COPY --from=piaware` brings `/usr/bin/piaware`, its Tcl library trees
-  (`/usr/lib/piaware*`, `fa_adept_codec`), `tcllauncher` + `Tcllauncher1.10`,
+  (`/usr/lib/piaware*`, `fa_adept_codec`), `tcllauncher` + `Tcllauncher1.11`,
   the s6 `piaware`/`01-piaware` services + scripts, and `fa-mlat-client` +
   `flightaware`/`mlat`/`_modes*.so` into `/opt/fa-mlat`. apt: the Tcl stack
   (`itcl3`, `tcl`, `tcl-tls`, `tcllib`, `tclx8.4`).
