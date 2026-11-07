@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.19](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.18...aviation_feeder-v0.0.19) (2026-11-07)
+
+
+### Miscellaneous Chores
+
+* **deps:** update ghcr.io/astral-sh/uv docker tag to v0.13.7 ([#286](https://github.com/bakerkj/hass-aviation-feeder/issues/286)) ([d954556](https://github.com/bakerkj/hass-aviation-feeder/commit/d954556f342b11884cfc67070e89b2488938e33f))
+* **deps:** update ghcr.io/plane-watch/docker-plane-watch:v0.0.11 docker digest to 712b4cb ([#277](https://github.com/bakerkj/hass-aviation-feeder/issues/277)) ([03832e9](https://github.com/bakerkj/hass-aviation-feeder/commit/03832e9db2907b3952d394b0382205da699c73e2))
+* **deps:** update ghcr.io/plane-watch/docker-plane-watch:v0.0.11 docker digest to e0f0f5e ([#263](https://github.com/bakerkj/hass-aviation-feeder/issues/263)) ([d799b24](https://github.com/bakerkj/hass-aviation-feeder/commit/d799b245b30a50cb74ce79596c6d8f7dd1b28f25))
+* **deps:** update radar1090 image to latest-build-331 ([#276](https://github.com/bakerkj/hass-aviation-feeder/issues/276)) ([e96dc2c](https://github.com/bakerkj/hass-aviation-feeder/commit/e96dc2c36f10819c20b3cab4893eba3ae127ad70))
+* **deps:** update sdr-enthusiasts base images ([#264](https://github.com/bakerkj/hass-aviation-feeder/issues/264)) ([404755a](https://github.com/bakerkj/hass-aviation-feeder/commit/404755a87b499fa2b27aa89592e788a308ee6cb8))
+* **deps:** update sdr-enthusiasts base images ([#266](https://github.com/bakerkj/hass-aviation-feeder/issues/266)) ([fa041e8](https://github.com/bakerkj/hass-aviation-feeder/commit/fa041e8564055ab79452cf8917f38074bcc5e362))
+* **deps:** update sdr-enthusiasts base images ([#280](https://github.com/bakerkj/hass-aviation-feeder/issues/280)) ([d2826b6](https://github.com/bakerkj/hass-aviation-feeder/commit/d2826b6e7b0f533e23e34e4d6cc2e4ecfe79525c))
+* **deps:** update uv to v0.13.6 ([#270](https://github.com/bakerkj/hass-aviation-feeder/issues/270)) ([37af499](https://github.com/bakerkj/hass-aviation-feeder/commit/37af4994a4670284bea0a0f8398d2edd69989b91))
+
 ## [0.0.18](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.17...aviation_feeder-v0.0.18) (2026-10-25)
 
 
