@@ -116,7 +116,7 @@ repos:
           - DL3018
 
   - repo: https://github.com/kjanat/actionlint
-    rev: v1.17.0
+    rev: v1.17.1
     hooks:
       - id: actionlint
 
