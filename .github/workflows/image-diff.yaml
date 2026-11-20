@@ -116,7 +116,7 @@ jobs:
       - name: Set up Go
         if: steps.diff.outputs.has_diff == 'true'
         continue-on-error: true
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.27"
           cache: false
@@ -183,7 +183,7 @@ jobs:
       # stays the build + e2e checks, which are what actually prove the image works.
       - name: Review upstream changes
         continue-on-error: true
-        uses: anthropics/claude-code-action@4fa93a88de49bbef68b10eb15aabedf28ca0e1ed # v1.0.271
+        uses: anthropics/claude-code-action@cc98b3ae241b0fcfb6a42a2690751afffecb4452 # v1.0.278
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # This job runs ONLY on renovate[bot] PRs (that is the whole point --
