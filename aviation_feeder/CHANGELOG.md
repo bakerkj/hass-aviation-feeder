@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.0.20](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.19...aviation_feeder-v0.0.20) (2026-11-20)
+
+
+### Miscellaneous Chores
+
+* **deps:** update adsb-ultrafeeder image to latest-build-990 ([#291](https://github.com/bakerkj/hass-aviation-feeder/issues/291)) ([2459f99](https://github.com/bakerkj/hass-aviation-feeder/commit/2459f998333808d91619acc1ff232bba92135b21))
+* **deps:** update ghcr.io/astral-sh/uv docker tag to v0.13.9 ([#309](https://github.com/bakerkj/hass-aviation-feeder/issues/309)) ([e5401f4](https://github.com/bakerkj/hass-aviation-feeder/commit/e5401f4413f63917f0f51b9cdfa23b8934232b69))
+* **deps:** update ghcr.io/plane-watch/docker-plane-watch:v0.0.11 docker digest to 0033f1c ([#300](https://github.com/bakerkj/hass-aviation-feeder/issues/300)) ([d5c934a](https://github.com/bakerkj/hass-aviation-feeder/commit/d5c934af8107afd66a43a135030330c68a88e1ec))
+* **deps:** update sdr-enthusiasts base images ([#301](https://github.com/bakerkj/hass-aviation-feeder/issues/301)) ([a1f4075](https://github.com/bakerkj/hass-aviation-feeder/commit/a1f4075e80a64569257ed35134af36abd4d76100))
+* **deps:** update uv to v0.13.8 ([#298](https://github.com/bakerkj/hass-aviation-feeder/issues/298)) ([e0b316a](https://github.com/bakerkj/hass-aviation-feeder/commit/e0b316adf5bd6717e62a2acd40c4e43bd1f9b96c))
+
 ## [0.0.19](https://github.com/bakerkj/hass-aviation-feeder/compare/aviation_feeder-v0.0.18...aviation_feeder-v0.0.19) (2026-11-07)
 
 
